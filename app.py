@@ -1,4 +1,9 @@
-import subprocess, os, json, re, tempfile, shutil
+import subprocess, os, json, re, tempfile, shutil, sys
+
+# Auto-install ffmpeg if not found
+if not shutil.which('ffmpeg'):
+    subprocess.run(['apt-get', 'update', '-qq'], check=False)
+    subprocess.run(['apt-get', 'install', '-y', '-qq', 'ffmpeg'], check=False)
 from flask import Flask, request, jsonify, send_file, render_template_string
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
