@@ -1,4 +1,4 @@
-import subprocess, os, json, re, tempfile, shutil, sys, base64, threading, uuid
+import subprocess, os, json, re, tempfile, shutil, uuid, base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -12,25 +12,36 @@ if not shutil.which('ffmpeg'):
 app = Flask(__name__, static_folder='.')
 CORS(app)
 
-MAX_FILE_MB    = int(os.environ.get('MAX_FILE_MB', 500))
-MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024
-ANTHROPIC_KEY  = os.environ.get('ANTHROPIC_API_KEY', '')
-
+ANTHROPIC_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 FFMPEG  = shutil.which('ffmpeg')  or 'ffmpeg'
 FFPROBE = shutil.which('ffprobe') or 'ffprobe'
-TMP     = tempfile.gettempdir()
 
-# In-memory session store: session_id -> tmp file path
-_sessions = {}
-_sessions_lock = threading.Lock()
+# Use /tmp for all session files — persists within same worker
+SESSION_DIR = os.path.join(tempfile.gettempdir(), 'cortaclip_sessions')
+os.makedirs(SESSION_DIR, exist_ok=True)
+
+def session_meta_path(sid):
+    return os.path.join(SESSION_DIR, f'{sid}.json')
+
+def session_video_path(sid, ext):
+    return os.path.join(SESSION_DIR, f'{sid}_src{ext}')
+
+def session_cut_path(sid, index):
+    return os.path.join(SESSION_DIR, f'{sid}_cut_{index}.mp4')
+
+def save_meta(sid, data):
+    with open(session_meta_path(sid), 'w') as f:
+        json.dump(data, f)
+
+def load_meta(sid):
+    p = session_meta_path(sid)
+    if not os.path.exists(p):
+        return None
+    with open(p) as f:
+        return json.load(f)
 
 def run(cmd, timeout=300):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-
-def tmp(suffix='.mp4'):
-    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=TMP)
-    f.close()
-    return f.name
 
 # ── routes ────────────────────────────────────────────────────────────────────
 
@@ -49,13 +60,13 @@ def health():
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    """Upload video once, store in session, return session_id + duration + black frames."""
     f = request.files.get('video')
     if not f:
         return jsonify({'error': 'No video'}), 400
 
+    sid = str(uuid.uuid4())
     ext = os.path.splitext(secure_filename(f.filename))[1] or '.mp4'
-    src = tmp(ext)
+    src = session_video_path(sid, ext)
     f.save(src)
 
     try:
@@ -63,25 +74,21 @@ def upload():
         pr = run([FFPROBE, '-v', 'quiet', '-print_format', 'json', '-show_format', src])
         duration = float(json.loads(pr.stdout)['format']['duration'])
 
-        # Black frame detection
-        bd = run([FFMPEG, '-i', src, '-vf', 'blackdetect=d=0.01:pix_th=0.08',
-                  '-an', '-f', 'null', '-'], timeout=120)
+        # Black frame detection — sensitive settings to catch fast black frames
+        bd = run([FFMPEG, '-i', src,
+                  '-vf', 'blackdetect=d=0.01:pix_th=0.08',
+                  '-an', '-f', 'null', '-'], timeout=180)
         blacks = []
         for line in bd.stderr.split('\n'):
             m = re.search(r'black_start:([\d.]+)\s+black_end:([\d.]+)', line)
             if m:
                 blacks.append({'start': float(m.group(1)), 'end': float(m.group(2))})
 
-        # Store session
-        session_id = str(uuid.uuid4())
-        with _sessions_lock:
-            _sessions[session_id] = {'path': src, 'filename': secure_filename(f.filename)}
+        # Save session metadata to disk
+        save_meta(sid, {'filename': secure_filename(f.filename), 'ext': ext, 'duration': duration})
 
-        return jsonify({
-            'session_id': session_id,
-            'duration': duration,
-            'black_frames': blacks
-        })
+        return jsonify({'session_id': sid, 'duration': duration, 'black_frames': blacks})
+
     except Exception as e:
         try: os.unlink(src)
         except: pass
@@ -90,23 +97,20 @@ def upload():
 
 @app.route('/cut_all', methods=['POST'])
 def cut_all():
-    """Cut all segments in parallel from a single uploaded session."""
     data = request.get_json()
-    session_id = data.get('session_id')
-    segments   = data.get('segments', [])  # [{start, end, index}, ...]
+    sid  = data.get('session_id')
+    segs = data.get('segments', [])
 
-    with _sessions_lock:
-        session = _sessions.get(session_id)
-    if not session:
+    meta = load_meta(sid)
+    if not meta:
         return jsonify({'error': 'Sesión no encontrada. Subí el video de nuevo.'}), 404
 
-    src      = session['path']
-    filename = session['filename']
-    base     = os.path.splitext(filename)[0]
-    results  = {}
+    src = session_video_path(sid, meta['ext'])
+    if not os.path.exists(src):
+        return jsonify({'error': 'Archivo de video no encontrado. Subí el video de nuevo.'}), 404
 
     def cut_one(seg):
-        out = tmp('.mp4')
+        out = session_cut_path(sid, seg['index'])
         r = run([
             FFMPEG,
             '-ss', str(seg['start']),
@@ -118,117 +122,97 @@ def cut_all():
             '-y', out
         ])
         if r.returncode != 0:
-            return seg['index'], None, r.stderr[-400:]
-        return seg['index'], out, None
+            return seg['index'], False, r.stderr[-400:]
+        return seg['index'], os.path.exists(out) and os.path.getsize(out) > 0, None
 
-    # Run all cuts in parallel (up to 4 workers)
+    results = {}
     with ThreadPoolExecutor(max_workers=4) as ex:
-        futures = {ex.submit(cut_one, seg): seg for seg in segments}
+        futures = {ex.submit(cut_one, seg): seg for seg in segs}
         for future in as_completed(futures):
-            idx, out_path, err = future.result()
-            results[str(idx)] = {'path': out_path, 'error': err}
+            idx, ok, err = future.result()
+            results[str(idx)] = {'ok': ok, 'error': err}
 
-    # Store cut results back in session
-    with _sessions_lock:
-        _sessions[session_id]['cuts'] = results
-
-    # Return which cuts succeeded
-    summary = {k: {'ok': v['path'] is not None, 'error': v['error']}
-               for k, v in results.items()}
-    return jsonify({'ok': True, 'results': summary})
+    return jsonify({'ok': True, 'results': results})
 
 
-@app.route('/download/<session_id>/<int:index>', methods=['GET'])
-def download(session_id, index):
-    """Download a specific cut segment."""
-    with _sessions_lock:
-        session = _sessions.get(session_id)
-    if not session:
+@app.route('/download/<sid>/<int:index>', methods=['GET'])
+def download(sid, index):
+    meta = load_meta(sid)
+    if not meta:
         return jsonify({'error': 'Sesión expirada'}), 404
 
-    cuts = session.get('cuts', {})
-    cut  = cuts.get(str(index))
-    if not cut or not cut['path']:
-        return jsonify({'error': cut['error'] if cut else 'No cortado aún'}), 404
+    cut = session_cut_path(sid, index)
+    if not os.path.exists(cut) or os.path.getsize(cut) == 0:
+        return jsonify({'error': 'Segmento no encontrado'}), 404
 
-    base     = os.path.splitext(session['filename'])[0]
-    dl_name  = f"{base}_segmento_{index}.mp4"
-    client   = session.get('clients', {}).get(str(index), '')
-    if client:
-        safe = re.sub(r'[^\w\s-]', '', client).strip().replace(' ', '_')
-        dl_name = f"{safe}_segmento_{index}.mp4"
+    base    = os.path.splitext(meta['filename'])[0]
+    dl_name = f'{base}_segmento_{index}.mp4'
 
-    return send_file(cut['path'], mimetype='video/mp4',
-                     as_attachment=True, download_name=dl_name)
+    # Check if client name was saved
+    clients_path = os.path.join(SESSION_DIR, f'{sid}_clients.json')
+    if os.path.exists(clients_path):
+        with open(clients_path) as f:
+            clients = json.load(f)
+        client = clients.get(str(index), '')
+        if client and client != 'Desconocido':
+            safe = re.sub(r'[^\w\s-]', '', client).strip().replace(' ', '_')
+            dl_name = f'{safe}_segmento_{index}.mp4'
+
+    return send_file(cut, mimetype='video/mp4', as_attachment=True, download_name=dl_name)
 
 
 @app.route('/identify', methods=['POST'])
 def identify():
-    """Use Claude Vision to identify client name from a frame image."""
     if not ANTHROPIC_KEY:
-        return jsonify({'client': '', 'error': 'No API key'}), 200
+        return jsonify({'client': ''}), 200
 
-    data       = request.get_json()
-    session_id = data.get('session_id')
-    index      = str(data.get('index'))
-    frame_b64  = data.get('frame')   # base64 JPEG from browser canvas
+    data      = request.get_json()
+    sid       = data.get('session_id')
+    index     = str(data.get('index'))
+    frame_b64 = data.get('frame', '')
 
     if not frame_b64:
         return jsonify({'client': ''}), 200
-
-    # Remove data URL prefix if present
     if ',' in frame_b64:
         frame_b64 = frame_b64.split(',')[1]
 
     try:
-        import urllib.request
-        req_body = json.dumps({
+        import urllib.request as urlreq
+        body = json.dumps({
             'model': 'claude-sonnet-4-6',
-            'max_tokens': 100,
+            'max_tokens': 60,
             'messages': [{
                 'role': 'user',
                 'content': [
-                    {
-                        'type': 'image',
-                        'source': {
-                            'type': 'base64',
-                            'media_type': 'image/jpeg',
-                            'data': frame_b64
-                        }
-                    },
-                    {
-                        'type': 'text',
-                        'text': (
-                            'This is a frame from an advertising screen video. '
-                            'What is the name of the advertiser/client/brand shown? '
-                            'Reply with ONLY the brand or client name, nothing else. '
-                            'If you cannot identify it clearly, reply with "Desconocido".'
-                        )
-                    }
+                    {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': frame_b64}},
+                    {'type': 'text', 'text': (
+                        'This is a frame from an advertising video shown on a digital screen. '
+                        'What is the brand or client name visible? '
+                        'Reply with ONLY the brand name. If unclear, reply "Desconocido".'
+                    )}
                 ]
             }]
-        }).encode('utf-8')
+        }).encode()
 
-        req = urllib.request.Request(
-            'https://api.anthropic.com/v1/messages',
-            data=req_body,
-            headers={
-                'Content-Type': 'application/json',
-                'x-api-key': ANTHROPIC_KEY,
-                'anthropic-version': '2023-06-01'
-            },
-            method='POST'
+        req = urlreq.Request(
+            'https://api.anthropic.com/v1/messages', data=body,
+            headers={'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY,
+                     'anthropic-version': '2023-06-01'}, method='POST'
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urlreq.urlopen(req, timeout=15) as resp:
             result = json.loads(resp.read())
         client = result['content'][0]['text'].strip()
 
-        # Store in session
-        with _sessions_lock:
-            if session_id in _sessions:
-                if 'clients' not in _sessions[session_id]:
-                    _sessions[session_id]['clients'] = {}
-                _sessions[session_id]['clients'][index] = client
+        # Save client name to disk
+        if sid:
+            clients_path = os.path.join(SESSION_DIR, f'{sid}_clients.json')
+            clients = {}
+            if os.path.exists(clients_path):
+                with open(clients_path) as f:
+                    clients = json.load(f)
+            clients[index] = client
+            with open(clients_path, 'w') as f:
+                json.dump(clients, f)
 
         return jsonify({'client': client})
 
@@ -236,17 +220,15 @@ def identify():
         return jsonify({'client': '', 'error': str(e)}), 200
 
 
-@app.route('/cleanup/<session_id>', methods=['DELETE'])
-def cleanup(session_id):
-    """Delete temp files for a session."""
-    with _sessions_lock:
-        session = _sessions.pop(session_id, None)
-    if session:
-        try: os.unlink(session['path'])
-        except: pass
-        for cut in session.get('cuts', {}).values():
-            try: os.unlink(cut['path'])
-            except: pass
+@app.route('/cleanup/<sid>', methods=['DELETE'])
+def cleanup(sid):
+    meta = load_meta(sid)
+    if meta:
+        # Delete all files for this session
+        for f in os.listdir(SESSION_DIR):
+            if f.startswith(sid):
+                try: os.unlink(os.path.join(SESSION_DIR, f))
+                except: pass
     return jsonify({'ok': True})
 
 
