@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CortaClip</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0f;--bg3:#1a1a24;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);--accent:#7cff9b;--accent2:#00d4ff;--text:#f0f0f0;--text2:#888;--text3:#555;--card:#13131c;--radius:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
+body::after{content:'';position:fixed;top:-200px;left:50%;transform:translateX(-50%);width:600px;height:400px;background:radial-gradient(ellipse,rgba(124,255,155,0.06) 0%,transparent 70%);pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;max-width:820px;margin:0 auto;padding:0 24px 80px}
+header{padding:40px 0 48px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.5px;display:flex;align-items:baseline;gap:6px}
+.logo em{font-style:normal;color:var(--accent)}
+.logo small{font-size:11px;color:var(--text3);font-family:'DM Sans';font-weight:400;letter-spacing:.1em;text-transform:uppercase}
+.hbadge{font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid rgba(124,255,155,.2);color:var(--accent);background:rgba(124,255,155,.05);letter-spacing:.06em;text-transform:uppercase}
+.statusbar{padding:10px 14px;border-radius:var(--radius);font-size:13px;margin-bottom:32px;display:none;align-items:center;gap:10px;border:1px solid}
+.statusbar.ok{background:rgba(124,255,155,.06);border-color:rgba(124,255,155,.2);color:var(--accent)}
+.statusbar.warn{background:rgba(186,117,23,.06);border-color:rgba(186,117,23,.25);color:#EF9F27}
+.sdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:currentColor}
+h1{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(32px,6vw,52px);line-height:1.08;letter-spacing:-1.5px;margin-bottom:16px}
+h1 em{font-style:normal;color:var(--accent)}
+.sub{font-size:16px;color:var(--text2);font-weight:300;max-width:480px;line-height:1.65;margin-bottom:48px}
+.drop{border:1.5px dashed var(--border2);border-radius:var(--radius);padding:52px 32px;text-align:center;cursor:pointer;background:var(--card);transition:border-color .2s,background .2s;position:relative;overflow:hidden}
+.drop::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(124,255,155,.04),transparent 60%);pointer-events:none}
+.drop:hover,.drop.over{border-color:rgba(124,255,155,.4);background:rgba(124,255,155,.02)}
+.drop input{display:none}
+.drop-icon{width:64px;height:64px;border-radius:16px;background:var(--bg3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:26px;transition:transform .2s}
+.drop:hover .drop-icon{transform:scale(1.05)}
+.drop-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;margin-bottom:6px}
+.drop-hint{font-size:13px;color:var(--text3)}
+.drop-hint span{color:var(--accent);font-weight:500}
+.vinfo{display:none;background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);padding:16px 20px;margin-top:12px;align-items:center;gap:14px}
+.vinfo.show{display:flex}
+.vicon{width:48px;height:36px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;border:1px solid var(--border)}
+.vname{font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+.vmeta{font-size:12px;color:var(--text3);margin-top:2px}
+.vchange{margin-left:auto;font-size:12px;color:var(--text3);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.vchange:hover{color:var(--text2)}
+.cfg{margin-top:28px}
+.slabel{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px}
+.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:520px){.cgrid{grid-template-columns:1fr}}
+.ccard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;transition:border-color .2s}
+.ccard:hover{border-color:var(--border2)}
+.ccard label{font-size:12px;color:var(--text3);display:block;margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em}
+.bnum{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;line-height:1}
+.bunit{font-size:14px;color:var(--text3);margin-left:4px;font-weight:300}
+input[type=range]{width:100%;height:4px;background:var(--bg3);outline:none;border:none;margin-top:10px;accent-color:var(--accent);cursor:pointer}
+.trow{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+.trow span{font-size:13px;color:var(--text2)}
+.tog{position:relative;width:38px;height:22px;cursor:pointer}
+.tog input{display:none}
+.ts{position:absolute;inset:0;background:var(--bg3);border:1px solid var(--border2);border-radius:22px;transition:background .2s,border-color .2s}
+.ts::before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:var(--text3);border-radius:50%;transition:transform .2s,background .2s}
+.tog input:checked+.ts{background:rgba(124,255,155,.15);border-color:rgba(124,255,155,.4)}
+.tog input:checked+.ts::before{transform:translateX(16px);background:var(--accent)}
+.gr{font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(124,255,155,.1);color:var(--accent);border:1px solid rgba(124,255,155,.2);margin-left:6px;font-weight:500}
+.gr-ai{font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(0,212,255,.08);color:var(--accent2);border:1px solid rgba(0,212,255,.2);margin-left:6px;font-weight:500}
+.mbtn{margin-top:24px;width:100%;padding:16px;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;background:var(--accent);color:#0a0a0f;border:none;border-radius:var(--radius);cursor:pointer;transition:opacity .15s,transform .1s;overflow:hidden;position:relative}
+.mbtn::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);transform:translateX(-100%);transition:transform .5s}
+.mbtn:not(:disabled):hover::after{transform:translateX(100%)}
+.mbtn:not(:disabled):hover{opacity:.92}
+.mbtn:disabled{opacity:.3;cursor:not-allowed;background:var(--text3)}
+.pgwrap{display:none;margin-top:24px}
+.pgwrap.show{display:block}
+.pghead{display:flex;justify-content:space-between;margin-bottom:10px}
+.pglabel{font-size:13px;color:var(--text2)}
+.pgpct{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--accent)}
+.pgbg{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;border:1px solid var(--border)}
+.pgfill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;width:0%;transition:width .4s cubic-bezier(.4,0,.2,1)}
+.res{display:none;margin-top:36px}
+.res.show{display:block;animation:fadeIn .4s ease}
+.reshead{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.restitle{font-family:'Syne',sans-serif;font-size:18px;font-weight:700}
+.rescnt{font-size:13px;color:var(--text3);background:var(--bg3);border:1px solid var(--border);padding:4px 12px;border-radius:20px}
+.seglist{display:flex;flex-direction:column;gap:10px}
+.segrow{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:14px;transition:border-color .2s;animation:slideIn .3s ease both}
+.segrow:hover{border-color:var(--border2)}
+.segn{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--text3);width:24px;text-align:center;flex-shrink:0}
+.segthumb{width:80px;height:50px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg3);border:1px solid var(--border)}
+.segthumb img{width:100%;height:100%;object-fit:cover}
+.segthumb-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:20px}
+.seginfo{flex:1;min-width:0}
+.segname{font-weight:500;font-size:14px;margin-bottom:2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.client-badge{font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.2);color:var(--accent2);font-weight:500;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.segmeta{font-size:12px;color:var(--text3)}
+.segpill{font-size:11px;background:var(--bg3);border:1px solid var(--border);padding:3px 8px;border-radius:6px;color:var(--text2);white-space:nowrap}
+.segbtn{padding:8px 18px;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;border-radius:8px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
+.segbtn:hover{border-color:rgba(124,255,155,.4);color:var(--accent);background:rgba(124,255,155,.05)}
+.segbtn.ready{border-color:rgba(124,255,155,.3);color:var(--accent)}
+.segbtn.done{color:var(--accent);border-color:rgba(124,255,155,.3);background:rgba(124,255,155,.05)}
+.segbtn.cutting{color:var(--text3);border-color:var(--border);cursor:wait}
+.segbtn:disabled{opacity:.5;cursor:not-allowed}
+.segdot{width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0;transition:background .3s}
+.segdot.cutting{background:var(--accent2);animation:pulse 1s infinite}
+.segdot.ready{background:var(--accent)}
+.segdot.done{background:var(--accent)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.dlaWrap{margin-top:16px}
+.dlabtn{width:100%;padding:13px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;border-radius:var(--radius);background:rgba(124,255,155,.1);border:1px solid rgba(124,255,155,.25);color:var(--accent);cursor:pointer;transition:all .15s}
+.dlabtn:hover{background:rgba(124,255,155,.15)}
+.dlabtn:disabled{opacity:.4;cursor:not-allowed}
+.note{margin-top:16px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid rgba(0,212,255,.4);border-radius:0 var(--radius) var(--radius) 0;font-size:13px;color:var(--text3);line-height:1.6}
+.note strong{color:var(--text2)}
+footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:12px;color:var(--text3)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+</style>
+</head>
+<body>
+<canvas id="aC" style="display:none;width:320px;height:180px"></canvas>
+<video id="anaVid" muted style="display:none"></video>
+<div class="wrap">
+  <header>
+    <div class="logo">CortaClip<em>.</em><small>v6</small></div>
+    <div class="hbadge">FFmpeg + Claude AI</div>
+  </header>
+  <div class="statusbar" id="statusbar"></div>
+  <h1>Cortá tus videos<br>de <em>forma automática</em></h1>
+  <p class="sub">Subí el video, detectamos los cortes y el nombre de cada cliente con IA. Los segmentos se descargan en MP4 perfecto.</p>
+  <div class="drop" id="drop">
+    <input type="file" id="fileIn" accept="video/*">
+    <div class="drop-icon">🎬</div>
+    <div class="drop-title">Arrastrá tu video acá</div>
+    <div class="drop-hint">o <span>hacé clic para seleccionar</span></div>
+  </div>
+  <div class="vinfo" id="vinfo">
+    <div class="vicon">🎞</div>
+    <div style="flex:1;min-width:0"><div class="vname" id="vname"></div><div class="vmeta" id="vmeta"></div></div>
+    <div class="vchange" id="vchange">Cambiar</div>
+  </div>
+  <div class="cfg">
+    <div class="slabel">Configuración</div>
+    <div class="cgrid">
+      <div class="ccard">
+        <label>Duración por segmento</label>
+        <div><span class="bnum" id="durVal">10</span><span class="bunit">segundos</span></div>
+        <input type="range" min="5" max="60" step="1" value="10" id="durSlider">
+      </div>
+      <div class="ccard">
+        <label>Opciones <span class="gr">frame negro</span> <span class="gr-ai">IA cliente</span></label>
+        <div class="trow" style="margin-top:8px"><span>Detectar frame negro</span><label class="tog"><input type="checkbox" id="blackMode" checked><span class="ts"></span></label></div>
+        <div class="trow"><span>Detectar cliente con IA</span><label class="tog"><input type="checkbox" id="aiMode" checked><span class="ts"></span></label></div>
+      </div>
+    </div>
+  </div>
+  <button class="mbtn" id="analyzeBtn" disabled>Seleccioná un video para comenzar</button>
+  <div class="pgwrap" id="pgwrap">
+    <div class="pghead"><span class="pglabel" id="pglabel">Analizando...</span><span class="pgpct" id="pgpct">0%</span></div>
+    <div class="pgbg"><div class="pgfill" id="pgfill"></div></div>
+  </div>
+  <div class="res" id="res">
+    <div class="reshead"><div class="restitle">Segmentos detectados</div><div class="rescnt" id="rescnt">0 segmentos</div></div>
+    <div class="seglist" id="seglist"></div>
+    <div class="dlaWrap" id="dlaWrap" style="display:none"><button class="dlabtn" id="dlabtn">Descargar todos los segmentos</button></div>
+    <div class="note"><strong>Upload único + corte paralelo:</strong> el video se sube una sola vez y todos los segmentos se cortan al mismo tiempo con FFmpeg. El cliente se detecta con Claude Vision leyendo el logo o texto de cada segmento.</div>
+  </div>
+  <footer><span>CortaClip v6 — FFmpeg + Claude Vision</span><span>Videos borrados tras el corte</span></footer>
+</div>
+<script>
+const API=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'?'http://localhost:5050':'';
+const drop=document.getElementById('drop'),fileIn=document.getElementById('fileIn'),analyzeBtn=document.getElementById('analyzeBtn'),durSlider=document.getElementById('durSlider'),anaVid=document.getElementById('anaVid'),aC=document.getElementById('aC'),aCtx=aC.getContext('2d');
+let videoFile=null,segments=[],videoURL=null,sessionId=null,hasClaude=false;
+fetch(API+'/health').then(r=>r.json()).then(d=>{
+  const sb=document.getElementById('statusbar');sb.style.display='flex';hasClaude=d.claude;
+  sb.className=d.ffmpeg?'statusbar ok':'statusbar warn';
+  sb.innerHTML=`<div class="sdot"></div> Servidor activo · FFmpeg ${d.ffmpeg?'listo':'no encontrado'} · Claude ${d.claude?'activo':'no configurado'}`;
+  if(!d.claude)document.getElementById('aiMode').checked=false;
+}).catch(()=>{});
+durSlider.oninput=()=>document.getElementById('durVal').textContent=durSlider.value;
+drop.onclick=()=>fileIn.click();
+document.getElementById('vchange').onclick=()=>fileIn.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');handleFile(e.dataTransfer.files[0])};
+fileIn.onchange=()=>handleFile(fileIn.files[0]);
+function handleFile(file){
+  if(!file||!file.type.startsWith('video/'))return;
+  videoFile=file;if(videoURL)URL.revokeObjectURL(videoURL);
+  videoURL=URL.createObjectURL(file);anaVid.src=videoURL;
+  anaVid.onloadedmetadata=()=>{
+    document.getElementById('vinfo').classList.add('show');
+    document.getElementById('vname').textContent=file.name;
+    document.getElementById('vmeta').textContent=`${fmt(anaVid.duration)} • ${(file.size/1024/1024).toFixed(1)} MB`;
+    analyzeBtn.disabled=false;analyzeBtn.textContent='Analizar y cortar →';
+    document.getElementById('res').classList.remove('show');
+    document.getElementById('pgwrap').classList.remove('show');sessionId=null;
+  };
+}
+function fmt(s){return`${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function setPg(pct,msg){document.getElementById('pgfill').style.width=pct+'%';document.getElementById('pglabel').textContent=msg;document.getElementById('pgpct').textContent=Math.round(pct)+'%'}
+analyzeBtn.onclick=async()=>{
+  if(!videoFile)return;
+  analyzeBtn.disabled=true;segments=[];
+  document.getElementById('pgwrap').classList.add('show');
+  document.getElementById('res').classList.remove('show');
+  aC.width=320;aC.height=180;
+  const dur=anaVid.duration,segDur=parseInt(durSlider.value);
+  const useBlack=document.getElementById('blackMode').checked;
+  const useAI=document.getElementById('aiMode').checked&&hasClaude;
+  try{
+    // Step 1: Upload once
+    setPg(5,'Subiendo video (solo una vez)...');
+    const fd=new FormData();fd.append('video',videoFile,videoFile.name);
+    const uploadData=await new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();xhr.open('POST',API+'/upload');
+      xhr.upload.onprogress=e=>{if(e.lengthComputable)setPg(5+Math.round((e.loaded/e.total)*40),`Subiendo... ${Math.round((e.loaded/e.total)*100)}%`)};
+      xhr.onload=()=>xhr.status===200?resolve(JSON.parse(xhr.responseText)):reject(new Error(JSON.parse(xhr.responseText).error||'Error'));
+      xhr.onerror=()=>reject(new Error('Error de red'));xhr.send(fd);
+    });
+    sessionId=uploadData.session_id;
+    // Step 2: Build segments
+    setPg(50,'Calculando segmentos...');
+    if(useBlack&&uploadData.black_frames&&uploadData.black_frames.length>0){
+      const blacks=uploadData.black_frames,cuts=[0];
+      blacks.forEach(b=>{const mid=(b.start+b.end)/2;if(mid-cuts[cuts.length-1]>2)cuts.push(mid)});
+      cuts.push(uploadData.duration);
+      for(let i=0;i<cuts.length-1;i++)segments.push({start:cuts[i],end:cuts[i+1]});
+      const refined=[];
+      for(const seg of segments){const len=seg.end-seg.start;if(len>segDur*1.8){const n=Math.round(len/segDur),sub=len/n;for(let j=0;j<n;j++)refined.push({start:seg.start+j*sub,end:seg.start+(j+1)*sub})}else refined.push(seg)}
+      segments=refined;
+    }else{for(let t=0;t<dur;t+=segDur)segments.push({start:t,end:Math.min(t+segDur,dur)})}
+    // Step 3: Cut all in parallel
+    setPg(55,`Cortando ${segments.length} segmentos en paralelo...`);
+    const cutPayload=segments.map((seg,i)=>({start:seg.start,end:seg.end,index:i+1}));
+    const cutResp=await fetch(API+'/cut_all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,segments:cutPayload})});
+    const cutData=await cutResp.json();
+    segments.forEach((seg,i)=>{seg.index=i+1;seg.ready=cutData.results&&cutData.results[String(i+1)]&&cutData.results[String(i+1)].ok});
+    // Step 4: Previews
+    setPg(75,'Generando miniaturas...');
+    await buildPreviews();
+    // Step 5: AI client detection
+    if(useAI){setPg(85,'Identificando clientes con IA...');await identifyAll()}
+    setPg(100,`Listo — ${segments.length} segmentos cortados`);
+    renderResults();
+  }catch(e){console.error(e);alert('Error: '+e.message)}
+  analyzeBtn.disabled=false;analyzeBtn.textContent='Volver a analizar';
+};
+async function buildPreviews(){for(let i=0;i<segments.length;i++)segments[i].preview=await captureFrame((segments[i].start+segments[i].end)/2)}
+async function identifyAll(){
+  for(let i=0;i<segments.length;i+=3){
+    const batch=segments.slice(i,i+3);
+    await Promise.all(batch.map(seg=>identifyClient(seg)));
+    setPg(85+Math.round(((i+3)/segments.length)*10),`Identificando clientes... ${Math.min(i+3,segments.length)}/${segments.length}`);
+  }
+}
+async function identifyClient(seg){
+  if(!seg.preview)return;
+  try{
+    const r=await fetch(API+'/identify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,index:seg.index,frame:seg.preview})});
+    const d=await r.json();seg.client=d.client||'';
+  }catch(e){seg.client=''}
+}
+async function captureFrame(t){return new Promise(res=>{anaVid.currentTime=t;anaVid.onseeked=()=>{aCtx.drawImage(anaVid,0,0,320,180);res(aC.toDataURL('image/jpeg',.85))}})}
+function setPg(pct,msg){document.getElementById('pgfill').style.width=pct+'%';document.getElementById('pglabel').textContent=msg;document.getElementById('pgpct').textContent=Math.round(pct)+'%'}
+function renderResults(){
+  const list=document.getElementById('seglist');list.innerHTML='';
+  document.getElementById('res').classList.add('show');
+  document.getElementById('rescnt').textContent=`${segments.length} segmento${segments.length!==1?'s':''}`;
+  segments.forEach((seg,i)=>{
+    const row=document.createElement('div');row.className='segrow';row.style.animationDelay=(i*.04)+'s';
+    const clientHtml=seg.client?`<span class="client-badge" title="${seg.client}">${seg.client}</span>`:'';
+    row.innerHTML=`<div class="segn">${String(i+1).padStart(2,'0')}</div>
+      <div class="segthumb">${seg.preview?`<img src="${seg.preview}">`:'<div class="segthumb-ph">🎞</div>'}</div>
+      <div class="seginfo"><div class="segname">Segmento ${i+1} ${clientHtml}</div><div class="segmeta">${(seg.end-seg.start).toFixed(1)}s</div></div>
+      <div class="segpill">${fmt(seg.start)} → ${fmt(seg.end)}</div>
+      <div class="segdot ${seg.ready?'ready':''}" id="dot${i}"></div>
+      <button class="segbtn ${seg.ready?'ready':''}" id="btn${i}" onclick="doDownload(${i})" ${seg.ready?'':'disabled'}>${seg.ready?'Descargar':'No disponible'}</button>`;
+    list.appendChild(row);
+  });
+  if(segments.filter(s=>s.ready).length>1){document.getElementById('dlaWrap').style.display='block';document.getElementById('dlabtn').onclick=downloadAll}
+}
+window.doDownload=async(i)=>{
+  const seg=segments[i];if(!seg.ready||!sessionId)return;
+  const btn=document.getElementById('btn'+i),dot=document.getElementById('dot'+i);
+  btn.disabled=true;btn.className='segbtn cutting';btn.textContent='Descargando...';dot.className='segdot cutting';
+  try{
+    const r=await fetch(`${API}/download/${sessionId}/${seg.index}`);
+    if(!r.ok)throw new Error('Error al descargar');
+    const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
+    const base=videoFile.name.replace(/\.[^.]+$/,'');
+    const clientName=seg.client?seg.client.replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_'):'';
+    a.download=clientName?`${clientName}_segmento_${seg.index}.mp4`:`${base}_segmento_${seg.index}.mp4`;
+    a.href=url;a.click();setTimeout(()=>URL.revokeObjectURL(url),8000);
+    btn.textContent='✓ Descargado';btn.className='segbtn done';dot.className='segdot done';
+  }catch(e){btn.textContent='Descargar';btn.className='segbtn ready';btn.disabled=false;dot.className='segdot ready';alert('Error: '+e.message)}
+};
+async function downloadAll(){
+  const dlabtn=document.getElementById('dlabtn');dlabtn.disabled=true;
+  const ready=segments.filter(s=>s.ready);
+  for(let i=0;i<ready.length;i++){
+    dlabtn.textContent=`Descargando ${i+1} de ${ready.length}...`;
+    await doDownload(segments.indexOf(ready[i]));
+    await sleep(200);
+  }
+  dlabtn.textContent=`✓ Todos descargados (${ready.length})`;
+  if(sessionId)fetch(`${API}/cleanup/${sessionId}`,{method:'DELETE'}).catch(()=>{});
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+</script>
+</body>
+</html>
