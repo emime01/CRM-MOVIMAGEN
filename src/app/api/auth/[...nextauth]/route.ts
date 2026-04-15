@@ -1,16 +1,27 @@
-// ============================================================
-// CRM Movimagen — Supabase client
-// ============================================================
-import { createClient } from '@supabase/supabase-js'
+import NextAuth from "next-auth"
+import CredentialsProvider from "next-auth/providers/credentials"
 
-const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const handler = NextAuth({
+  providers: [
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) return null
+        return null
+      },
+    }),
+  ],
+  pages: {
+    signIn: "/login",
+  },
+  session: {
+    strategy: "jwt",
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+})
 
-// Cliente para uso en el browser (componentes cliente)
-export const supabase = createClient(supabaseUrl, supabaseKey)
-
-// Helper: cliente con service role para server-side (API routes)
-export const createServiceClient = () =>
-  createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  })
+export { handler as GET, handler as POST }
