@@ -8,7 +8,7 @@ import {
   Users, Target, Star, Wrench, Truck, Monitor,
   Palette, Receipt, AlertCircle, Percent, Building2,
   CreditCard, Settings, MessageCircle, X, Send,
-  ChevronRight,
+  FlaskConical,
 } from 'lucide-react'
 
 type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion'
@@ -88,8 +88,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   const pathname = usePathname()
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMessage, setChatMessage] = useState('')
+  const [testMode, setTestMode] = useState(false)
 
-  const navItems = NAV_ITEMS.filter(item => item.roles.includes(user.rol))
+  const navItems = testMode ? NAV_ITEMS : NAV_ITEMS.filter(item => item.roles.includes(user.rol))
   const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
 
   const isActive = (href: string) => {
@@ -129,6 +130,22 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
             CRM
           </div>
         </div>
+
+        {/* Test mode banner */}
+        {testMode && (
+          <div style={{
+            background: '#7c3aed',
+            padding: '6px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+            <FlaskConical size={12} color="#fff" />
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+              Modo prueba
+            </span>
+          </div>
+        )}
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 0' }}>
@@ -184,7 +201,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           }}>
             {initials}
           </div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user.name || user.email}
             </div>
@@ -192,6 +209,24 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
               {ROL_LABELS[user.rol] ?? user.rol}
             </div>
           </div>
+          <button
+            onClick={() => setTestMode(v => !v)}
+            title={testMode ? 'Desactivar modo prueba' : 'Activar modo prueba (ver todos los módulos)'}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              border: testMode ? '1.5px solid #7c3aed' : '1px solid var(--border)',
+              background: testMode ? '#ede9fe' : 'transparent',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <FlaskConical size={14} color={testMode ? '#7c3aed' : 'var(--text-muted)'} />
+          </button>
         </div>
       </aside>
 
