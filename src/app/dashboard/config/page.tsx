@@ -27,7 +27,8 @@ export default async function ConfigPage() {
     supabase.from('objetivos').select('vendedor_id, cuatrimestre, objetivo_monto').order('cuatrimestre'),
   ])
 
-  const CUATRIMESTRES = ['Q1-2026', 'Q2-2026', 'Q3-2026']
+  const cy = new Date().getFullYear()
+  const CUATRIMESTRES = [`Q1-${cy}`, `Q2-${cy}`, `Q3-${cy}`]
   const vendedores = perfiles?.filter(p => ['vendedor', 'asistente_ventas'].includes(p.rol)) ?? []
 
   const objMap: Record<string, number> = {}
@@ -72,7 +73,7 @@ export default async function ConfigPage() {
 
       {/* Objectives config */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 24 }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Objetivos de ventas 2026</div>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Objetivos de ventas {cy}</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>

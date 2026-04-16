@@ -18,6 +18,7 @@ const CATEGORIAS: Record<string, { color: string }> = {
 export default async function GastosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (session.user.rol !== 'administracion') redirect('/dashboard')
   const supabase = createServerClient()
 
   const { data: gastos } = await supabase

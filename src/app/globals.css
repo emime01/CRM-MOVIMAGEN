@@ -22,8 +22,14 @@
   --amber: #c97000;
   --amber-pale: #fffbeb;
   --sidebar-w: 220px;
+  --sidebar-width: 220px;
   --topbar-h: 56px;
+  --topbar-height: 56px;
   --radius: 10px;
+  --text-primary: #1a1915;
+  --text-secondary: #6e6a62;
+  --text-muted: #9a9895;
+  --border: #e5e3dc;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

@@ -5,12 +5,14 @@ import { createServerClient } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
-const CUATRIMESTRES = ['Q1-2026', 'Q2-2026', 'Q3-2026']
+const y = new Date().getFullYear()
+const CUATRIMESTRES = [`Q1-${y}`, `Q2-${y}`, `Q3-${y}`]
 const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigits: 0 })
 
 export default async function ObjetivosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!['gerente_comercial', 'administracion'].includes(session.user.rol)) redirect('/dashboard')
   const supabase = createServerClient()
 
   const [{ data: vendedores }, { data: objetivos }] = await Promise.all([

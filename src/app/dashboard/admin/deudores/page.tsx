@@ -15,6 +15,7 @@ function diasDesde(dateStr: string | null): number {
 export default async function DeudoresPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (session.user.rol !== 'administracion') redirect('/dashboard')
   const supabase = createServerClient()
 
   const { data: facturadas } = await supabase

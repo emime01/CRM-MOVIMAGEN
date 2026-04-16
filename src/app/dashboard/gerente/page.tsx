@@ -17,6 +17,7 @@ const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigi
 export default async function GerentePage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!['gerente_comercial', 'administracion'].includes(session.user.rol)) redirect('/dashboard')
   const supabase = createServerClient()
   const q = getCurrentQuarter()
 

@@ -273,34 +273,43 @@ export default function DisponibilidadClient({ initialSoportes, initialFecha, cl
     if (!periodoDesde || !periodoHasta || periodoHasta < periodoDesde) return
     setLoadingPeriodo(true)
     try {
-      // Fetch for both start and end dates, then combine
-      const [resStart, resEnd] = await Promise.all([
-        fetch(`/api/disponibilidad?fecha=${periodoDesde}`),
-        fetch(`/api/disponibilidad?fecha=${periodoHasta}`),
-      ])
-      const [dataStart, dataEnd] = await Promise.all([resStart.json(), resEnd.json()])
+      // Sample up to 3 dates across the range to detect mid-period occupancy
+      const sampleDates = [periodoDesde]
+      if (periodoDesde !== periodoHasta) {
+        const mid = new Date((new Date(periodoDesde).getTime() + new Date(periodoHasta).getTime()) / 2)
+        sampleDates.push(mid.toISOString().split('T')[0])
+        sampleDates.push(periodoHasta)
+      }
+      const uniqueDates = sampleDates.filter((d, i, arr) => arr.indexOf(d) === i)
 
-      const startMap = new Map<string, SoporteConEstado>((dataStart.soportes ?? []).map((s: SoporteConEstado) => [s.id, s]))
-      const endMap = new Map<string, SoporteConEstado>((dataEnd.soportes ?? []).map((s: SoporteConEstado) => [s.id, s]))
+      const responses = await Promise.all(uniqueDates.map(d => fetch(`/api/disponibilidad?fecha=${d}`)))
+      const datasets: SoporteConEstado[][] = await Promise.all(responses.map(r => r.json().then(d => d.soportes ?? [])))
+
+      // For each soporte, find the worst state across all sampled dates
+      const maps = datasets.map(ds => new Map<string, SoporteConEstado>(ds.map((s: SoporteConEstado) => [s.id, s])))
 
       const rows: PeriodRow[] = initialSoportes.map(s => {
-        const atStart = startMap.get(s.id)
-        const atEnd = endMap.get(s.id)
-        const eStart = atStart?.estado ?? 'libre'
-        const eEnd = atEnd?.estado ?? 'libre'
+        const states = maps.map(m => m.get(s.id)?.estado ?? 'libre')
+        const hasOcupado = states.includes('ocupado')
+        const hasReservado = states.includes('reservado')
+        const allLibre = states.every(e => e === 'libre')
+        const allSame = states.every(e => e === states[0])
 
         let estadoPeriodo: PeriodRow['estadoPeriodo']
         let detalle: string
 
-        if (eStart === 'libre' && eEnd === 'libre') {
-          estadoPeriodo = 'libre'; detalle = 'Libre todo el período'
-        } else if (eStart !== 'libre' && eEnd !== 'libre') {
-          estadoPeriodo = eStart === 'ocupado' ? 'ocupado' : 'reservado'
-          const cliente = atStart?.cliente ?? atEnd?.cliente ?? '—'
-          detalle = `${eStart === 'ocupado' ? 'Ocupado' : 'Reservado'} · ${cliente}`
+        if (allLibre) {
+          estadoPeriodo = 'libre'; detalle = 'Libre en todo el período'
+        } else if (allSame && hasOcupado) {
+          const cliente = maps[0].get(s.id)?.cliente ?? '—'
+          estadoPeriodo = 'ocupado'; detalle = `Ocupado · ${cliente}`
+        } else if (allSame && hasReservado) {
+          const cliente = maps[0].get(s.id)?.cliente ?? '—'
+          estadoPeriodo = 'reservado'; detalle = `Reservado · ${cliente}`
         } else {
           estadoPeriodo = 'parcial'
-          detalle = `Parcial: inicio ${eStart}, fin ${eEnd}`
+          const cliente = maps.find(m => m.get(s.id)?.cliente)?.get(s.id)?.cliente
+          detalle = `Ocupación parcial${cliente ? ` · ${cliente}` : ''}`
         }
 
         return { soporte: s, estadoPeriodo, detalle }
@@ -381,7 +390,7 @@ export default function DisponibilidadClient({ initialSoportes, initialFecha, cl
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f4f3f0', borderRadius: 10, padding: 4, width: 'fit-content' }}>
-        <button style={tabStyle(tab === 'dia')} onClick={() => setTab('dia')}>Por día</button>
+        <button style={tabStyle(tab === 'dia')} onClick={() => { setTab('dia'); setPeriodoRows(null) }}>Por día</button>
         <button style={tabStyle(tab === 'periodo')} onClick={() => setTab('periodo')}>Consultar período</button>
       </div>
 

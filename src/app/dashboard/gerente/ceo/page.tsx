@@ -20,6 +20,7 @@ const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0
 export default async function CeoDashboardPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!['gerente_comercial', 'administracion'].includes(session.user.rol)) redirect('/dashboard')
   const supabase = createServerClient()
   const quarters = getQuarters()
   const yearStart = `${new Date().getFullYear()}-01-01`

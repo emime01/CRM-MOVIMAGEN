@@ -11,6 +11,7 @@ const fmtPct = (n: number) => n.toLocaleString('es-UY', { minimumFractionDigits:
 export default async function ComisionesPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (session.user.rol !== 'administracion') redirect('/dashboard')
   const supabase = createServerClient()
 
   const [{ data: comisiones }, { data: vendedores }] = await Promise.all([

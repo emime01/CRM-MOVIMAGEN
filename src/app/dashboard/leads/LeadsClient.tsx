@@ -10,6 +10,7 @@ type JoinedRow<T> = T | T[] | null
 
 export interface LeadRow {
   id: string
+  cliente_id: string | null
   descripcion: string | null
   monto_potencial: number | null
   cuatrimestre: string | null
@@ -138,9 +139,8 @@ function emptyForm(userId: string): LeadFormValues {
 }
 
 function leadToForm(lead: LeadRow, userId: string): LeadFormValues {
-  const cli = getJoined(lead.clientes)
   return {
-    clienteId: '',
+    clienteId: lead.cliente_id ?? '',
     descripcion: lead.descripcion ?? '',
     montoPotencial: lead.monto_potencial != null ? String(lead.monto_potencial) : '',
     cuatrimestre: lead.cuatrimestre ?? 'Q1-2026',

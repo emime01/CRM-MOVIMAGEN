@@ -34,11 +34,14 @@ export default async function ReportesPage() {
     supabase.from('objetivos').select('objetivo_monto').eq('vendedor_id', session.user.id).eq('cuatrimestre', q.label).maybeSingle(),
   ])
 
-  // Monthly revenue
-  const months = [
-    { label: 'Enero', key: '2026-01' }, { label: 'Febrero', key: '2026-02' },
-    { label: 'Marzo', key: '2026-03' }, { label: 'Abril', key: '2026-04' },
-  ]
+  // Monthly revenue — dynamic based on current quarter
+  const MONTH_NAMES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const QUARTER_MONTHS: Record<string, number[]> = { Q1: [1, 2, 3, 4], Q2: [5, 6, 7, 8], Q3: [9, 10, 11, 12] }
+  const [qCode, qYear] = q.label.split('-')
+  const months = (QUARTER_MONTHS[qCode] ?? [1, 2, 3, 4]).map(m => ({
+    label: MONTH_NAMES[m],
+    key: `${qYear}-${String(m).padStart(2, '0')}`,
+  }))
   const monthlyRev = months.map(m => ({
     ...m,
     total: ordenes?.filter(o => o.created_at?.startsWith(m.key) && ['facturada', 'cobrada'].includes(o.estado ?? '')).reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0,
@@ -101,7 +104,7 @@ export default async function ReportesPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         {/* Monthly bar chart */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Facturado por mes (2026)</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Facturado por mes — {q.label}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {monthlyRev.map(m => (
               <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

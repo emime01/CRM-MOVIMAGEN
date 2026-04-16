@@ -18,6 +18,7 @@ const BADGE: Record<string, { bg: string; color: string; label: string }> = {
 export default async function FacturacionPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (session.user.rol !== 'administracion') redirect('/dashboard')
   const supabase = createServerClient()
 
   const [{ data: pendientes }, { data: recientes }] = await Promise.all([
