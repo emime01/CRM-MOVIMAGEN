@@ -13,20 +13,29 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
 
-        const supabase = createClient(
+        // Use anon key for user sign-in (signInWithPassword requires anon key)
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!
+        const supabaseAuth = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          anonKey,
           { auth: { autoRefreshToken: false, persistSession: false } }
         )
 
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabaseAuth.auth.signInWithPassword({
           email: credentials.email,
           password: credentials.password,
         })
 
         if (error || !data.user) return null
 
-        const { data: perfil } = await supabase
+        // Use service role key for DB queries (bypasses RLS)
+        const supabaseAdmin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        )
+
+        const { data: perfil } = await supabaseAdmin
           .from("perfiles")
           .select("*")
           .eq("user_id", data.user.id)
