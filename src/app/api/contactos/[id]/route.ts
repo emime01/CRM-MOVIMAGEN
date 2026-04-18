@@ -17,7 +17,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const supabase = createServerClient()
-  const { error } = await supabase.from('contactos').update({ activo: false }).eq('id', params.id)
+  const { error } = await supabase.from('contactos').update({ activo: false, updated_at: new Date().toISOString() }).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

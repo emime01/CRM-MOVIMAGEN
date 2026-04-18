@@ -16,7 +16,9 @@ export async function GET(req: NextRequest) {
 
   if (proximos) {
     const dias = parseInt(proximos) || 30
+    // Normalize to midnight so today's birthdays are included (not skipped)
     const today = new Date()
+    today.setHours(0, 0, 0, 0)
     // Fetch all active contacts with birthday set, then filter in JS (simpler than SQL month rollover)
     const { data, error } = await supabase
       .from('contactos')
@@ -31,12 +33,14 @@ export async function GET(req: NextRequest) {
 
     const year = today.getFullYear()
     const cutoff = new Date(today.getTime() + dias * 24 * 60 * 60 * 1000)
+    const MS_PER_DAY = 24 * 60 * 60 * 1000
 
     const upcoming = (data ?? [])
       .map(c => {
         let bday = new Date(year, (c.cumple_mes ?? 1) - 1, c.cumple_dia ?? 1)
         if (bday < today) bday = new Date(year + 1, (c.cumple_mes ?? 1) - 1, c.cumple_dia ?? 1)
-        return { ...c, nextBirthday: bday }
+        const daysUntil = Math.round((bday.getTime() - today.getTime()) / MS_PER_DAY)
+        return { ...c, nextBirthday: bday, daysUntil }
       })
       .filter(c => c.nextBirthday <= cutoff)
       .sort((a, b) => a.nextBirthday.getTime() - b.nextBirthday.getTime())
@@ -53,7 +57,7 @@ export async function GET(req: NextRequest) {
     ;(clientesRes.data ?? []).forEach((c: { id: string; nombre: string }) => { cuentaMap[c.id] = c.nombre })
     ;(agenciasRes.data ?? []).forEach((a: { id: string; nombre: string }) => { cuentaMap[a.id] = a.nombre })
 
-    return NextResponse.json(upcoming.map(c => ({ ...c, cuenta_nombre: c.cuenta_id ? (cuentaMap[c.cuenta_id] ?? '') : '' })))
+    return NextResponse.json(upcoming.map(c => ({ ...c, cuentaNombre: c.cuenta_id ? (cuentaMap[c.cuenta_id] ?? null) : null })))
   }
 
   let query = supabase.from('contactos').select('*').eq('activo', true).order('nombres')

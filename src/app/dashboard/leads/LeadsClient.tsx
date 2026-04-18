@@ -15,6 +15,7 @@ interface BirthdayContacto {
   cumple_mes: number
   cuentaNombre: string | null
   daysUntil: number
+  next_birthday: string
 }
 
 interface Regalo {

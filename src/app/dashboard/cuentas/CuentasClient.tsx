@@ -141,7 +141,8 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
 
   async function deleteCliente(id: string) {
     if (!confirm('¿Desactivar este cliente?')) return
-    await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
+    if (!res.ok) { alert('Error al desactivar el cliente'); return }
     setClientes(prev => prev.filter(c => c.id !== id))
   }
 
@@ -150,10 +151,12 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
     setSaving(true); setError('')
     try {
       if (data.id) {
-        await fetch(`/api/agencias/${data.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        const res = await fetch(`/api/agencias/${data.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        if (!res.ok) { setError('Error al guardar'); return }
         setAgencias(prev => prev.map(a => a.id === data.id ? { ...a, ...data } : a))
       } else {
         const res = await fetch('/api/agencias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        if (!res.ok) { setError('Error al guardar'); return }
         const created = await res.json()
         setAgencias(prev => [...prev, created])
       }
@@ -163,7 +166,8 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
 
   async function deleteAgencia(id: string) {
     if (!confirm('¿Desactivar esta agencia?')) return
-    await fetch(`/api/agencias/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/agencias/${id}`, { method: 'DELETE' })
+    if (!res.ok) { alert('Error al desactivar la agencia'); return }
     setAgencias(prev => prev.filter(a => a.id !== id))
   }
 
@@ -172,10 +176,12 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
     setSaving(true); setError('')
     try {
       if (data.id) {
-        await fetch(`/api/contactos/${data.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        const res = await fetch(`/api/contactos/${data.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        if (!res.ok) { setError('Error al guardar'); return }
         setContactos(prev => prev.map(c => c.id === data.id ? { ...c, ...data } : c))
       } else {
         const res = await fetch('/api/contactos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        if (!res.ok) { setError('Error al guardar'); return }
         const created = await res.json()
         setContactos(prev => [...prev, created])
       }
@@ -185,7 +191,8 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
 
   async function deleteContacto(id: string) {
     if (!confirm('¿Eliminar este contacto?')) return
-    await fetch(`/api/contactos/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/contactos/${id}`, { method: 'DELETE' })
+    if (!res.ok) { alert('Error al eliminar el contacto'); return }
     setContactos(prev => prev.filter(c => c.id !== id))
   }
 
