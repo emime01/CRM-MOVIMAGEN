@@ -13,7 +13,7 @@ export default async function NuevaOrdenPage() {
   const [soportesRes, clientesRes, agenciasRes, vendedoresRes, configRes] = await Promise.all([
     supabase
       .from('soportes')
-      .select('id, nombre, categoria, tipo, precio_base, precio_semanal, costo_produccion')
+      .select('id, nombre, categoria, tipo, ubicacion, precio_base, precio_semanal, costo_produccion')
       .eq('activo', true)
       .order('categoria')
       .order('nombre'),

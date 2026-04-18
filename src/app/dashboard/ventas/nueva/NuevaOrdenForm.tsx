@@ -9,6 +9,7 @@ interface Soporte {
   nombre: string
   categoria: string | null
   tipo: string | null
+  ubicacion: string | null
   precio_base: number | null
   precio_semanal: number | null
   costo_produccion: number | null
@@ -403,7 +404,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
                       {Array.from(new Set(soportes.map(s => s.categoria ?? 'Sin categoría'))).sort().map(cat => (
                         <optgroup key={cat} label={cat}>
                           {soportes.filter(s => (s.categoria ?? 'Sin categoría') === cat).map(s => (
-                            <option key={s.id} value={s.id}>{s.nombre}</option>
+                            <option key={s.id} value={s.id}>{s.nombre}{s.ubicacion ? ` — ${s.ubicacion}` : ''}</option>
                           ))}
                         </optgroup>
                       ))}

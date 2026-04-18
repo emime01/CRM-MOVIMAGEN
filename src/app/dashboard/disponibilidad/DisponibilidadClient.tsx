@@ -241,9 +241,9 @@ function ReservaModal({
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1915' }}>{s.nombre}</div>
-                      {(s.seccion || s.tipo) && (
+                      {(s.seccion || s.tipo || s.ubicacion) && (
                         <div style={{ fontSize: 11, color: '#9a9895' }}>
-                          {[s.tipo, s.seccion].filter(Boolean).join(' · ')}
+                          {[s.tipo, s.seccion, s.ubicacion].filter(Boolean).join(' · ')}
                         </div>
                       )}
                     </div>
