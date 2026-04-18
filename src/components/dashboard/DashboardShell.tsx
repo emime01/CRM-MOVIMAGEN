@@ -8,7 +8,7 @@ import {
   Users, Target, Star, Wrench, Truck, Monitor,
   Palette, Receipt, AlertCircle, Percent, Building2,
   CreditCard, Settings, MessageCircle, X, Send,
-  FlaskConical, Package,
+  FlaskConical, Package, BookUser,
 } from 'lucide-react'
 
 type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion'
@@ -26,9 +26,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/leads', label: 'Leads', icon: <Filter size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/disponibilidad', label: 'Disponibilidad', icon: <Calendar size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/reportes', label: 'Reportes', icon: <BarChart2 size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
-  { href: '/dashboard/gerente', label: 'Mi equipo', icon: <Users size={16} />, roles: ['gerente_comercial'] },
-  { href: '/dashboard/gerente/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['gerente_comercial'] },
-  { href: '/dashboard/gerente/ceo', label: 'Dashboard CEO', icon: <Star size={16} />, roles: ['gerente_comercial'] },
+  { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
+  { href: '/dashboard/gerente', label: 'Mi Equipo', icon: <Users size={16} />, roles: ['gerente_comercial', 'administracion'] },
+  { href: '/dashboard/gerente/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['asistente_ventas'] },
   { href: '/dashboard/oic', label: 'OIC', icon: <Wrench size={16} />, roles: ['operaciones'] },
   { href: '/dashboard/buses', label: 'Buses', icon: <Truck size={16} />, roles: ['operaciones'] },
   { href: '/dashboard/arte', label: 'Planilla digital', icon: <Monitor size={16} />, roles: ['arte'] },
@@ -49,6 +49,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/leads': 'Leads',
   '/dashboard/disponibilidad': 'Disponibilidad',
   '/dashboard/reportes': 'Reportes',
+  '/dashboard/cuentas': 'Cuentas',
   '/dashboard/gerente': 'Mi Equipo',
   '/dashboard/gerente/objetivos': 'Objetivos',
   '/dashboard/gerente/ceo': 'Dashboard CEO',

@@ -1,9 +1,249 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, X, Pencil, ShoppingCart } from 'lucide-react'
+import { Plus, X, Pencil, ShoppingCart, Gift, Check, XCircle } from 'lucide-react'
+
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+
+interface BirthdayContacto {
+  id: string
+  nombres: string | null
+  apellidos: string | null
+  cumple_dia: number
+  cumple_mes: number
+  cuentaNombre: string | null
+  daysUntil: number
+}
+
+interface Regalo {
+  id: string
+  estado: string
+  contacto_id: string
+  contactos?: { nombres: string | null; apellidos: string | null; cumple_dia: number | null; cumple_mes: number | null; cuenta_id: string | null; tipo_cuenta: string | null } | null
+  'perfiles!solicitado_por'?: { nombre: string } | null
+}
+
+function BirthdayPanel({ userRol }: { userRol: string }) {
+  const [contactos, setContactos] = useState<BirthdayContacto[]>([])
+  const [regalos, setRegalos] = useState<Regalo[]>([])
+  const [regalosMap, setRegalosMap] = useState<Record<string, Regalo>>({})
+  const [loadingGift, setLoadingGift] = useState<Record<string, boolean>>({})
+  const isAsistente = userRol === 'asistente_ventas'
+
+  useEffect(() => {
+    fetch('/api/contactos?cumpleanos_proximos=30')
+      .then(r => r.json())
+      .then(data => setContactos(Array.isArray(data) ? data : []))
+      .catch(() => {})
+
+    fetch('/api/regalos')
+      .then(r => r.json())
+      .then(data => {
+        const list: Regalo[] = Array.isArray(data) ? data : []
+        setRegalos(list)
+        const map: Record<string, Regalo> = {}
+        list.forEach(r => { map[r.contacto_id] = r })
+        setRegalosMap(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function handleEnviarRegalo(contactoId: string) {
+    setLoadingGift(prev => ({ ...prev, [contactoId]: true }))
+    try {
+      const res = await fetch('/api/regalos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactoId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setRegalosMap(prev => ({ ...prev, [contactoId]: data }))
+      }
+    } finally {
+      setLoadingGift(prev => ({ ...prev, [contactoId]: false }))
+    }
+  }
+
+  async function handleUpdateRegalo(regalId: string, contactoId: string, estado: string) {
+    const res = await fetch(`/api/regalos/${regalId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estado }),
+    })
+    if (res.ok) {
+      setRegalos(prev => prev.map(r => r.id === regalId ? { ...r, estado } : r))
+      setRegalosMap(prev => {
+        const updated = { ...prev }
+        if (updated[contactoId]) updated[contactoId] = { ...updated[contactoId], estado }
+        return updated
+      })
+    }
+  }
+
+  const pendingRegalos = regalos.filter(r => r.estado === 'pendiente')
+
+  if (contactos.length === 0 && !isAsistente) return null
+
+  const estadoBadge = (estado: string) => {
+    const styles: Record<string, React.CSSProperties> = {
+      pendiente: { background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' },
+      entregado: { background: '#e6f7ef', color: '#166534', border: '1px solid #86efac' },
+      no_entregado: { background: '#fef0f0', color: '#991b1b', border: '1px solid #fca5a5' },
+    }
+    const labels: Record<string, string> = { pendiente: 'Pendiente', entregado: 'Entregado', no_entregado: 'No enviado' }
+    return (
+      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, ...styles[estado] }}>
+        {labels[estado] ?? estado}
+      </span>
+    )
+  }
+
+  return (
+    <>
+      {/* Birthday strip */}
+      {contactos.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+            Próximos cumpleaños
+          </div>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
+            {contactos.map(c => {
+              const regalo = regalosMap[c.id]
+              const initials = [(c.nombres ?? '').trim()[0], (c.apellidos ?? '').trim()[0]].filter(Boolean).join('').toUpperCase() || '?'
+              const dateStr = `${c.cumple_dia} de ${MESES_ES[c.cumple_mes - 1] ?? ''}`
+              const isToday = c.daysUntil === 0
+              const isSoon = c.daysUntil <= 7
+
+              return (
+                <div key={c.id} style={{
+                  minWidth: 200,
+                  background: 'var(--bg-card)',
+                  border: `1px solid ${isToday ? '#eb691c' : 'var(--border)'}`,
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  flexShrink: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      background: isToday ? '#eb691c' : isSoon ? '#fde68a' : 'var(--bg-app)',
+                      color: isToday ? '#fff' : isSoon ? '#92400e' : 'var(--text-muted)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 700, flexShrink: 0,
+                    }}>
+                      {initials}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {[c.nombres, c.apellidos].filter(Boolean).join(' ') || '—'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.cuentaNombre ?? '—'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: isToday ? '#eb691c' : 'var(--text-secondary)', fontWeight: isToday ? 700 : 500 }}>
+                    🎂 {dateStr}{isToday ? ' — ¡Hoy!' : isSoon ? ` — en ${c.daysUntil} día${c.daysUntil !== 1 ? 's' : ''}` : ` — en ${c.daysUntil} días`}
+                  </div>
+                  {regalo ? (
+                    estadoBadge(regalo.estado)
+                  ) : (
+                    <button
+                      onClick={() => handleEnviarRegalo(c.id)}
+                      disabled={loadingGift[c.id]}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '5px 10px', border: 'none',
+                        borderRadius: 6, background: '#eb691c', color: '#fff',
+                        fontSize: 11, fontWeight: 600, cursor: loadingGift[c.id] ? 'wait' : 'pointer',
+                        fontFamily: 'Montserrat, sans-serif', opacity: loadingGift[c.id] ? 0.6 : 1,
+                        width: 'fit-content',
+                      }}
+                    >
+                      <Gift size={11} />
+                      {loadingGift[c.id] ? 'Enviando...' : 'Enviar regalo'}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Regalos pendientes — asistente only */}
+      {isAsistente && pendingRegalos.length > 0 && (
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: 10,
+          padding: '14px 16px',
+          marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Gift size={13} />
+            Regalos pendientes — {pendingRegalos.length}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {pendingRegalos.map(r => {
+              const c = r.contactos
+              const nombre = c ? [c.nombres, c.apellidos].filter(Boolean).join(' ') : 'Contacto'
+              const vendedor = (r as any)['perfiles!solicitado_por']?.nombre ?? '—'
+              const fechaCumple = c?.cumple_dia && c?.cumple_mes
+                ? `${c.cumple_dia} de ${MESES_ES[c.cumple_mes - 1] ?? ''}`
+                : null
+
+              return (
+                <div key={r.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: '#fff', borderRadius: 8, padding: '10px 14px',
+                  border: '1px solid #fde68a', flexWrap: 'wrap', gap: 10,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1915' }}>{nombre}</div>
+                    <div style={{ fontSize: 11, color: '#6b6862', marginTop: 2 }}>
+                      Solicitado por {vendedor}{fechaCumple ? ` · Cumple ${fechaCumple}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => handleUpdateRegalo(r.id, r.contacto_id, 'entregado')}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '6px 12px', border: 'none', borderRadius: 6,
+                        background: '#15803d', color: '#fff', fontSize: 12, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
+                      }}
+                    >
+                      <Check size={12} /> Entregado
+                    </button>
+                    <button
+                      onClick={() => handleUpdateRegalo(r.id, r.contacto_id, 'no_entregado')}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '6px 12px', border: '1px solid #fca5a5', borderRadius: 6,
+                        background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
+                      }}
+                    >
+                      <XCircle size={12} /> No enviado
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +284,7 @@ interface Props {
   leads: LeadRow[]
   isGerente: boolean
   userId: string
+  userRol: string
   clientes: { id: string; nombre: string; empresa: string | null }[]
   vendedores: { id: string; nombre: string }[]
 }
@@ -623,7 +864,7 @@ function KanbanColumn({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function LeadsClient({ leads, isGerente, userId, clientes, vendedores }: Props) {
+export default function LeadsClient({ leads, isGerente, userId, userRol, clientes, vendedores }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [cuatrimestre, setCuatrimestre] = useState('')
@@ -672,6 +913,8 @@ export default function LeadsClient({ leads, isGerente, userId, clientes, vended
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', minHeight: '100%' }}>
+
+      <BirthdayPanel userRol={userRol} />
 
       {/* Modal */}
       {modal.open && (

@@ -39,6 +39,7 @@ export default async function LeadsPage() {
       leads={leads ?? []}
       isGerente={isGerente}
       userId={userId}
+      userRol={rol}
       clientes={clientes ?? []}
       vendedores={(vendedoresRes as any).data ?? []}
     />
