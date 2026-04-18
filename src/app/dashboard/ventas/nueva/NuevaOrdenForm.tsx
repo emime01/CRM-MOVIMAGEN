@@ -7,6 +7,7 @@ import { Plus, Trash2, ChevronLeft } from 'lucide-react'
 interface Soporte {
   id: string
   nombre: string
+  categoria: string | null
   tipo: string | null
   precio_base: number | null
   precio_semanal: number | null
@@ -399,7 +400,13 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
                       style={{ ...inputStyle, height: 34, fontSize: 12 }}
                     >
                       <option value="">— Soporte —</option>
-                      {soportes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                      {Array.from(new Set(soportes.map(s => s.categoria ?? 'Sin categoría'))).sort().map(cat => (
+                        <optgroup key={cat} label={cat}>
+                          {soportes.filter(s => (s.categoria ?? 'Sin categoría') === cat).map(s => (
+                            <option key={s.id} value={s.id}>{s.nombre}</option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
                     {item.esDigital && (
                       <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
