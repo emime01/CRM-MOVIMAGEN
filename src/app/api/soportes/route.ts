@@ -10,18 +10,20 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient()
   const { searchParams } = new URL(req.url)
   const tipo = searchParams.get('tipo')
+  const categoria = searchParams.get('categoria')
 
   const canSeeAll = ['asistente_ventas', 'administracion', 'gerente_comercial'].includes(session.user.rol)
   const all = searchParams.get('all')
 
   let query = supabase
     .from('soportes')
-    .select('id, nombre, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, activo')
-    .order('seccion')
+    .select('id, nombre, categoria, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, activo')
+    .order('categoria')
     .order('nombre')
 
   if (!all || !canSeeAll) query = query.eq('activo', true)
   if (tipo) query = query.eq('tipo', tipo)
+  if (categoria) query = query.eq('categoria', categoria)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -37,13 +39,22 @@ export async function POST(req: NextRequest) {
 
   let body: {
     nombre: string
+    categoria?: string
     tipo?: string
     seccion?: string
     ubicacion?: string
     precio_base?: number
     precio_semanal?: number
     tiene_iva?: boolean
-    items?: { nombre: string; precio_semanal: number; tiene_iva: boolean }[]
+    items?: {
+      nombre: string
+      categoria?: string
+      tipo?: string
+      seccion?: string
+      ubicacion?: string
+      precio_semanal?: number
+      tiene_iva: boolean
+    }[]
   }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
@@ -55,7 +66,11 @@ export async function POST(req: NextRequest) {
   if (body.items?.length) {
     const rows = body.items.map(item => ({
       nombre: item.nombre,
-      precio_semanal: item.precio_semanal,
+      categoria: item.categoria || null,
+      tipo: item.tipo || null,
+      seccion: item.seccion || null,
+      ubicacion: item.ubicacion || null,
+      precio_semanal: item.precio_semanal ?? null,
       tiene_iva: item.tiene_iva,
       activo: true,
     }))
@@ -70,6 +85,7 @@ export async function POST(req: NextRequest) {
     .from('soportes')
     .insert({
       nombre: body.nombre,
+      categoria: body.categoria || null,
       tipo: body.tipo || null,
       seccion: body.seccion || null,
       ubicacion: body.ubicacion || null,

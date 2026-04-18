@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic'
 export interface SoporteRow {
   id: string
   nombre: string
+  categoria: string | null
   tipo: string | null
   seccion: string | null
   ubicacion: string | null
@@ -26,7 +27,7 @@ export default async function SoportesPage() {
   const supabase = createServerClient()
   const { data: soportes } = await supabase
     .from('soportes')
-    .select('id, nombre, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, activo')
+    .select('id, nombre, categoria, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, activo')
     .order('activo', { ascending: false })
     .order('seccion', { nullsFirst: false })
     .order('nombre')
