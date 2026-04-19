@@ -86,7 +86,18 @@ function BirthdayPanel({ userRol }: { userRol: string }) {
 
   const pendingRegalos = regalos.filter(r => r.estado === 'pendiente')
 
-  if (contactos.length === 0 && !isAsistente) return null
+  if (contactos.length === 0 && !isAsistente) {
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+          Próximos cumpleaños
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+          No hay cumpleaños en los próximos 30 días. Importá contactos con fecha de cumpleaños desde <strong>Cuentas → Importar</strong>.
+        </p>
+      </div>
+    )
+  }
 
   const estadoBadge = (estado: string) => {
     const styles: Record<string, React.CSSProperties> = {

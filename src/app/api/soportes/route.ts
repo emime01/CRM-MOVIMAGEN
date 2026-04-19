@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('soportes')
-    .select('id, nombre, categoria, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, activo')
+    .select('id, nombre, categoria, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, activo, canon_shopping_id')
     .order('categoria')
     .order('nombre')
 

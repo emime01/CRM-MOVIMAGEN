@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, Upload, X, Edit2, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Search, Upload, X, Edit2, Trash2, History } from 'lucide-react'
 
 interface Cliente {
   id: string
@@ -336,6 +337,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
                   </td>
                   <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-secondary)' }}>{c.vendedor_id ? (vendedorMap.get(c.vendedor_id) ?? '—') : '—'}</td>
                   <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                    <Link href={`/dashboard/cuentas/${c.id}`} title="Ver historial" style={{ display: 'inline-flex', border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--orange)', marginRight: 4 }}><History size={14} /></Link>
                     <button onClick={() => setClienteModal({ open: true, data: c })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', marginRight: 4 }}><Edit2 size={14} /></button>
                     <button onClick={() => deleteCliente(c.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: '#c82f2f' }}><Trash2 size={14} /></button>
                   </td>

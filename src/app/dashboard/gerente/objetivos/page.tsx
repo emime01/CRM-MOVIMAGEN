@@ -16,7 +16,7 @@ export default async function ObjetivosPage() {
 
   const supabase = createServerClient()
 
-  const [{ data: vendedores }, { data: objetivos }] = await Promise.all([
+  const [{ data: vendedores }, { data: objetivos }, { data: clienteObjetivos }] = await Promise.all([
     supabase
       .from('perfiles')
       .select('id, nombre, rol')
@@ -27,6 +27,11 @@ export default async function ObjetivosPage() {
       .from('objetivos')
       .select('vendedor_id, cuatrimestre, objetivo_monto')
       .in('cuatrimestre', CUATRIMESTRES),
+    supabase
+      .from('cliente_objetivos')
+      .select('vendedor_id, cliente_id, ponderacion_pct, objetivo_c1, objetivo_c2, objetivo_c3, clientes(nombre)')
+      .eq('year', y)
+      .not('vendedor_id', 'is', null),
   ])
 
   const objMap: Record<string, number> = {}
@@ -38,6 +43,7 @@ export default async function ObjetivosPage() {
     <ObjetivosClient
       vendedores={vendedores ?? []}
       objMap={objMap}
+      clienteObjetivos={(clienteObjetivos ?? []) as any}
     />
   )
 }

@@ -101,6 +101,32 @@ export async function POST(req: NextRequest) {
 
       results.push({ cliente: clienteNombre, status: existingCl ? 'actualizado' : 'creado' })
     }
+
+    // Aggregate cliente_objetivos → objetivos (sum per vendedor per cuatrimestre)
+    const { data: coData } = await supabase
+      .from('cliente_objetivos')
+      .select('vendedor_id, objetivo_c1, objetivo_c2, objetivo_c3')
+      .eq('year', year)
+      .not('vendedor_id', 'is', null)
+
+    const vendedorTotals: Record<string, Record<string, number>> = {}
+    for (const co of coData ?? []) {
+      if (!co.vendedor_id) continue
+      if (!vendedorTotals[co.vendedor_id]) vendedorTotals[co.vendedor_id] = {}
+      const vt = vendedorTotals[co.vendedor_id]
+      vt[`Q1-${year}`] = (vt[`Q1-${year}`] ?? 0) + Number(co.objetivo_c1 ?? 0)
+      vt[`Q2-${year}`] = (vt[`Q2-${year}`] ?? 0) + Number(co.objetivo_c2 ?? 0)
+      vt[`Q3-${year}`] = (vt[`Q3-${year}`] ?? 0) + Number(co.objetivo_c3 ?? 0)
+    }
+    for (const [vendedorId, quarters] of Object.entries(vendedorTotals)) {
+      for (const [cuatrimestre, monto] of Object.entries(quarters)) {
+        await supabase.from('objetivos').delete().eq('vendedor_id', vendedorId).eq('cuatrimestre', cuatrimestre)
+        if (monto > 0) {
+          await supabase.from('objetivos').insert({ vendedor_id: vendedorId, cuatrimestre, objetivo_monto: monto })
+        }
+      }
+    }
+
     return NextResponse.json({ results, total: results.length })
   }
 

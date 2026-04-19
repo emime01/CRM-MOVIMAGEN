@@ -1,0 +1,32 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { createServerClient } from '@/lib/supabase-server'
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  if (session.user.rol !== 'administracion') return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+
+  const body = await req.json()
+  const supabase = createServerClient()
+  const { error } = await supabase
+    .from('canon_shoppings')
+    .update({ ...body, updated_at: new Date().toISOString() })
+    .eq('id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  if (session.user.rol !== 'administracion') return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+
+  const supabase = createServerClient()
+  // Unassign soportes before deleting
+  await supabase.from('soportes').update({ canon_shopping_id: null }).eq('canon_shopping_id', params.id)
+  const { error } = await supabase.from('canon_shoppings').delete().eq('id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
