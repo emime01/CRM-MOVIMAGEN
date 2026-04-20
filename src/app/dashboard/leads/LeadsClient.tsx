@@ -35,21 +35,17 @@ function BirthdayPanel({ userRol }: { userRol: string }) {
   const isAsistente = userRol === 'asistente_ventas'
 
   useEffect(() => {
-    fetch('/api/contactos?cumpleanos_proximos=30')
-      .then(r => r.json())
-      .then(data => setContactos(Array.isArray(data) ? data : []))
-      .catch(() => {})
-
-    fetch('/api/regalos')
-      .then(r => r.json())
-      .then(data => {
-        const list: Regalo[] = Array.isArray(data) ? data : []
-        setRegalos(list)
-        const map: Record<string, Regalo> = {}
-        list.forEach(r => { map[r.contacto_id] = r })
-        setRegalosMap(map)
-      })
-      .catch(() => {})
+    Promise.all([
+      fetch('/api/contactos?cumpleanos_proximos=30').then(r => r.json()).catch(() => ({})),
+      fetch('/api/regalos').then(r => r.json()).catch(() => ({})),
+    ]).then(([contactosData, regalosData]) => {
+      setContactos(Array.isArray(contactosData) ? contactosData : [])
+      const list: Regalo[] = Array.isArray(regalosData) ? regalosData : []
+      setRegalos(list)
+      const map: Record<string, Regalo> = {}
+      list.forEach(r => { map[r.contacto_id] = r })
+      setRegalosMap(map)
+    })
   }, [])
 
   async function handleEnviarRegalo(contactoId: string) {
