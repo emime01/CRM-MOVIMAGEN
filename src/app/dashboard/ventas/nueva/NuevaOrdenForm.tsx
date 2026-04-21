@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ChevronLeft } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, Sparkles, Send, X } from 'lucide-react'
 
 interface Soporte {
   id: string
@@ -156,6 +156,14 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // AI Chat state
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatError, setChatError] = useState('')
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
   // Totals
   const totals = useMemo(() => {
     let subtotal = 0
@@ -285,6 +293,91 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
     }
   }
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  async function sendChat() {
+    const text = chatInput.trim()
+    if (!text || chatLoading) return
+    setChatInput('')
+    setChatError('')
+    const newMessages = [...chatMessages, { role: 'user' as const, content: text }]
+    setChatMessages(newMessages)
+    setChatLoading(true)
+    try {
+      const res = await fetch('/api/chat-venta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          clientes,
+          agencias,
+          soportes,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Error al contactar la IA')
+
+      if (data.fields) {
+        const f = data.fields as {
+          clienteId?: string
+          agenciaId?: string
+          contacto?: string
+          marca?: string
+          moneda?: 'USD' | 'UYU'
+          fechaAltaPrevista?: string
+          fechaBajaPrevista?: string
+          items?: Array<{
+            soporteId: string
+            cantidad?: number
+            semanas?: number
+            precioUnitario?: number
+            descuentoPct?: number
+            nota?: string
+          }>
+        }
+        if (f.clienteId) setClienteId(f.clienteId)
+        if (f.agenciaId) setAgenciaId(f.agenciaId)
+        if (f.contacto) setContacto(f.contacto)
+        if (f.marca) setMarca(f.marca)
+        if (f.moneda) setMoneda(f.moneda)
+        if (f.fechaAltaPrevista) setFechaAltaPrevista(f.fechaAltaPrevista)
+        if (f.fechaBajaPrevista) setFechaBajaPrevista(f.fechaBajaPrevista)
+        if (f.items && f.items.length > 0) {
+          setItems(f.items.map(item => {
+            const soporte = soportes.find(s => s.id === item.soporteId)
+            const esDigital = soporte?.tipo?.toLowerCase().includes('digital') ?? false
+            const precio = item.precioUnitario ?? soporte?.precio_semanal ?? soporte?.precio_base ?? 0
+            return {
+              id: uid(),
+              soporteId: item.soporteId,
+              cantidad: item.cantidad ?? 1,
+              semanas: item.semanas ?? 4,
+              salidas: 0,
+              segundos: 0,
+              precioUnitario: precio,
+              descuentoPct: item.descuentoPct ?? 0,
+              nota: item.nota ?? '',
+              requiereGrabado: false,
+              requiereProduccion: !!soporte?.costo_produccion,
+              esDigital,
+            }
+          }))
+        }
+      }
+
+      const assistantText = data.text || (data.fields ? 'Campos completados correctamente.' : 'No pude detectar campos en tu mensaje.')
+      setChatMessages(prev => [...prev, { role: 'assistant', content: assistantText }])
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      setChatError(msg)
+      setChatMessages(prev => [...prev, { role: 'assistant', content: `Error: ${msg}` }])
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
   const fmt = (n: number) => new Intl.NumberFormat('es-UY', {
     style: 'currency', currency: moneda,
     minimumFractionDigits: 0, maximumFractionDigits: 0,
@@ -293,13 +386,91 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', maxWidth: 960, margin: '0 auto' }}>
 
-      {/* Back link */}
-      <button
-        onClick={() => router.back()}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, padding: 0, marginBottom: 20 }}
-      >
-        <ChevronLeft size={16} /> Volver a Ventas
-      </button>
+      {/* Back link + AI button */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <button
+          onClick={() => router.back()}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, padding: 0 }}
+        >
+          <ChevronLeft size={16} /> Volver a Ventas
+        </button>
+        <button
+          onClick={() => setChatOpen(o => !o)}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 8, border: 'none', background: chatOpen ? 'var(--orange-hover, #c85a10)' : 'var(--orange)', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#fff', fontFamily: 'Montserrat, sans-serif' }}
+        >
+          <Sparkles size={15} /> Completar con IA
+        </button>
+      </div>
+
+      {/* AI Chat Panel */}
+      {chatOpen && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 20, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #eb691c, #c85a10)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Sparkles size={16} color="#fff" />
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>Asistente IA — Completar orden</span>
+            </div>
+            <button onClick={() => setChatOpen(false)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}>
+              <X size={15} color="#fff" />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div style={{ height: 280, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {chatMessages.length === 0 && (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginTop: 60 }}>
+                <Sparkles size={28} color="var(--orange)" style={{ marginBottom: 10 }} />
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Describí la venta en lenguaje natural</div>
+                <div style={{ fontSize: 12 }}>Ejemplo: "Venta a Coca-Cola, 3 carteles en Punta Carretas por 4 semanas desde el 1 de junio, USD, descuento 10%"</div>
+              </div>
+            )}
+            {chatMessages.map((m, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div style={{
+                  maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                  background: m.role === 'user' ? 'var(--orange)' : 'var(--bg-app)',
+                  color: m.role === 'user' ? '#fff' : 'var(--text-primary)',
+                  fontSize: 13, lineHeight: 1.5,
+                  border: m.role === 'assistant' ? '1px solid var(--border)' : 'none',
+                }}>
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {chatLoading && (
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div style={{ padding: '10px 14px', borderRadius: '12px 12px 12px 4px', background: 'var(--bg-app)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-muted)' }}>
+                  Analizando...
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input */}
+          {chatError && (
+            <div style={{ padding: '8px 20px', background: 'var(--red-pale)', color: 'var(--red)', fontSize: 12 }}>{chatError}</div>
+          )}
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+            <textarea
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+              placeholder="Describí la venta... (Enter para enviar)"
+              rows={2}
+              disabled={chatLoading}
+              style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-primary)', outline: 'none', resize: 'none', background: 'var(--bg-app)', boxSizing: 'border-box' }}
+            />
+            <button
+              onClick={sendChat}
+              disabled={chatLoading || !chatInput.trim()}
+              style={{ width: 44, height: 60, borderRadius: 8, border: 'none', background: chatLoading || !chatInput.trim() ? 'var(--border)' : 'var(--orange)', cursor: chatLoading || !chatInput.trim() ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <Send size={16} color="#fff" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Section 1: Header */}
       <div style={sectionStyle}>
