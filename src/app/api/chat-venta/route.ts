@@ -11,71 +11,78 @@ const FILL_TOOL: Anthropic.Tool = {
   input_schema: {
     type: 'object' as const,
     properties: {
-      clienteId: {
-        type: 'string',
-        description: 'ID del cliente (de la lista provista). Usar el ID exacto.',
-      },
-      agenciaId: {
-        type: 'string',
-        description: 'ID de la agencia (de la lista provista), si se menciona alguna.',
-      },
-      contacto: {
-        type: 'string',
-        description: 'Nombre del contacto.',
-      },
-      marca: {
-        type: 'string',
-        description: 'Nombre de la marca o campaña.',
-      },
-      moneda: {
-        type: 'string',
-        enum: ['USD', 'UYU'],
-        description: 'Moneda de la orden. USD por defecto si no se especifica.',
-      },
-      fechaAltaPrevista: {
-        type: 'string',
-        description: 'Fecha de inicio en formato YYYY-MM-DD.',
-      },
-      fechaBajaPrevista: {
-        type: 'string',
-        description: 'Fecha de fin en formato YYYY-MM-DD.',
-      },
+      clienteId: { type: 'string', description: 'ID del cliente (de la lista provista). Usar el ID exacto.' },
+      agenciaId: { type: 'string', description: 'ID de la agencia (de la lista provista), si se menciona alguna.' },
+      contacto: { type: 'string', description: 'Nombre del contacto.' },
+      marca: { type: 'string', description: 'Nombre de la marca o campaña.' },
+      moneda: { type: 'string', enum: ['USD', 'UYU'], description: 'Moneda de la orden. USD por defecto.' },
+      fechaAltaPrevista: { type: 'string', description: 'Fecha de inicio en formato YYYY-MM-DD.' },
+      fechaBajaPrevista: { type: 'string', description: 'Fecha de fin en formato YYYY-MM-DD.' },
       items: {
         type: 'array',
         description: 'Líneas de productos de la orden.',
         items: {
           type: 'object',
           properties: {
-            soporteId: {
-              type: 'string',
-              description: 'ID del soporte (de la lista provista). Usar el ID exacto.',
-            },
-            cantidad: {
-              type: 'number',
-              description: 'Cantidad de unidades.',
-            },
-            semanas: {
-              type: 'number',
-              description: 'Cantidad de semanas de arrendamiento.',
-            },
-            precioUnitario: {
-              type: 'number',
-              description: 'Precio unitario semanal.',
-            },
-            descuentoPct: {
-              type: 'number',
-              description: 'Porcentaje de descuento (0-100).',
-            },
-            nota: {
-              type: 'string',
-              description: 'Nota o comentario para esta línea.',
-            },
+            soporteId: { type: 'string', description: 'ID del soporte (de la lista provista). Usar el ID exacto.' },
+            cantidad: { type: 'number', description: 'Cantidad de unidades.' },
+            semanas: { type: 'number', description: 'Cantidad de semanas de arrendamiento.' },
+            precioUnitario: { type: 'number', description: 'Precio unitario semanal.' },
+            descuentoPct: { type: 'number', description: 'Porcentaje de descuento (0-100).' },
+            nota: { type: 'string', description: 'Nota o comentario para esta línea.' },
           },
           required: ['soporteId'],
         },
       },
     },
   },
+}
+
+type IncomingMsg = {
+  role: 'user' | 'assistant'
+  content: string
+  fileData?: { base64: string; mediaType: string }
+}
+
+function buildClaudeMessages(messages: IncomingMsg[]): Anthropic.MessageParam[] {
+  return messages.map(m => {
+    if (m.role === 'assistant' || !m.fileData) {
+      return { role: m.role, content: m.content }
+    }
+
+    const isImage = m.fileData.mediaType.startsWith('image/')
+    const isPdf = m.fileData.mediaType === 'application/pdf'
+
+    const contentBlocks: Anthropic.ContentBlockParam[] = []
+
+    if (isImage) {
+      contentBlocks.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: m.fileData.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          data: m.fileData.base64,
+        },
+      })
+    } else if (isPdf) {
+      contentBlocks.push({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: m.fileData.base64,
+        },
+      } as unknown as Anthropic.ContentBlockParam)
+    }
+
+    if (m.content) {
+      contentBlocks.push({ type: 'text', text: m.content })
+    } else {
+      contentBlocks.push({ type: 'text', text: 'Analizá este archivo y completá los campos de la orden de venta con la información que encuentres.' })
+    }
+
+    return { role: 'user' as const, content: contentBlocks }
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -85,9 +92,9 @@ export async function POST(req: NextRequest) {
   const { messages, clientes, agencias, soportes } = await req.json()
 
   const systemPrompt = `Sos un asistente de CRM para una empresa de publicidad exterior (vía pública).
-Tu tarea es ayudar al usuario a completar una orden de venta interpretando su descripción en lenguaje natural.
+Tu tarea es ayudar al usuario a completar una orden de venta interpretando su descripción en lenguaje natural o analizando documentos/imágenes que el usuario suba.
 
-Cuando el usuario describa una venta, usá la herramienta fill_sale_fields para completar los campos detectados.
+Cuando el usuario describa una venta o suba un documento/imagen con datos, usá la herramienta fill_sale_fields para completar los campos detectados.
 Respondé siempre en español. Sé conciso y confirmá qué campos completaste.
 
 CLIENTES DISPONIBLES:
@@ -110,12 +117,11 @@ Instrucciones para interpretar fechas:
       max_tokens: 2048,
       system: systemPrompt,
       tools: [FILL_TOOL],
-      messages,
+      messages: buildClaudeMessages(messages),
     })
 
     const textBlocks = response.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text)
     const toolUseBlocks = response.content.filter(b => b.type === 'tool_use')
-
     const toolInputs = toolUseBlocks.map(b => (b as Anthropic.ToolUseBlock).input)
 
     return NextResponse.json({

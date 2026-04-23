@@ -32,7 +32,7 @@ export default async function NuevaOrdenPage({ searchParams }: { searchParams: {
 
     supabase
       .from('clientes')
-      .select('id, nombre, empresa')
+      .select('id, nombre, empresa, agencia_id')
       .order('nombre'),
 
     supabase

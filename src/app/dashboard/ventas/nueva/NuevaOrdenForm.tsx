@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ChevronLeft, Sparkles, Send, X } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, Sparkles, Send, X, Paperclip } from 'lucide-react'
 
 interface Soporte {
   id: string
@@ -19,6 +19,7 @@ interface Cliente {
   id: string
   nombre: string
   empresa: string | null
+  agencia_id: string | null
 }
 
 interface Agencia {
@@ -158,11 +159,13 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
   // AI Chat state
   const [chatOpen, setChatOpen] = useState(false)
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string; fileData?: { base64: string; mediaType: string }; fileName?: string }[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [chatError, setChatError] = useState('')
+  const [chatFile, setChatFile] = useState<{ base64: string; mediaType: string; name: string } | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatFileInputRef = useRef<HTMLInputElement>(null)
 
   // Totals
   const totals = useMemo(() => {
@@ -297,12 +300,36 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
 
+  useEffect(() => {
+    if (!clienteId) return
+    const cliente = clientes.find(c => c.id === clienteId)
+    if (cliente?.agencia_id && !agenciaId) {
+      setAgenciaId(cliente.agencia_id)
+    }
+  }, [clienteId])
+
+  async function handleChatFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const base64 = dataUrl.split(',')[1]
+      setChatFile({ base64, mediaType: file.type, name: file.name })
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
   async function sendChat() {
     const text = chatInput.trim()
-    if (!text || chatLoading) return
+    if (!text && !chatFile || chatLoading) return
+    const file = chatFile
     setChatInput('')
+    setChatFile(null)
     setChatError('')
-    const newMessages = [...chatMessages, { role: 'user' as const, content: text }]
+    const userMsg = { role: 'user' as const, content: text, fileData: file ? { base64: file.base64, mediaType: file.mediaType } : undefined, fileName: file?.name }
+    const newMessages = [...chatMessages, userMsg]
     setChatMessages(newMessages)
     setChatLoading(true)
     try {
@@ -433,6 +460,12 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
                   fontSize: 13, lineHeight: 1.5,
                   border: m.role === 'assistant' ? '1px solid var(--border)' : 'none',
                 }}>
+                  {m.fileName && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: m.content ? 6 : 0, fontSize: 12, opacity: 0.85 }}>
+                      <Paperclip size={11} />
+                      {m.fileName}
+                    </div>
+                  )}
                   {m.content}
                 </div>
               </div>
@@ -451,20 +484,35 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
           {chatError && (
             <div style={{ padding: '8px 20px', background: 'var(--red-pale)', color: 'var(--red)', fontSize: 12 }}>{chatError}</div>
           )}
-          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+          {chatFile && (
+            <div style={{ padding: '6px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-app)' }}>
+              <Paperclip size={13} color="var(--orange)" />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', flex: 1 }}>{chatFile.name}</span>
+              <button onClick={() => setChatFile(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 2, color: 'var(--text-muted)' }}><X size={13} /></button>
+            </div>
+          )}
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <input ref={chatFileInputRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={handleChatFileChange} />
+            <button
+              onClick={() => chatFileInputRef.current?.click()}
+              title="Adjuntar imagen o PDF"
+              style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-app)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <Paperclip size={15} color="var(--text-muted)" />
+            </button>
             <textarea
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-              placeholder="Describí la venta... (Enter para enviar)"
+              placeholder={chatFile ? 'Mensaje opcional (Enter para enviar)...' : 'Describí la venta o adjuntá un PDF/imagen... (Enter para enviar)'}
               rows={2}
               disabled={chatLoading}
               style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-primary)', outline: 'none', resize: 'none', background: 'var(--bg-app)', boxSizing: 'border-box' }}
             />
             <button
               onClick={sendChat}
-              disabled={chatLoading || !chatInput.trim()}
-              style={{ width: 44, height: 60, borderRadius: 8, border: 'none', background: chatLoading || !chatInput.trim() ? 'var(--border)' : 'var(--orange)', cursor: chatLoading || !chatInput.trim() ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              disabled={chatLoading || (!chatInput.trim() && !chatFile)}
+              style={{ width: 38, height: 60, borderRadius: 8, border: 'none', background: chatLoading || (!chatInput.trim() && !chatFile) ? 'var(--border)' : 'var(--orange)', cursor: chatLoading || (!chatInput.trim() && !chatFile) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
             >
               <Send size={16} color="#fff" />
             </button>

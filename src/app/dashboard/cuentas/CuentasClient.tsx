@@ -15,6 +15,7 @@ interface Cliente {
   activo: boolean
   tipo_cliente: string | null
   vendedor_id: string | null
+  agencia_id: string | null
 }
 
 interface Agencia {
@@ -316,14 +317,14 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--bg-app)' }}>
-                {['Nombre / Empresa', 'Email', 'Teléfono', 'Tipo', 'Vendedor', ''].map(h => (
+                {['Nombre / Empresa', 'Email', 'Teléfono', 'Tipo', 'Agencia', 'Vendedor', ''].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filteredClientes.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Sin clientes. Creá el primero o importá desde Excel.</td></tr>
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Sin clientes. Creá el primero o importá desde Excel.</td></tr>
               ) : filteredClientes.map((c, i) => (
                 <tr key={c.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                   <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -335,6 +336,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
                   <td style={{ padding: '11px 14px' }}>
                     {c.tipo_cliente && <span style={{ padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600, background: '#f1f1ef', color: '#4a4845' }}>{c.tipo_cliente}</span>}
                   </td>
+                  <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-secondary)' }}>{c.agencia_id ? (agenciaMap.get(c.agencia_id) ?? '—') : '—'}</td>
                   <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-secondary)' }}>{c.vendedor_id ? (vendedorMap.get(c.vendedor_id) ?? '—') : '—'}</td>
                   <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                     <Link href={`/dashboard/cuentas/${c.id}`} title="Ver historial" style={{ display: 'inline-flex', border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--orange)', marginRight: 4 }}><History size={14} /></Link>
@@ -422,6 +424,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
         <ClienteModalForm
           data={clienteModal.data ?? {}}
           vendedores={vendedores}
+          agencias={agencias}
           onClose={() => setClienteModal({ open: false, data: null })}
           onSave={saveCliente}
           saving={saving}
@@ -497,8 +500,8 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
 
 // ─── Sub-forms ────────────────────────────────────────────────────────────────
 
-function ClienteModalForm({ data, vendedores, onClose, onSave, saving, error }: {
-  data: Partial<Cliente>; vendedores: Vendedor[]
+function ClienteModalForm({ data, vendedores, agencias, onClose, onSave, saving, error }: {
+  data: Partial<Cliente>; vendedores: Vendedor[]; agencias: Agencia[]
   onClose: () => void; onSave: (d: Partial<Cliente>) => void; saving: boolean; error: string
 }) {
   const [form, setForm] = useState(data)
@@ -525,6 +528,13 @@ function ClienteModalForm({ data, vendedores, onClose, onSave, saving, error }: 
         <div>
           <label style={labelStyle}>Teléfono</label>
           <input style={inputStyle} value={form.telefono ?? ''} onChange={e => set('telefono', e.target.value)} />
+        </div>
+        <div>
+          <label style={labelStyle}>Agencia asociada</label>
+          <select style={{ ...inputStyle, background: 'white' }} value={form.agencia_id ?? ''} onChange={e => set('agencia_id', e.target.value || null)}>
+            <option value="">— Sin agencia —</option>
+            {agencias.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+          </select>
         </div>
         <div>
           <label style={labelStyle}>Vendedor asignado</label>

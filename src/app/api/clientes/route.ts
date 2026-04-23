@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const includeInactivo = searchParams.get('all') === 'true'
   const supabase = createServerClient()
-  let query = supabase.from('clientes').select('id, nombre, empresa, email, telefono, rut, notas, activo, tipo_cliente, vendedor_id, perfiles!clientes_vendedor_id_fkey(nombre)').order('nombre')
+  let query = supabase.from('clientes').select('id, nombre, empresa, email, telefono, rut, notas, activo, tipo_cliente, vendedor_id, agencia_id, perfiles!clientes_vendedor_id_fkey(nombre)').order('nombre')
   if (!includeInactivo) query = query.eq('activo', true) as typeof query
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -58,9 +58,9 @@ export async function POST(req: NextRequest) {
       const { data: existingCl } = await supabase.from('clientes').select('id').ilike('nombre', clienteNombre).maybeSingle()
       if (existingCl) {
         clienteId = existingCl.id
-        await supabase.from('clientes').update({ vendedor_id: vendedorId ?? undefined, updated_at: new Date().toISOString() }).eq('id', clienteId)
+        await supabase.from('clientes').update({ vendedor_id: vendedorId ?? undefined, agencia_id: agenciaId ?? undefined, updated_at: new Date().toISOString() }).eq('id', clienteId)
       } else {
-        const { data: newCl } = await supabase.from('clientes').insert({ nombre: clienteNombre, vendedor_id: vendedorId }).select('id').single()
+        const { data: newCl } = await supabase.from('clientes').insert({ nombre: clienteNombre, vendedor_id: vendedorId, agencia_id: agenciaId }).select('id').single()
         clienteId = newCl?.id ?? null
       }
 
