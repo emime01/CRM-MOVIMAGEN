@@ -54,8 +54,20 @@ interface Props {
   initialSoportesSinAsignar: Soporte[]
   clientes: Cliente[]
   initialReservas: ReservaPendiente[]
-  soporteClienteMap: Record<string, { nombre: string; empresa: string | null }>
+  soporteClienteMap: Record<string, { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }>
   userRol: string
+}
+
+function parseLados(val: string | null | undefined): string[] {
+  if (!val || val === 'ninguno') return []
+  if (val === 'ambos') return ['lateral_izquierdo', 'lateral_derecho']
+  if (val === 'izquierdo') return ['lateral_izquierdo']
+  if (val === 'derecho') return ['lateral_derecho']
+  return val.split(',').filter(Boolean)
+}
+
+function fmtFecha(iso: string) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 const CATEGORIAS: Record<string, string> = {
@@ -113,7 +125,7 @@ export default function BusesClient({ initialBuses, initialSoportesSinAsignar, c
 
   const stats = useMemo(() => {
     const total = buses.length
-    const mantenimiento = buses.filter(b => b.lado_disponible === 'ninguno').length
+    const mantenimiento = buses.filter(b => parseLados(b.lado_disponible).length === 0).length
     // Un bus "con campaña" = tiene al menos un soporte con cliente activo
     const conCampana = buses.filter(b => b.soportes.some(s => soporteClienteMap[s.id])).length
     const disponibles = total - mantenimiento - conCampana
@@ -234,11 +246,30 @@ function FlotaTab({ buses, stats, canManage, soporteClienteMap, onEdit, onNew, o
   stats: { total: number; disponibles: number; conCampana: number; mantenimiento: number }
   canManage: boolean
   clienteMap: Map<string, Cliente>
-  soporteClienteMap: Record<string, { nombre: string; empresa: string | null }>
+  soporteClienteMap: Record<string, { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }>
   onEdit: (bus: Bus) => void
   onNew: () => void
   onImport: () => void
 }) {
+  const [filterCliente, setFilterCliente] = useState('')
+  const [filterSoporte, setFilterSoporte] = useState('')
+
+  const busesFiltrados = useMemo(() => {
+    let list = buses
+    if (filterCliente) {
+      const q = filterCliente.toLowerCase()
+      list = list.filter(b => b.soportes.some(s => {
+        const cli = soporteClienteMap[s.id]
+        return cli && (cli.empresa ?? cli.nombre).toLowerCase().includes(q)
+      }))
+    }
+    if (filterSoporte) {
+      const q = filterSoporte.toLowerCase()
+      list = list.filter(b => b.soportes.some(s => s.nombre.toLowerCase().includes(q)))
+    }
+    return list
+  }, [buses, filterCliente, filterSoporte, soporteClienteMap])
+
   const statsList = [
     { label: 'Total flota',   value: stats.total,        color: 'var(--text-primary)' },
     { label: 'Disponibles',   value: stats.disponibles,  color: '#15803d' },
@@ -248,16 +279,31 @@ function FlotaTab({ buses, stats, canManage, soporteClienteMap, onEdit, onNew, o
 
   return (
     <>
-      {canManage && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, justifyContent: 'flex-end' }}>
-          <button onClick={onImport} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid var(--border)', background: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'Montserrat, sans-serif' }}>
-            <Upload size={14} /> Importar Excel
-          </button>
-          <button onClick={onNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: 'none', background: 'var(--orange)', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: 'Montserrat, sans-serif' }}>
-            <Plus size={14} /> Nuevo bus
-          </button>
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+        <input
+          placeholder="Filtrar por cliente..."
+          value={filterCliente}
+          onChange={e => setFilterCliente(e.target.value)}
+          style={{ ...inputStyle, width: 200 }}
+        />
+        <input
+          placeholder="Filtrar por soporte..."
+          value={filterSoporte}
+          onChange={e => setFilterSoporte(e.target.value)}
+          style={{ ...inputStyle, width: 200 }}
+        />
+        <div style={{ flex: 1 }} />
+        {canManage && (
+          <>
+            <button onClick={onImport} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid var(--border)', background: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'Montserrat, sans-serif' }}>
+              <Upload size={14} /> Importar Excel
+            </button>
+            <button onClick={onNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: 'none', background: 'var(--orange)', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: 'Montserrat, sans-serif' }}>
+              <Plus size={14} /> Nuevo bus
+            </button>
+          </>
+        )}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {statsList.map(s => (
@@ -268,9 +314,9 @@ function FlotaTab({ buses, stats, canManage, soporteClienteMap, onEdit, onNew, o
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-        {buses.map(bus => {
-          const lbl = LADO[bus.lado_disponible] ?? LADO.ninguno
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+        {busesFiltrados.map(bus => {
+          const ladosDisp = parseLados(bus.lado_disponible)
           return (
             <div key={bus.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, position: 'relative' }}>
               {canManage && (
@@ -278,42 +324,63 @@ function FlotaTab({ buses, stats, canManage, soporteClienteMap, onEdit, onNew, o
                   <Edit2 size={14} />
                 </button>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6, paddingRight: canManage ? 24 : 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, paddingRight: canManage ? 24 : 0 }}>
                 <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>#{bus.numero}</div>
-                <span style={{ background: lbl.bg, color: lbl.color, padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{lbl.text}</span>
+                {bus.categoria && <span style={{ background: '#eef2ff', color: '#4338ca', padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>{CATEGORIAS[bus.categoria] ?? bus.categoria}</span>}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-                {bus.modelo ?? '—'}
-                {bus.categoria && <span style={{ marginLeft: 6, background: '#eef2ff', color: '#4338ca', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>{CATEGORIAS[bus.categoria] ?? bus.categoria}</span>}
+              {bus.modelo && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>{bus.modelo}</div>}
+
+              {/* Per-side availability badges */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+                {POSICIONES.map(pos => {
+                  const disp = ladosDisp.includes(pos.key)
+                  return (
+                    <span key={pos.key} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: disp ? '#f0fdf4' : '#fef2f2', color: disp ? '#15803d' : '#dc2626' }}>
+                      {pos.label.replace('Lateral ', 'Lat. ')}
+                    </span>
+                  )
+                })}
               </div>
 
-              <div>
+              {/* Soporte rows with client + dates */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                 {POSICIONES.map(pos => {
-                  const s = bus.soportes.find(x => x.lado_bus === pos.key)
-                  const cli = s ? soporteClienteMap[s.id] : null
-                  return (
-                    <div key={pos.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 11, padding: '4px 0', borderBottom: '1px dashed #eee', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>{pos.label}</span>
-                      <div style={{ textAlign: 'right' }}>
-                        {s ? (
-                          <>
-                            <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{s.nombre}</div>
-                            {cli && <div style={{ color: 'var(--orange)', fontSize: 10, fontWeight: 600 }}>{cli.empresa ?? cli.nombre}</div>}
-                          </>
-                        ) : (
-                          <span style={{ color: '#9ca3af' }}>—</span>
-                        )}
-                      </div>
+                  const soportesEnPos = bus.soportes.filter(x => {
+                    const lados = x.lado_bus?.split(',') ?? []
+                    return lados.includes(pos.key) || x.lado_bus === pos.key
+                  })
+                  if (soportesEnPos.length === 0) return (
+                    <div key={pos.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '3px 0', color: '#9ca3af' }}>
+                      <span>{pos.label}</span><span>—</span>
                     </div>
                   )
+                  return soportesEnPos.map(s => {
+                    const cli = soporteClienteMap[s.id]
+                    return (
+                      <div key={s.id + pos.key} style={{ padding: '4px 0', borderBottom: '1px dashed #eee' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                          <span style={{ color: 'var(--text-muted)' }}>{pos.label}</span>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{s.nombre}</span>
+                        </div>
+                        {cli && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginTop: 2 }}>
+                            <span style={{ color: 'var(--orange)', fontWeight: 600 }}>{cli.empresa ?? cli.nombre}</span>
+                            <span style={{ color: 'var(--text-muted)' }}>{fmtFecha(cli.fecha_desde)} → {fmtFecha(cli.fecha_hasta)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
                 })}
               </div>
             </div>
           )
         })}
-        {buses.length === 0 && (
+        {busesFiltrados.length === 0 && (
           <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 48, color: 'var(--text-muted)', fontSize: 13 }}>
-            No hay buses cargados. {canManage && 'Usá "Nuevo bus" o "Importar Excel".'}
+            {buses.length === 0
+              ? <>No hay buses cargados. {canManage && 'Usá "Nuevo bus" o "Importar Excel".'}</>
+              : 'No hay buses que coincidan con los filtros.'}
           </div>
         )}
       </div>
@@ -504,40 +571,53 @@ function BusModal({ data, clientes, soportesSinAsignar, busSoportes, onClose, on
     numero: data.numero ?? '',
     modelo: data.modelo ?? '',
     categoria: data.categoria ?? '',
-    lado_disponible: data.lado_disponible ?? 'ambos',
-    cliente_actual_id: data.cliente_actual_id ?? '',
     notas: data.notas ?? '',
+    cliente_actual_id: data.cliente_actual_id ?? '',
   })
+  const [ladosDisp, setLadosDisp] = useState<string[]>(parseLados(data.lado_disponible))
 
-  // Initial per-position soporte assignments: prefer existing busSoportes
+  // Initial per-position soporte assignments — a soporte can appear in multiple positions
   const initialPos: Record<string, string> = {}
   for (const pos of POSICIONES) {
-    const s = busSoportes.find(x => x.lado_bus === pos.key)
+    const s = busSoportes.find(x => {
+      const lados = x.lado_bus?.split(',') ?? []
+      return lados.includes(pos.key) || x.lado_bus === pos.key
+    })
     initialPos[pos.key] = s?.id ?? ''
   }
   const [posAssign, setPosAssign] = useState<Record<string, string>>(initialPos)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  // Options for position selects = soportes sin asignar + the one currently in this slot for this bus
-  function optionsForPosition(posKey: string) {
-    const currentId = initialPos[posKey]
-    const current = busSoportes.find(s => s.id === currentId)
-    const base = [...soportesSinAsignar]
-    if (current && !base.find(s => s.id === current.id)) base.unshift(current)
-    return base
-  }
+  // All soportes available: unassigned ones + any already on this bus (can be reused in other positions)
+  const allOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const result: Soporte[] = []
+    for (const s of [...busSoportes, ...soportesSinAsignar]) {
+      if (!seen.has(s.id)) { seen.add(s.id); result.push(s) }
+    }
+    return result.sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [busSoportes, soportesSinAsignar])
 
   async function save() {
     if (!form.numero.trim()) { setError('Número de bus requerido'); return }
     setSaving(true); setError('')
     try {
-      const soporteAssignments = Object.entries(posAssign)
-        .filter(([, sId]) => sId)
-        .map(([ladoBus, soporteId]) => ({ soporteId, ladoBus }))
+      // Group positions by soporteId so same soporte in multiple positions → comma-separated lado_bus
+      const grouped: Record<string, string[]> = {}
+      for (const [ladoBus, sId] of Object.entries(posAssign)) {
+        if (!sId) continue
+        if (!grouped[sId]) grouped[sId] = []
+        grouped[sId].push(ladoBus)
+      }
+      const soporteAssignments = Object.entries(grouped).map(([soporteId, lados]) => ({
+        soporteId,
+        ladoBus: lados.join(','),
+      }))
 
       const payload = {
         ...form,
+        lado_disponible: ladosDisp.join(',') || 'ninguno',
         categoria: form.categoria || null,
         cliente_actual_id: form.cliente_actual_id || null,
         modelo: form.modelo || null,
@@ -587,13 +667,19 @@ function BusModal({ data, clientes, soportesSinAsignar, busSoportes, onClose, on
           </select>
         </div>
         <div>
-          <label style={labelStyle}>Lado disponible</label>
-          <select style={inputStyle} value={form.lado_disponible} onChange={e => setForm({ ...form, lado_disponible: e.target.value })}>
-            <option value="ambos">Ambos lados</option>
-            <option value="izquierdo">Solo izquierdo</option>
-            <option value="derecho">Solo derecho</option>
-            <option value="ninguno">No disponible</option>
-          </select>
+          <label style={labelStyle}>Lados disponibles</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 4 }}>
+            {POSICIONES.map(pos => (
+              <label key={pos.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  checked={ladosDisp.includes(pos.key)}
+                  onChange={e => setLadosDisp(prev => e.target.checked ? [...prev, pos.key] : prev.filter(k => k !== pos.key))}
+                />
+                {pos.label}
+              </label>
+            ))}
+          </div>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <label style={labelStyle}>Cliente actual</label>
@@ -616,7 +702,7 @@ function BusModal({ data, clientes, soportesSinAsignar, busSoportes, onClose, on
               <label style={labelStyle}>{pos.label}</label>
               <select style={inputStyle} value={posAssign[pos.key] ?? ''} onChange={e => setPosAssign({ ...posAssign, [pos.key]: e.target.value })}>
                 <option value="">— sin asignar —</option>
-                {optionsForPosition(pos.key).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                {allOptions.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
               </select>
             </div>
           ))}

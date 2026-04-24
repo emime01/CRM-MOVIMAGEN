@@ -35,7 +35,7 @@ export default async function BusesPage() {
       .order('fecha_desde'),
     supabase
       .from('reservas')
-      .select('estado, clientes(nombre, empresa), reserva_items(soporte_id)')
+      .select('estado, fecha_desde, fecha_hasta, clientes(nombre, empresa), reserva_items(soporte_id)')
       .in('estado', ['aprobada', 'confirmada']),
   ])
 
@@ -53,9 +53,11 @@ export default async function BusesPage() {
     r.reserva_items.some(it => it.soportes?.tipo === 'bus' || it.soportes?.bus_id)
   )
 
-  // Build soporte_id → cliente for active (aprobada/confirmada) reservations
-  const soporteClienteMap: Record<string, { nombre: string; empresa: string | null }> = {}
+  // Build soporte_id → cliente+fechas for active (aprobada/confirmada) reservations
+  const soporteClienteMap: Record<string, { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }> = {}
   for (const r of (activasRes.data ?? []) as unknown as Array<{
+    fecha_desde: string
+    fecha_hasta: string
     clientes: { nombre: string; empresa: string | null } | { nombre: string; empresa: string | null }[] | null
     reserva_items: { soporte_id: string }[]
   }>) {
@@ -63,7 +65,7 @@ export default async function BusesPage() {
     if (!cli) continue
     for (const it of r.reserva_items) {
       if (it.soporte_id && !soporteClienteMap[it.soporte_id]) {
-        soporteClienteMap[it.soporte_id] = { nombre: cli.nombre, empresa: cli.empresa }
+        soporteClienteMap[it.soporte_id] = { nombre: cli.nombre, empresa: cli.empresa, fecha_desde: r.fecha_desde, fecha_hasta: r.fecha_hasta }
       }
     }
   }
