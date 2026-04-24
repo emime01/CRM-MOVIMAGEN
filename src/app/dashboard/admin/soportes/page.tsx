@@ -16,6 +16,7 @@ export interface SoporteRow {
   precio_base: number | null
   precio_semanal: number | null
   tiene_iva: boolean
+  es_digital: boolean
   activo: boolean
 }
 
@@ -27,7 +28,7 @@ export default async function SoportesPage() {
   const supabase = createServerClient()
   const { data: soportes } = await supabase
     .from('soportes')
-    .select('id, nombre, categoria, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, activo')
+    .select('id, nombre, categoria, tipo, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, es_digital, activo')
     .order('activo', { ascending: false })
     .order('seccion', { nullsFirst: false })
     .order('nombre')

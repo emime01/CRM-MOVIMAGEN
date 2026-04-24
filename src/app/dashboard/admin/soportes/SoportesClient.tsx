@@ -16,6 +16,7 @@ interface SoporteForm {
   precio_base: string
   precio_semanal: string
   tiene_iva: boolean
+  es_digital: boolean
 }
 
 interface ImportRow {
@@ -40,7 +41,7 @@ const TIPOS = ['estatico_shopping', 'banner_shopping', 'circuito', 'medianera', 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function emptyForm(): SoporteForm {
-  return { nombre: '', categoria: '', tipo: '', seccion: '', ubicacion: '', precio_base: '', precio_semanal: '', tiene_iva: false }
+  return { nombre: '', categoria: '', tipo: '', seccion: '', ubicacion: '', precio_base: '', precio_semanal: '', tiene_iva: false, es_digital: false }
 }
 
 function soporteToForm(s: SoporteRow): SoporteForm {
@@ -53,6 +54,7 @@ function soporteToForm(s: SoporteRow): SoporteForm {
     precio_base: s.precio_base != null ? String(s.precio_base) : '',
     precio_semanal: s.precio_semanal != null ? String(s.precio_semanal) : '',
     tiene_iva: s.tiene_iva,
+    es_digital: s.es_digital ?? false,
   }
 }
 
@@ -95,6 +97,7 @@ function SoporteModal({ soporte, onClose, onSaved }: {
       precio_base: form.precio_base !== '' ? Number(form.precio_base) : null,
       precio_semanal: form.precio_semanal !== '' ? Number(form.precio_semanal) : null,
       tiene_iva: form.tiene_iva,
+      es_digital: form.es_digital,
     }
 
     const res = await fetch(
@@ -175,8 +178,8 @@ function SoporteModal({ soporte, onClose, onSaved }: {
             </div>
           </div>
 
-          {/* IVA */}
-          <div style={{ marginBottom: 20 }}>
+          {/* IVA + Digital */}
+          <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
               <div onClick={() => set('tiene_iva', !form.tiene_iva)} style={{
                 width: 20, height: 20, borderRadius: 5, flexShrink: 0,
@@ -188,8 +191,19 @@ function SoporteModal({ soporte, onClose, onSaved }: {
               </div>
               <span style={{ fontSize: 13, color: '#1a1915', fontWeight: 500 }}>Incluye IVA (gravado)</span>
             </label>
-            <p style={{ margin: '4px 0 0 30px', fontSize: 11, color: '#9a9895' }}>
-              Los soportes exentos no incluyen IVA en las propuestas.
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <div onClick={() => set('es_digital', !form.es_digital)} style={{
+                width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                border: form.es_digital ? '2px solid #4338ca' : '1.5px solid #c5c2bb',
+                background: form.es_digital ? '#4338ca' : '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}>
+                {form.es_digital && <Check size={12} color="#fff" strokeWidth={3} />}
+              </div>
+              <span style={{ fontSize: 13, color: '#1a1915', fontWeight: 500 }}>Soporte digital</span>
+            </label>
+            <p style={{ margin: '-4px 0 0 30px', fontSize: 11, color: '#9a9895' }}>
+              LEDs, pantallas, circuitos, freeshops. Genera videocomprobante al cerrar campaña.
             </p>
           </div>
 

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { X, Upload, Trash2, Play, ImageIcon, Video } from 'lucide-react'
+import { X, Upload, Trash2, Play, FileText, Film, Loader2 } from 'lucide-react'
 
 interface SoporteInfo { id: string; nombre: string; tipo: string | null; es_digital: boolean | null }
 interface ReservaItem { id: string; soporte_id: string; soportes: SoporteInfo | null }
@@ -58,6 +58,30 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
   const [lightbox, setLightbox] = useState<{ url: string; tipo: 'foto' | 'video' } | null>(null)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  // Comprobante generation state (keyed by reserva_id)
+  const [generando, setGenerando] = useState<Record<string, boolean>>({})
+  const [comprobantesMap, setComprobantesMap] = useState<Record<string, Array<{ tipo: string; url: string }>>>({})
+
+  async function handleGenerarComprobante(reservaId: string) {
+    setGenerando(prev => ({ ...prev, [reservaId]: true }))
+    try {
+      const res = await fetch('/api/comprobantes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reserva_id: reservaId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Error desconocido' }))
+        alert(err.error ?? 'Error generando comprobante')
+        return
+      }
+      const data = await res.json()
+      setComprobantesMap(prev => ({ ...prev, [reservaId]: data.comprobantes }))
+    } finally {
+      setGenerando(prev => ({ ...prev, [reservaId]: false }))
+    }
+  }
 
   const canDelete = (reg: Registro) =>
     reg.subido_por === userId || ['administracion', 'operaciones'].includes(userRol)
@@ -155,7 +179,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
           return (
             <div key={reserva.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               {/* Reserva header */}
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fafafa' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fafafa', flexWrap: 'wrap', gap: 8 }}>
                 <div>
                   <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
                     {reserva.numero_reserva ?? reserva.id.slice(0, 8)}
@@ -164,11 +188,36 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                     {fmtFecha(reserva.fecha_desde)} → {fmtFecha(reserva.fecha_hasta)}
                   </span>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{cli?.empresa ?? cli?.nombre ?? '—'}</div>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: reserva.estado === 'confirmada' ? '#f0fdf4' : '#fef9ec', color: reserva.estado === 'confirmada' ? '#15803d' : '#b45309' }}>
-                    {reserva.estado}
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {/* Comprobante download links if already generated */}
+                  {(comprobantesMap[reserva.id] ?? []).map(c => (
+                    <a
+                      key={c.tipo}
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontFamily: 'Montserrat, sans-serif' }}
+                    >
+                      {c.tipo === 'video' ? <Film size={12} /> : <FileText size={12} />}
+                      {c.tipo === 'video' ? 'Video' : 'PDF'}
+                    </a>
+                  ))}
+                  {/* Generate comprobante button */}
+                  <button
+                    onClick={() => handleGenerarComprobante(reserva.id)}
+                    disabled={generando[reserva.id]}
+                    title="Generar comprobante"
+                    style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: generando[reserva.id] ? '#e5e7eb' : '#1a1a2e', color: generando[reserva.id] ? 'var(--text-muted)' : '#fff', cursor: generando[reserva.id] ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Montserrat, sans-serif' }}
+                  >
+                    {generando[reserva.id] ? <Loader2 size={12} /> : <Film size={12} />}
+                    {generando[reserva.id] ? 'Generando...' : 'Comprobante'}
+                  </button>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{cli?.empresa ?? cli?.nombre ?? '—'}</div>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: reserva.estado === 'confirmada' ? '#f0fdf4' : '#fef9ec', color: reserva.estado === 'confirmada' ? '#15803d' : '#b45309' }}>
+                      {reserva.estado}
+                    </span>
+                  </div>
                 </div>
               </div>
 
