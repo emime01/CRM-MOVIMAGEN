@@ -30,7 +30,7 @@ export default async function BusesPage() {
       .order('nombre'),
     supabase
       .from('reservas')
-      .select('id, numero_reserva, fecha_desde, fecha_hasta, estado, clientes(nombre, empresa), reserva_items(id, soporte_id, bus_id, soportes(nombre, tipo, bus_id, lado_bus))')
+      .select('id, fecha_desde, fecha_hasta, estado, clientes(nombre, empresa), reserva_items(id, soporte_id, bus_id, soportes(nombre, tipo, bus_id, lado_bus))')
       .eq('estado', 'aprobada')
       .order('fecha_desde'),
     supabase

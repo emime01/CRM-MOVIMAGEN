@@ -41,7 +41,6 @@ interface ReservaItem {
 
 interface ReservaPendiente {
   id: string
-  numero_reserva: string | null
   fecha_desde: string
   fecha_hasta: string
   estado: string
@@ -428,7 +427,7 @@ function PendientesTab({ reservas, buses, onConfirm }: {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {r.numero_reserva ?? r.id.slice(0, 8)} · {cliente}
+                  {r.id.slice(0, 8).toUpperCase()} · {cliente}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                   {new Date(r.fecha_desde + 'T00:00:00').toLocaleDateString('es-UY')} — {new Date(r.fecha_hasta + 'T00:00:00').toLocaleDateString('es-UY')}
@@ -509,7 +508,7 @@ function ConfirmReservaModal({ reserva, conflicts, overrides: initialOverrides, 
   const conflictSet = new Set(conflicts.map(c => c.itemId))
 
   return (
-    <Modal title={`Confirmar reserva ${reserva.numero_reserva ?? ''}`} onClose={onClose} width={600}>
+    <Modal title={`Confirmar reserva ${reserva.id.slice(0, 8).toUpperCase()}`} onClose={onClose} width={600}>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
         {reserva.clientes?.empresa ?? reserva.clientes?.nombre} ·{' '}
         {new Date(reserva.fecha_desde + 'T00:00:00').toLocaleDateString('es-UY')} — {new Date(reserva.fecha_hasta + 'T00:00:00').toLocaleDateString('es-UY')}
