@@ -85,7 +85,7 @@ function drawHeader(page: PDFPage, data: PdfComprobante, regular: PDFFont, bold:
   page.drawText(data.numeroCampana, { x: PAD + 50, y: metaY - 14, size: 9, font: regular, color: DARK })
 
   page.drawText(`Período:`, { x: 200, y: metaY - 14, size: 9, font: bold, color: DARK })
-  page.drawText(`${data.fechaDesde}  →  ${data.fechaHasta}`, { x: 200 + 46, y: metaY - 14, size: 9, font: regular, color: DARK })
+  page.drawText(`${data.fechaDesde} al ${data.fechaHasta}`, { x: 200 + 46, y: metaY - 14, size: 9, font: regular, color: DARK })
 
   // Separator
   page.drawLine({ start: { x: PAD, y: H - HEADER_H }, end: { x: W - PAD, y: H - HEADER_H }, thickness: 0.5, color: LIGHT })
@@ -93,7 +93,7 @@ function drawHeader(page: PDFPage, data: PdfComprobante, regular: PDFFont, bold:
 
 function drawFooter(page: PDFPage, pageNum: number, totalPages: number, regular: PDFFont) {
   page.drawLine({ start: { x: PAD, y: FOOTER_H + 4 }, end: { x: W - PAD, y: FOOTER_H + 4 }, thickness: 0.5, color: LIGHT })
-  page.drawText('MOVIMAGEN — Comprobante generado automáticamente', { x: PAD, y: 8, size: 7, font: regular, color: MID })
+  page.drawText('MOVIMAGEN - Comprobante generado automaticamente', { x: PAD, y: 8, size: 7, font: regular, color: MID })
   const pageLabel = `Pág. ${pageNum} / ${totalPages}`
   page.drawText(pageLabel, { x: W - PAD - pageLabel.length * 4.2, y: 8, size: 7, font: regular, color: MID })
 }
@@ -135,7 +135,7 @@ export async function generatePdfComprobante(data: PdfComprobante): Promise<Buff
     const topY = H - HEADER_H - 8 - rowInPage * rowH
 
     // Caption
-    const nombre = foto.soporteNombre.length > 38 ? foto.soporteNombre.slice(0, 36) + '…' : foto.soporteNombre
+    const nombre = foto.soporteNombre.length > 38 ? foto.soporteNombre.slice(0, 36) + '...' : foto.soporteNombre
     page.drawText(nombre, { x, y: topY - 11, size: 8, font: bold, color: DARK })
     if (foto.fechaRegistro) {
       page.drawText(formatDate(foto.fechaRegistro), { x, y: topY - 22, size: 7, font: regular, color: MID })
