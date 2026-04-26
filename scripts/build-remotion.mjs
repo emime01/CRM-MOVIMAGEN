@@ -16,7 +16,8 @@ console.log('[remotion]   out:  ', outDir)
 const result = await bundle({
   entryPoint,
   outDir,
-  webpackOverride: (config) => config,
+  // Sin sourcemaps: pesan ~13 MB innecesarios en el deploy serverless.
+  webpackOverride: (config) => ({ ...config, devtool: false }),
 })
 
 console.log('[remotion] Done. Bundle path:', result)

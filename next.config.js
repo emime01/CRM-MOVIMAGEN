@@ -9,8 +9,6 @@ const nextConfig = {
       'esbuild',
       '@sparticuz/chromium-min',
     ],
-    // Asegurar que las composiciones de Remotion (que se bundlean en runtime
-    // con el bundler dentro de la API route) viajen al deploy serverless.
     outputFileTracingIncludes: {
       '/api/comprobantes': [
         // Bundle pre-armado en build (scripts/build-remotion.mjs) — evita correr
@@ -18,6 +16,23 @@ const nextConfig = {
         './.remotion-bundle/**/*',
         // Fallback por si el bundle pre-armado no está y hay que bundlear runtime.
         './src/remotion/**/*',
+      ],
+    },
+    outputFileTracingExcludes: {
+      '/api/comprobantes': [
+        // Caché de webpack (~89 MB), solo build-time.
+        'node_modules/.cache/**',
+        // Build-time tooling traccionado por @remotion/bundler que no necesitamos
+        // en runtime (ya pre-bundleamos).
+        'node_modules/@rspack/**',
+        'node_modules/@remotion/studio/**',
+        'node_modules/@remotion/bundler/**',
+        'node_modules/webpack/**',
+        'node_modules/typescript/**',
+        'node_modules/@esbuild/**',
+        'node_modules/esbuild/**',
+        // Sourcemaps innecesarios en runtime.
+        '**/*.map',
       ],
     },
   },

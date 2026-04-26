@@ -1,7 +1,6 @@
 import fs from 'fs/promises'
 import path from 'path'
 import os from 'os'
-import { bundle } from '@remotion/bundler'
 import { selectComposition, renderMedia } from '@remotion/renderer'
 import type { ComprobanteProps } from '@/remotion/Comprobante'
 
@@ -42,7 +41,9 @@ async function getBundle(): Promise<string> {
     return cachedBundle
   }
 
-  // Dev fallback: bundlear en runtime.
+  // Dev fallback: bundlear en runtime. Import dinámico para que @remotion/bundler
+  // (y sus deps rspack/webpack/esbuild) no entren al bundle serverless de prod.
+  const { bundle } = await import('@remotion/bundler')
   const entryPoint = path.resolve(process.cwd(), 'src/remotion/index.ts')
   cachedBundle = await bundle({
     entryPoint,
