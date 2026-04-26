@@ -16,6 +16,9 @@ const nextConfig = {
         './.remotion-bundle/**/*',
         // Fallback por si el bundle pre-armado no está y hay que bundlear runtime.
         './src/remotion/**/*',
+        // Binarios nativos del compositor Remotion (remotion, ffmpeg, libav*.so).
+        // NFT no los detecta porque Remotion los carga vía path.join dinámico.
+        './node_modules/@remotion/compositor-linux-x64-gnu/**/*',
       ],
     },
     outputFileTracingExcludes: {
@@ -27,6 +30,10 @@ const nextConfig = {
         'node_modules/@rspack/**',
         'node_modules/@remotion/studio/**',
         'node_modules/@remotion/bundler/**',
+        // Compositor para musl (alpine) — Vercel usa glibc.
+        'node_modules/@remotion/compositor-linux-x64-musl/**',
+        'node_modules/@remotion/compositor-darwin-**',
+        'node_modules/@remotion/compositor-win32-**',
         'node_modules/webpack/**',
         'node_modules/typescript/**',
         'node_modules/@esbuild/**',
