@@ -198,7 +198,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                       style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontFamily: 'Montserrat, sans-serif' }}
                     >
                       {c.tipo === 'video' ? <Film size={12} /> : <FileText size={12} />}
-                      {c.tipo === 'video' ? 'Video' : 'PDF'}
+                      {c.tipo === 'video' ? 'Video' : c.tipo === 'pdf_buses' ? 'PDF Buses' : 'PDF'}
                     </a>
                   ))}
                   {/* Generate comprobante button */}
