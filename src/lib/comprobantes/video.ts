@@ -33,54 +33,21 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
   })
 }
 
-function drawTextFilter(text: string, y: string, fontSize = 28) {
-  const safe = text.replace(/[':]/g, ' ')
-  return `drawtext=text='${safe}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${y}:shadowcolor=black:shadowx=2:shadowy=2`
-}
-
-function buildTitleSlide(tmpDir: string, data: VideoComprobante): Promise<string> {
-  const outPath = path.join(tmpDir, 'title.mp4')
-  const vf = [
-    drawTextFilter(data.cliente, 'h/2-60', 32),
-    drawTextFilter(`Campaña ${data.numeroCampana}`, 'h/2-10', 24),
-    drawTextFilter(`${data.fechaDesde} → ${data.fechaHasta}`, 'h/2+34', 18),
-  ].join(',')
-
-  return new Promise((resolve, reject) => {
-    ffmpeg()
-      .input('color=c=#1a1a2e:s=1280x720:r=25:d=3')
-      .inputFormat('lavfi')
-      .videoFilters(vf)
-      .outputOptions(['-c:v libx264', '-t 3', '-pix_fmt yuv420p'])
-      .output(outPath)
-      .on('end', () => resolve(outPath))
-      .on('error', reject)
-      .run()
-  })
-}
-
-function buildOutroSlide(tmpDir: string): Promise<string> {
-  const outPath = path.join(tmpDir, 'outro.mp4')
-  return new Promise((resolve, reject) => {
-    ffmpeg()
-      .input('color=c=#1a1a2e:s=1280x720:r=25:d=2')
-      .inputFormat('lavfi')
-      .videoFilters(drawTextFilter('MOVIMAGEN', 'h/2-20', 36))
-      .outputOptions(['-c:v libx264', '-t 2', '-pix_fmt yuv420p'])
-      .output(outPath)
-      .on('end', () => resolve(outPath))
-      .on('error', reject)
-      .run()
-  })
-}
-
+// Re-encode each clip to a uniform format so concat works reliably.
 function normalizeClip(input: string, output: string): Promise<string> {
   return new Promise((resolve, reject) => {
     ffmpeg(input)
-      .videoFilters('scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2')
-      .audioCodec('aac')
+      .videoFilters('scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black')
       .videoCodec('libx264')
-      .outputOptions(['-pix_fmt yuv420p', '-ar 44100', '-ac 2'])
+      .audioCodec('aac')
+      .outputOptions([
+        '-pix_fmt yuv420p',
+        '-r 25',
+        '-ar 44100',
+        '-ac 2',
+        '-preset veryfast',
+        '-movflags +faststart',
+      ])
       .output(output)
       .on('end', () => resolve(output))
       .on('error', reject)
@@ -89,12 +56,14 @@ function normalizeClip(input: string, output: string): Promise<string> {
 }
 
 export async function generateVideoComprobante(data: VideoComprobante): Promise<Buffer> {
+  if (data.clips.length === 0) {
+    throw new Error('No hay clips para generar el comprobante')
+  }
+
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comprobante-'))
 
   try {
-    const parts: string[] = []
-
-    parts.push(await buildTitleSlide(tmpDir, data))
+    const normalized: string[] = []
 
     for (let i = 0; i < data.clips.length; i++) {
       const clip = data.clips[i]
@@ -102,26 +71,31 @@ export async function generateVideoComprobante(data: VideoComprobante): Promise<
       const normPath = path.join(tmpDir, `clip_${i}.mp4`)
       await downloadFile(clip.url, rawPath)
       await normalizeClip(rawPath, normPath)
-      parts.push(normPath)
+      normalized.push(normPath)
     }
 
-    parts.push(await buildOutroSlide(tmpDir))
-
-    const listPath = path.join(tmpDir, 'list.txt')
-    await fs.writeFile(listPath, parts.map(p => `file '${p}'`).join('\n'))
-
     const outputPath = path.join(tmpDir, 'output.mp4')
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg()
-        .input(listPath)
-        .inputOptions(['-f concat', '-safe 0'])
-        .videoCodec('copy')
-        .audioCodec('copy')
-        .output(outputPath)
-        .on('end', () => resolve())
-        .on('error', reject)
-        .run()
-    })
+
+    if (normalized.length === 1) {
+      // Single clip: just copy the normalized output.
+      await fs.copyFile(normalized[0], outputPath)
+    } else {
+      // Multiple clips: concat via demuxer (faster, no re-encode).
+      const listPath = path.join(tmpDir, 'list.txt')
+      await fs.writeFile(listPath, normalized.map(p => `file '${p}'`).join('\n'))
+
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg()
+          .input(listPath)
+          .inputOptions(['-f concat', '-safe 0'])
+          .videoCodec('copy')
+          .audioCodec('copy')
+          .output(outputPath)
+          .on('end', () => resolve())
+          .on('error', reject)
+          .run()
+      })
+    }
 
     return await fs.readFile(outputPath)
   } finally {
