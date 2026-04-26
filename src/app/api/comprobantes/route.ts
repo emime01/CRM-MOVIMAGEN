@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
         outroUrl,
       })
 
-      const videoPath = `${reserva_id}/video_${Date.now()}.mp4`
+      const videoPath = `${reserva_id}/video.mp4`
       const { error: upErr } = await supabase.storage.from('comprobantes').upload(videoPath, buffer, { contentType: 'video/mp4', upsert: true })
       if (upErr) throw new Error(`Upload falló: ${upErr.message}`)
       generated.push({ tipo: 'video', path: videoPath })
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
         fotos,
       })
 
-      const pdfPath = `${reserva_id}/comprobante_${Date.now()}.pdf`
+      const pdfPath = `${reserva_id}/comprobante.pdf`
       const { error: upErr } = await supabase.storage.from('comprobantes').upload(pdfPath, buffer, { contentType: 'application/pdf', upsert: true })
       if (upErr) throw new Error(`Upload falló: ${upErr.message}`)
       generated.push({ tipo: 'pdf', path: pdfPath })
