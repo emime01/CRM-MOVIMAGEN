@@ -4,15 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
-// Long timeout for video generation
 export const maxDuration = 300
-
-// Assets fijos del comprobante. Se esperan subidos al bucket público `assets`
-// con estos paths (ver supabase/migration_v5_logo_y_comprobante_remotion.sql):
-//   comprobantes/intro.mp4
-//   comprobantes/outro.mp4
-const INTRO_PATH = 'comprobantes/intro.mp4'
-const OUTRO_PATH = 'comprobantes/outro.mp4'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -26,12 +18,11 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServerClient()
 
-  // Fetch reserva + items + logo del cliente
   const { data: reserva } = await supabase
     .from('reservas')
     .select(`
       id, fecha_desde, fecha_hasta,
-      clientes(nombre, empresa, logo_url),
+      clientes(nombre, empresa),
       reserva_items(
         soporte_id,
         soportes(id, nombre, es_digital)
@@ -44,13 +35,9 @@ export async function POST(req: NextRequest) {
 
   const cli = Array.isArray(reserva.clientes) ? reserva.clientes[0] : reserva.clientes
   const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'Cliente'
-  const logoUrl: string | null = cli?.logo_url ?? null
   const numeroCampana = reserva_id.slice(0, 8)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const registrosBase = `${supabaseUrl}/storage/v1/object/public/registros`
-  const assetsBase = `${supabaseUrl}/storage/v1/object/public/assets`
-  const introUrl = `${assetsBase}/${INTRO_PATH}`
-  const outroUrl = `${assetsBase}/${OUTRO_PATH}`
 
   const items = (reserva.reserva_items as unknown as Array<{
     soporte_id: string
@@ -88,9 +75,6 @@ export async function POST(req: NextRequest) {
 
       const buffer = await generateVideoComprobante({
         cliente: clienteNombre,
-        logoUrl,
-        introUrl,
-        outroUrl,
         numeroCampana,
         fechaDesde: reserva.fecha_desde,
         fechaHasta: reserva.fecha_hasta,

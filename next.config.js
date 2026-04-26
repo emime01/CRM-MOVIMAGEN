@@ -1,47 +1,12 @@
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   experimental: {
-    // Remotion + Chromium son Node-only y traen binarios. No los puede bundlear webpack.
-    serverComponentsExternalPackages: [
-      '@remotion/bundler',
-      '@remotion/renderer',
-      'remotion',
-      'esbuild',
-      '@sparticuz/chromium-min',
-    ],
-    outputFileTracingIncludes: {
-      '/api/comprobantes': [
-        // Bundle pre-armado en build (scripts/build-remotion.mjs) — evita correr
-        // webpack en runtime durante el cold start.
-        './.remotion-bundle/**/*',
-        // Fallback por si el bundle pre-armado no está y hay que bundlear runtime.
-        './src/remotion/**/*',
-        // Binarios nativos del compositor Remotion (remotion, ffmpeg, libav*.so).
-        // NFT no los detecta porque Remotion los carga vía path.join dinámico.
-        './node_modules/@remotion/compositor-linux-x64-gnu/**/*',
-      ],
-    },
-    outputFileTracingExcludes: {
-      '/api/comprobantes': [
-        // Caché de webpack (~89 MB), solo build-time.
-        'node_modules/.cache/**',
-        // Build-time tooling traccionado por @remotion/bundler que no necesitamos
-        // en runtime (ya pre-bundleamos).
-        'node_modules/@rspack/**',
-        'node_modules/@remotion/studio/**',
-        'node_modules/@remotion/bundler/**',
-        // Compositor para musl (alpine) — Vercel usa glibc.
-        'node_modules/@remotion/compositor-linux-x64-musl/**',
-        'node_modules/@remotion/compositor-darwin-**',
-        'node_modules/@remotion/compositor-win32-**',
-        'node_modules/webpack/**',
-        'node_modules/typescript/**',
-        'node_modules/@esbuild/**',
-        'node_modules/esbuild/**',
-        // Sourcemaps innecesarios en runtime.
-        '**/*.map',
-      ],
-    },
+    // Keep ffmpeg packages server-side only so webpack doesn't try to bundle
+    // the native binary, and Vercel's file tracer ships it with the function.
+    serverComponentsExternalPackages: ['@ffmpeg-installer/ffmpeg', 'fluent-ffmpeg'],
+  },
+  outputFileTracingIncludes: {
+    '/api/comprobantes': ['./node_modules/@ffmpeg-installer/**/*'],
   },
 }
 module.exports = nextConfig
