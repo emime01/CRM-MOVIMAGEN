@@ -6,7 +6,11 @@ const nextConfig = {
     serverComponentsExternalPackages: ['@ffmpeg-installer/ffmpeg', 'fluent-ffmpeg'],
   },
   outputFileTracingIncludes: {
-    '/api/comprobantes': ['./node_modules/@ffmpeg-installer/**/*'],
+    '/api/comprobantes': [
+      './node_modules/@ffmpeg-installer/**/*',
+      // Font used by ffmpeg drawtext for soporte name + dates overlay
+      './src/lib/comprobantes/fonts/**/*',
+    ],
   },
 }
 module.exports = nextConfig

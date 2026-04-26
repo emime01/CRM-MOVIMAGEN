@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
   const numeroCampana = reserva_id.slice(0, 8)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const registrosBase = `${supabaseUrl}/storage/v1/object/public/registros`
+  const assetsBase = `${supabaseUrl}/storage/v1/object/public/assets`
+  const introUrl = `${assetsBase}/comprobantes/intro.mp4`
+  const outroUrl = `${assetsBase}/comprobantes/outro.mp4`
 
   const items = (reserva.reserva_items as unknown as Array<{
     soporte_id: string
@@ -79,6 +82,8 @@ export async function POST(req: NextRequest) {
         fechaDesde: reserva.fecha_desde,
         fechaHasta: reserva.fecha_hasta,
         clips,
+        introUrl,
+        outroUrl,
       })
 
       const videoPath = `${reserva_id}/video_${Date.now()}.mp4`
