@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -90,8 +90,37 @@ interface DashboardShellProps {
 export default function DashboardShell({ user, children }: DashboardShellProps) {
   const pathname = usePathname()
   const [chatOpen, setChatOpen] = useState(false)
-  const [chatMessage, setChatMessage] = useState('')
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const [testMode, setTestMode] = useState(false)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, chatLoading])
+
+  async function sendMessage() {
+    const text = chatInput.trim()
+    if (!text || chatLoading) return
+    const updated = [...chatMessages, { role: 'user' as const, content: text }]
+    setChatMessages(updated)
+    setChatInput('')
+    setChatLoading(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: updated, userName: user.name, userRol: user.rol }),
+      })
+      const data = await res.json()
+      setChatMessages(prev => [...prev, { role: 'assistant', content: data.text ?? 'Lo siento, no pude responder.' }])
+    } catch {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Lo siento, ocurrió un error. Intentá de nuevo.' }])
+    } finally {
+      setChatLoading(false)
+    }
+  }
 
   const navItems = testMode ? NAV_ITEMS : NAV_ITEMS.filter(item => item.roles.includes(user.rol))
   const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
@@ -337,48 +366,56 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         </div>
 
         {/* Messages area */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-          <div style={{
-            textAlign: 'center',
-            color: 'var(--text-muted)',
-            fontSize: 13,
-            marginTop: 40,
-          }}>
-            <div style={{
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              background: 'var(--orange-pale)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 12px',
-            }}>
-              <MessageCircle size={22} color="var(--orange)" />
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
+          {chatMessages.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginTop: 40 }}>
+              <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--orange-pale)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                <MessageCircle size={22} color="var(--orange)" />
+              </div>
+              <p style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>¡Hola! Soy Movi.</p>
+              <p style={{ fontSize: 12, lineHeight: 1.6 }}>Tu asistente del CRM de Movimagen.<br />Preguntame lo que necesites.</p>
             </div>
-            <p style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-              ¡Hola! Soy Movi.
-            </p>
-            <p style={{ fontSize: 12, lineHeight: 1.5 }}>
-              Tu asistente de IA de Movimagen.<br />
-              Próximamente disponible.
-            </p>
-          </div>
+          ) : (
+            chatMessages.map((msg, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+                <div style={{
+                  maxWidth: '82%',
+                  padding: '8px 12px',
+                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                  background: msg.role === 'user' ? 'var(--orange)' : 'var(--bg-app)',
+                  color: msg.role === 'user' ? '#fff' : 'var(--text-primary)',
+                  fontSize: 13,
+                  lineHeight: 1.55,
+                  border: msg.role === 'assistant' ? '1px solid var(--border)' : 'none',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            ))
+          )}
+          {chatLoading && (
+            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 10 }}>
+              <div style={{ padding: '10px 14px', borderRadius: '12px 12px 12px 2px', background: 'var(--bg-app)', border: '1px solid var(--border)', display: 'flex', gap: 5, alignItems: 'center' }}>
+                {[0, 1, 2].map(j => (
+                  <div key={j} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--orange)', opacity: 0.7, animation: `bounce 1.2s ease-in-out ${j * 0.2}s infinite` }} />
+                ))}
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Chat input */}
-        <div style={{
-          padding: '12px 16px',
-          borderTop: '1px solid var(--border)',
-          display: 'flex',
-          gap: 8,
-        }}>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
           <input
             type="text"
-            value={chatMessage}
-            onChange={e => setChatMessage(e.target.value)}
+            value={chatInput}
+            onChange={e => setChatInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
             placeholder="Escribí tu consulta..."
-            disabled
+            disabled={chatLoading}
             style={{
               flex: 1,
               padding: '8px 12px',
@@ -387,23 +424,25 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
               fontSize: 13,
               fontFamily: 'Montserrat, sans-serif',
               color: 'var(--text-primary)',
-              background: 'var(--gray-100)',
+              background: chatLoading ? 'var(--gray-100)' : '#fff',
               outline: 'none',
             }}
           />
           <button
-            disabled
+            onClick={sendMessage}
+            disabled={chatLoading || !chatInput.trim()}
             style={{
               width: 36,
               height: 36,
               borderRadius: 8,
               background: 'var(--orange)',
               border: 'none',
-              cursor: 'not-allowed',
+              cursor: chatLoading || !chatInput.trim() ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: 0.5,
+              opacity: chatLoading || !chatInput.trim() ? 0.5 : 1,
+              flexShrink: 0,
             }}
           >
             <Send size={15} color="#fff" />
