@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -10,6 +10,78 @@ import {
   CreditCard, Settings, MessageCircle, X, Send,
   FlaskConical, Package, BookUser, Camera,
 } from 'lucide-react'
+
+// ─── Markdown renderer ───────────────────────────────────────────────────────
+
+function renderInline(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = []
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`/g
+  let last = 0, m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    if (m[1] !== undefined) parts.push(<strong key={m.index}>{m[1]}</strong>)
+    else if (m[2] !== undefined) parts.push(<em key={m.index}>{m[2]}</em>)
+    else if (m[3] !== undefined) parts.push(<code key={m.index} style={{ background: 'rgba(0,0,0,0.08)', borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: 'monospace' }}>{m[3]}</code>)
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts.length === 1 ? parts[0] : <Fragment>{parts}</Fragment>
+}
+
+function renderMarkdown(text: string): React.ReactNode {
+  const lines = text.split('\n')
+  const out: React.ReactNode[] = []
+  let listBuf: { type: 'ul' | 'ol'; items: string[] } | null = null
+  let key = 0
+
+  const flushList = () => {
+    if (!listBuf) return
+    const Tag = listBuf.type
+    out.push(
+      <Tag key={key++} style={{ margin: '4px 0 8px', paddingLeft: 20 }}>
+        {listBuf.items.map((item, j) => (
+          <li key={j} style={{ marginBottom: 3, lineHeight: 1.55 }}>{renderInline(item)}</li>
+        ))}
+      </Tag>
+    )
+    listBuf = null
+  }
+
+  for (const line of lines) {
+    const bullet   = line.match(/^[-*•]\s+(.+)/)
+    const numbered = line.match(/^\d+\.\s+(.+)/)
+    const h2       = line.match(/^##\s+(.+)/)
+    const h3       = line.match(/^###\s+(.+)/)
+    const hr       = /^---+$/.test(line.trim())
+
+    if (bullet) {
+      if (listBuf?.type === 'ol') flushList()
+      if (!listBuf) listBuf = { type: 'ul', items: [] }
+      listBuf.items.push(bullet[1])
+    } else if (numbered) {
+      if (listBuf?.type === 'ul') flushList()
+      if (!listBuf) listBuf = { type: 'ol', items: [] }
+      listBuf.items.push(numbered[1])
+    } else {
+      flushList()
+      if (h2) {
+        out.push(<div key={key++} style={{ fontWeight: 700, fontSize: 13, color: 'var(--orange)', margin: '10px 0 4px' }}>{renderInline(h2[1])}</div>)
+      } else if (h3) {
+        out.push(<div key={key++} style={{ fontWeight: 700, fontSize: 12, margin: '8px 0 2px' }}>{renderInline(h3[1])}</div>)
+      } else if (hr) {
+        out.push(<hr key={key++} style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0' }} />)
+      } else if (line.trim() === '') {
+        out.push(<div key={key++} style={{ height: 5 }} />)
+      } else {
+        out.push(<div key={key++} style={{ lineHeight: 1.55, marginBottom: 1 }}>{renderInline(line)}</div>)
+      }
+    }
+  }
+  flushList()
+  return <>{out}</>
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion'
 
@@ -379,18 +451,16 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
             chatMessages.map((msg, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
                 <div style={{
-                  maxWidth: '82%',
+                  maxWidth: '88%',
                   padding: '8px 12px',
                   borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
                   background: msg.role === 'user' ? 'var(--orange)' : 'var(--bg-app)',
                   color: msg.role === 'user' ? '#fff' : 'var(--text-primary)',
                   fontSize: 13,
-                  lineHeight: 1.55,
                   border: msg.role === 'assistant' ? '1px solid var(--border)' : 'none',
-                  whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}>
-                  {msg.content}
+                  {msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content}
                 </div>
               </div>
             ))
