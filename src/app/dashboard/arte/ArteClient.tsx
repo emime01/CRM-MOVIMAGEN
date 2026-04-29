@@ -61,7 +61,7 @@ interface Muestra {
 
 interface Props {
   soportes: Soporte[]
-  campanasMap: Record<string, CampanaInfo>
+  campanasMap: Record<string, CampanaInfo[]>
   ordenes: OrdenConSoportes[]
   supabaseUrl: string
   supabaseAnonKey: string
@@ -112,7 +112,7 @@ function PlanillaTab({
   soportes, campanasMap, supabase, storageUrl,
 }: {
   soportes: Soporte[]
-  campanasMap: Record<string, CampanaInfo>
+  campanasMap: Record<string, CampanaInfo[]>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any
   storageUrl: string
@@ -125,7 +125,7 @@ function PlanillaTab({
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const total = soportes.length
-  const ocupadas = soportes.filter(s => campanasMap[s.id]).length
+  const ocupadas = soportes.filter(s => (campanasMap[s.id] ?? []).length > 0).length
 
   async function loadMateriales(soporteId: string) {
     if (loadedIds.has(soporteId)) return
@@ -149,7 +149,7 @@ function PlanillaTab({
 
   async function handleUpload(soporteId: string, files: FileList | null) {
     if (!files || files.length === 0) return
-    const campana = campanasMap[soporteId]
+    const campana = (campanasMap[soporteId] ?? [])[0] ?? null
     setUploading(prev => ({ ...prev, [soporteId]: true }))
 
     for (const file of Array.from(files)) {
@@ -207,7 +207,7 @@ function PlanillaTab({
       {/* Soporte rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {soportes.map(s => {
-          const campana = campanasMap[s.id]
+          const campanas = campanasMap[s.id] ?? []
           const isExpanded = expanded.has(s.id)
           const mats = materialesMap[s.id] ?? []
           const isUploading = uploading[s.id]
@@ -215,48 +215,75 @@ function PlanillaTab({
           return (
             <div key={s.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
               {/* Header row */}
-              <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <button
                   onClick={() => toggle(s.id)}
-                  style={{ ...btnSecondary, padding: '4px 6px', minWidth: 28, justifyContent: 'center' }}
+                  style={{ ...btnSecondary, padding: '4px 6px', minWidth: 28, justifyContent: 'center', marginTop: 2 }}
                 >
                   {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{s.nombre}</span>
-                  {s.ubicacion && <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-muted)' }}>{s.ubicacion}</span>}
+                {/* Soporte name */}
+                <div style={{ minWidth: 140 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{s.nombre}</div>
+                  {s.ubicacion && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{s.ubicacion}</div>}
                 </div>
 
-                {campana ? (
-                  <div style={{ textAlign: 'right', minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{campana.empresa}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{campana.marca} · {fmtFecha(campana.desde)} - {fmtFecha(campana.hasta)}</div>
-                  </div>
-                ) : (
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 5, background: '#f0fdf4', color: '#15803d' }}>Libre</span>
-                )}
+                {/* Campaigns list */}
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  {campanas.length === 0 ? (
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 5, background: '#f0fdf4', color: '#15803d' }}>Libre</span>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {campanas.map((c, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{c.empresa}</span>
+                          {c.marca && c.marca !== '—' && (
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.marca}</span>
+                          )}
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            {fmtFecha(c.desde)} → {fmtFecha(c.hasta)}
+                          </span>
+                          {/* Highlight if ending soon (≤30 days) */}
+                          {c.hasta && (() => {
+                            const dias = Math.ceil((new Date(c.hasta + 'T00:00:00').getTime() - Date.now()) / 86400000)
+                            if (dias <= 30 && dias >= 0) return (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: dias <= 7 ? '#fef2f2' : '#fef9ec', color: dias <= 7 ? '#dc2626' : '#b45309' }}>
+                                {dias === 0 ? 'vence hoy' : `${dias}d`}
+                              </span>
+                            )
+                            return null
+                          })()}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  {loadedIds.has(s.id) ? `${mats.length} material${mats.length !== 1 ? 'es' : ''}` : ''}
-                </span>
-
-                <button
-                  onClick={() => fileRefs.current[s.id]?.click()}
-                  disabled={isUploading}
-                  style={{ ...btnPrimary, opacity: isUploading ? 0.6 : 1 }}
-                >
-                  <Upload size={12} />
-                  {isUploading ? 'Subiendo...' : 'Subir material'}
-                </button>
-                <input
-                  ref={el => { fileRefs.current[s.id] = el }}
-                  type="file"
-                  accept="image/*,video/*,.pdf,.ai,.psd,.eps,.png,.jpg,.jpeg,.mp4,.mov"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={e => handleUpload(s.id, e.target.files)}
-                />
+                {/* Material count + upload */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  {loadedIds.has(s.id) && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {mats.length} material{mats.length !== 1 ? 'es' : ''}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => fileRefs.current[s.id]?.click()}
+                    disabled={isUploading}
+                    style={{ ...btnPrimary, opacity: isUploading ? 0.6 : 1 }}
+                  >
+                    <Upload size={12} />
+                    {isUploading ? 'Subiendo...' : 'Subir material'}
+                  </button>
+                  <input
+                    ref={el => { fileRefs.current[s.id] = el }}
+                    type="file"
+                    accept="image/*,.pdf,.ai,.psd,.eps,.png,.jpg,.jpeg"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={e => handleUpload(s.id, e.target.files)}
+                  />
+                </div>
               </div>
 
               {/* Expanded: material grid */}
@@ -269,7 +296,6 @@ function PlanillaTab({
                       {mats.map(mat => {
                         const url = `${storageUrl}/${mat.storage_path}`
                         const isImg = /\.(jpe?g|png|gif|webp)$/i.test(mat.nombre_archivo ?? '')
-                        const isVideo = /\.(mp4|mov|webm|avi)$/i.test(mat.nombre_archivo ?? '')
                         return (
                           <div key={mat.id} style={{ position: 'relative', width: 120, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--bg-card)', flexShrink: 0 }}>
                             {isImg ? (
@@ -281,7 +307,7 @@ function PlanillaTab({
                               />
                             ) : (
                               <div style={{ height: 90, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer' }} onClick={() => window.open(url, '_blank')}>
-                                {isVideo ? '🎬' : '📄'}
+                                📄
                                 <span style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', padding: '0 4px', wordBreak: 'break-all' }}>{mat.nombre_archivo}</span>
                               </div>
                             )}

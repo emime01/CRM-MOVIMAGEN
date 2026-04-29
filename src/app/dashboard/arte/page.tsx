@@ -36,22 +36,25 @@ export default async function ArteDigitalPage() {
       .order('fecha_alta_prevista', { ascending: false }),
   ])
 
-  // Build campanas map (soporte_id → active campaign)
-  const campanasMap: Record<string, { empresa: string; marca: string; desde: string; hasta: string; orden_id: string; reserva_id: string | null }> = {}
+  // Build campanas map (soporte_id → all active campaigns)
+  const campanasMap: Record<string, { empresa: string; marca: string; desde: string; hasta: string; orden_id: string; reserva_id: string | null }[]> = {}
   ;(items ?? []).forEach((item: any) => {
     if (!item.soporte_id) return
     const ord = Array.isArray(item.ordenes_venta) ? item.ordenes_venta[0] : item.ordenes_venta
     if (!ord || !['aprobada', 'en_oic', 'facturada', 'cobrada'].includes(ord.estado)) return
     if (ord.fecha_baja_prevista && ord.fecha_baja_prevista < today) return
-    if (campanasMap[item.soporte_id]) return
     const cli = Array.isArray(ord.clientes) ? ord.clientes[0] : ord.clientes
-    campanasMap[item.soporte_id] = {
-      empresa: cli?.empresa ?? cli?.nombre ?? '—',
-      marca: ord.marca ?? '—',
-      desde: ord.fecha_alta_prevista ?? '',
-      hasta: ord.fecha_baja_prevista ?? '',
-      orden_id: ord.id,
-      reserva_id: null,
+    if (!campanasMap[item.soporte_id]) campanasMap[item.soporte_id] = []
+    // Avoid duplicate orden entries
+    if (!campanasMap[item.soporte_id].some((c: any) => c.orden_id === ord.id)) {
+      campanasMap[item.soporte_id].push({
+        empresa: cli?.empresa ?? cli?.nombre ?? '—',
+        marca: ord.marca ?? '—',
+        desde: ord.fecha_alta_prevista ?? '',
+        hasta: ord.fecha_baja_prevista ?? '',
+        orden_id: ord.id,
+        reserva_id: null,
+      })
     }
   })
 
