@@ -127,7 +127,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/gerente/ceo': 'Dashboard CEO',
   '/dashboard/buses': 'Buses',
   '/dashboard/registros': 'Registros',
-  '/dashboard/arte': 'Planilla Digital',
+  '/dashboard/arte': 'Arte',
   '/dashboard/arte/colores': 'Muestras de Color',
   '/dashboard/admin/facturacion': 'Facturación',
   '/dashboard/admin/deudores': 'Deudores',
