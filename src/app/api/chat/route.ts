@@ -115,10 +115,11 @@ async function runDisponibilidad(supabase: ReturnType<typeof createServerClient>
 
   const [{ data: soportes }, { data: ordenes }, { data: reservas }] = await Promise.all([
     supabase.from('soportes').select('id, nombre, tipo, seccion, ubicacion').eq('activo', true).order('seccion').order('nombre'),
+    // Fetch all active-state orders and apply COALESCE(real, prevista) in JS
     supabase.from('ordenes_venta')
-      .select('id, fecha_alta_prevista, fecha_baja_prevista, clientes(nombre, empresa), orden_items(soporte_id)')
+      .select('id, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id)')
       .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
-      .lte('fecha_alta_prevista', fecha_hasta).gte('fecha_baja_prevista', fecha_desde),
+      .not('fecha_alta_prevista', 'is', null),
     supabase.from('reservas')
       .select('id, soporte_id, fecha_desde, fecha_hasta, clientes(nombre, empresa)')
       .in('estado', ['pendiente', 'aprobada', 'confirmada'])
@@ -129,10 +130,15 @@ async function runDisponibilidad(supabase: ReturnType<typeof createServerClient>
   const reservado = new Map<string, { cliente: string | null; desde: string; hasta: string }>()
 
   ordenes?.forEach((o: any) => {
+    const alta = (o.fecha_alta_real ?? o.fecha_alta_prevista) as string | null
+    const baja = (o.fecha_baja_real ?? o.fecha_baja_prevista) as string | null
+    if (!alta || !baja) return
+    // Check overlap with queried range using effective dates
+    if (alta > fecha_hasta || baja < fecha_desde) return
     const cli = Array.isArray(o.clientes) ? o.clientes[0] : o.clientes
     ;(o.orden_items ?? []).forEach((it: any) => {
       if (it.soporte_id && !ocupado.has(it.soporte_id))
-        ocupado.set(it.soporte_id, { cliente: cli?.empresa ?? cli?.nombre ?? null, desde: o.fecha_alta_prevista, hasta: o.fecha_baja_prevista })
+        ocupado.set(it.soporte_id, { cliente: cli?.empresa ?? cli?.nombre ?? null, desde: alta, hasta: baja })
     })
   })
   reservas?.forEach((r: any) => {
@@ -182,7 +188,7 @@ async function runOrdenes(supabase: ReturnType<typeof createServerClient>, userI
   const esVendedor = ['vendedor', 'asistente_ventas'].includes(rol)
 
   let q = supabase.from('ordenes_venta')
-    .select('id, numero, estado, monto_total, moneda, fecha_alta_prevista, fecha_baja_prevista, created_at, clientes(nombre, empresa), perfiles!ordenes_venta_vendedor_id_fkey(nombre)')
+    .select('id, numero, estado, monto_total, moneda, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, created_at, clientes(nombre, empresa), perfiles!ordenes_venta_vendedor_id_fkey(nombre)')
     .order('created_at', { ascending: false })
     .limit(limite)
 
@@ -217,7 +223,10 @@ async function runOrdenes(supabase: ReturnType<typeof createServerClient>, userI
     const nombre = cli?.empresa ?? cli?.nombre ?? 'Sin cliente'
     const monto = fmt(Number(o.monto_total ?? 0), o.moneda ?? 'UYU')
     const est = estadoLabels[o.estado] ?? o.estado
-    const fecha = o.fecha_alta_prevista ? `${o.fecha_alta_prevista} → ${o.fecha_baja_prevista}` : '—'
+    const altaEf = o.fecha_alta_real ?? o.fecha_alta_prevista
+    const bajaEf = o.fecha_baja_real ?? o.fecha_baja_prevista
+    const retrasoAlta = o.fecha_alta_real && o.fecha_alta_real !== o.fecha_alta_prevista ? ` (prevista: ${o.fecha_alta_prevista})` : ''
+    const fecha = altaEf ? `${altaEf}${retrasoAlta} → ${bajaEf}` : '—'
     const vendNombre = vend?.nombre ? ` | ${vend.nombre}` : ''
     return `- #${o.numero ?? o.id.slice(0, 6)} | ${nombre} | ${monto} | ${est} | ${fecha}${vendNombre}`
   })

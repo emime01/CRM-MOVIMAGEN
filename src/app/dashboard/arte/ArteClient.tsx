@@ -17,8 +17,10 @@ interface Soporte {
 interface CampanaInfo {
   empresa: string
   marca: string
-  desde: string
+  desde: string        // effective date (real ?? prevista)
   hasta: string
+  desdePrevista: string | null   // only set when real differs
+  hastaPrevista: string | null
   orden_id: string
   reserva_id: string | null
 }
@@ -42,6 +44,8 @@ interface OrdenConSoportes {
   estado: string
   fecha_alta_prevista: string | null
   fecha_baja_prevista: string | null
+  fecha_alta_real: string | null
+  fecha_baja_real: string | null
   cliente_nombre: string
   soportes: Array<{ id: string; nombre: string; tipo: string | null }>
 }
@@ -65,6 +69,7 @@ interface Props {
   ordenes: OrdenConSoportes[]
   supabaseUrl: string
   supabaseAnonKey: string
+  userId: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -108,8 +113,84 @@ function estadoBadge(estado: string) {
 
 // ─── Tab: Planilla Digital ────────────────────────────────────────────────────
 
+// Modal for setting real dates on a campaign
+function FechaRealModal({ campana, onClose, onSaved }: {
+  campana: CampanaInfo & { index: number }
+  onClose: () => void
+  onSaved: (ordenId: string, altaReal: string | null, bajaReal: string | null) => void
+}) {
+  const [altaReal, setAltaReal] = useState(campana.desde !== campana.desdePrevista ? campana.desde : '')
+  const [bajaReal, setBajaReal] = useState(campana.hasta !== campana.hastaPrevista ? campana.hasta : '')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    const body: Record<string, string | null> = {}
+    if (altaReal) body.fecha_alta_real = altaReal
+    if (bajaReal) body.fecha_baja_real = bajaReal
+    const res = await fetch(`/api/ordenes/${campana.orden_id}/fechas-reales`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    setSaving(false)
+    if (!res.ok) { alert('Error guardando fechas'); return }
+    onSaved(campana.orden_id, altaReal || null, bajaReal || null)
+    onClose()
+  }
+
+  async function handleClear() {
+    if (!confirm('¿Borrar las fechas reales y volver a las previstas?')) return
+    setSaving(true)
+    await fetch(`/api/ordenes/${campana.orden_id}/fechas-reales`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha_alta_real: null, fecha_baja_real: null }),
+    })
+    setSaving(false)
+    onSaved(campana.orden_id, null, null)
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={onClose}>
+      <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: 24, minWidth: 340, maxWidth: 420, width: '90vw' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Registrar fechas reales</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--text-muted)' }}>
+          <strong>{campana.empresa}</strong> — {campana.marca}<br />
+          Fechas previstas: <strong>{campana.desdePrevista ?? campana.desde}</strong> → <strong>{campana.hastaPrevista ?? campana.hasta}</strong>
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>FECHA ALTA REAL</label>
+            <input type="date" value={altaReal} onChange={e => setAltaReal(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>FECHA BAJA REAL</label>
+            <input type="date" value={bajaReal} min={altaReal || undefined} onChange={e => setBajaReal(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'space-between' }}>
+          <button onClick={handleClear} disabled={saving} style={{ ...btnSecondary, fontSize: 11, color: '#dc2626', borderColor: '#dc2626' }}>
+            Borrar fechas reales
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} style={btnSecondary}>Cancelar</button>
+            <button onClick={handleSave} disabled={saving || (!altaReal && !bajaReal)} style={{ ...btnPrimary, opacity: (saving || (!altaReal && !bajaReal)) ? 0.6 : 1 }}>
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PlanillaTab({
-  soportes, campanasMap, supabase, storageUrl,
+  soportes, campanasMap: initialCampanasMap, supabase, storageUrl,
 }: {
   soportes: Soporte[]
   campanasMap: Record<string, CampanaInfo[]>
@@ -117,15 +198,39 @@ function PlanillaTab({
   supabase: any
   storageUrl: string
 }) {
+  const [campanasMap, setCampanasMap] = useState(initialCampanasMap)
   const [materialesMap, setMaterialesMap] = useState<Record<string, Material[]>>({})
   const [loadedIds, setLoadedIds] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [modalCampana, setModalCampana] = useState<(CampanaInfo & { index: number }) | null>(null)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const total = soportes.length
   const ocupadas = soportes.filter(s => (campanasMap[s.id] ?? []).length > 0).length
+
+  function handleFechaRealSaved(ordenId: string, altaReal: string | null, bajaReal: string | null) {
+    setCampanasMap(prev => {
+      const next = { ...prev }
+      for (const soporteId of Object.keys(next)) {
+        next[soporteId] = next[soporteId].map(c => {
+          if (c.orden_id !== ordenId) return c
+          // Recalculate effective dates
+          const nuevaDesde = altaReal ?? (c.desdePrevista ?? c.desde)
+          const nuevaHasta = bajaReal ?? (c.hastaPrevista ?? c.hasta)
+          return {
+            ...c,
+            desde: nuevaDesde,
+            hasta: nuevaHasta,
+            desdePrevista: altaReal ? (c.desdePrevista ?? c.desde) : null,
+            hastaPrevista: bajaReal ? (c.hastaPrevista ?? c.hasta) : null,
+          }
+        })
+      }
+      return next
+    })
+  }
 
   async function loadMateriales(soporteId: string) {
     if (loadedIds.has(soporteId)) return
@@ -234,28 +339,53 @@ function PlanillaTab({
                   {campanas.length === 0 ? (
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 5, background: '#f0fdf4', color: '#15803d' }}>Libre</span>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {campanas.map((c, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{c.empresa}</span>
-                          {c.marca && c.marca !== '—' && (
-                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.marca}</span>
-                          )}
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                            {fmtFecha(c.desde)} → {fmtFecha(c.hasta)}
-                          </span>
-                          {/* Highlight if ending soon (≤30 days) */}
-                          {c.hasta && (() => {
-                            const dias = Math.ceil((new Date(c.hasta + 'T00:00:00').getTime() - Date.now()) / 86400000)
-                            if (dias <= 30 && dias >= 0) return (
-                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: dias <= 7 ? '#fef2f2' : '#fef9ec', color: dias <= 7 ? '#dc2626' : '#b45309' }}>
-                                {dias === 0 ? 'vence hoy' : `${dias}d`}
-                              </span>
-                            )
-                            return null
-                          })()}
-                        </div>
-                      ))}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {campanas.map((c, i) => {
+                        const hasReal = !!(c.desdePrevista || c.hastaPrevista)
+                        const dias = c.hasta ? Math.ceil((new Date(c.hasta + 'T00:00:00').getTime() - Date.now()) / 86400000) : null
+                        return (
+                          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{c.empresa}</span>
+                                {c.marca && c.marca !== '—' && (
+                                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.marca}</span>
+                                )}
+                                {/* Effective dates */}
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                  {fmtFecha(c.desde)} → {fmtFecha(c.hasta)}
+                                </span>
+                                {/* Vence soon badge */}
+                                {dias !== null && dias <= 30 && dias >= 0 && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: dias <= 7 ? '#fef2f2' : '#fef9ec', color: dias <= 7 ? '#dc2626' : '#b45309' }}>
+                                    {dias === 0 ? 'vence hoy' : `${dias}d`}
+                                  </span>
+                                )}
+                                {/* Real date indicator */}
+                                {hasReal && (
+                                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#eef2ff', color: '#4338ca' }}>
+                                    real
+                                  </span>
+                                )}
+                              </div>
+                              {/* Show prevista when real differs */}
+                              {hasReal && (
+                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                                  Prevista: {fmtFecha(c.desdePrevista ?? c.desde)} → {fmtFecha(c.hastaPrevista ?? c.hasta)}
+                                </div>
+                              )}
+                            </div>
+                            {/* Set real dates button */}
+                            <button
+                              onClick={() => setModalCampana({ ...c, index: i })}
+                              style={{ ...btnSecondary, fontSize: 10, padding: '3px 8px', flexShrink: 0 }}
+                              title="Registrar fecha real de inicio/baja"
+                            >
+                              Fecha real
+                            </button>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -341,6 +471,15 @@ function PlanillaTab({
           </button>
           <img src={lightbox} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8 }} onClick={e => e.stopPropagation()} />
         </div>
+      )}
+
+      {/* Fecha real modal */}
+      {modalCampana && (
+        <FechaRealModal
+          campana={modalCampana}
+          onClose={() => setModalCampana(null)}
+          onSaved={handleFechaRealSaved}
+        />
       )}
     </div>
   )
@@ -687,7 +826,7 @@ function MuestrasTab({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ArteClient({ soportes, campanasMap, ordenes, supabaseUrl, supabaseAnonKey }: Props) {
+export default function ArteClient({ soportes, campanasMap, ordenes, supabaseUrl, supabaseAnonKey, userId }: Props) {
   const supabase = useMemo(() => createClient(supabaseUrl, supabaseAnonKey), [supabaseUrl, supabaseAnonKey])
   const storageUrl = `${supabaseUrl}/storage/v1/object/public/arte`
 

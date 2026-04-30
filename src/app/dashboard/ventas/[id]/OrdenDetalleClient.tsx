@@ -60,6 +60,8 @@ interface Orden {
   validez: string | null
   fecha_alta_prevista: string | null
   fecha_baja_prevista: string | null
+  fecha_alta_real: string | null
+  fecha_baja_real: string | null
   es_canje: boolean | null
   incluir_reportes: boolean | null
   es_mensualizada: boolean | null
@@ -382,12 +384,26 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId }: Pr
                 <div style={fieldValue}>{orden.moneda ?? 'USD'}</div>
               </div>
               <div>
-                <div style={fieldLabel}>Fecha alta prevista</div>
-                <div style={fieldValue}>{formatDate(orden.fecha_alta_prevista)}</div>
+                <div style={fieldLabel}>Fecha alta {orden.fecha_alta_real ? 'real' : 'prevista'}</div>
+                <div style={fieldValue}>
+                  {formatDate(orden.fecha_alta_real ?? orden.fecha_alta_prevista)}
+                  {orden.fecha_alta_real && orden.fecha_alta_real !== orden.fecha_alta_prevista && (
+                    <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                      (prevista: {formatDate(orden.fecha_alta_prevista)})
+                    </span>
+                  )}
+                </div>
               </div>
               <div>
-                <div style={fieldLabel}>Fecha baja prevista</div>
-                <div style={fieldValue}>{formatDate(orden.fecha_baja_prevista)}</div>
+                <div style={fieldLabel}>Fecha baja {orden.fecha_baja_real ? 'real' : 'prevista'}</div>
+                <div style={fieldValue}>
+                  {formatDate(orden.fecha_baja_real ?? orden.fecha_baja_prevista)}
+                  {orden.fecha_baja_real && orden.fecha_baja_real !== orden.fecha_baja_prevista && (
+                    <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                      (prevista: {formatDate(orden.fecha_baja_prevista)})
+                    </span>
+                  )}
+                </div>
               </div>
               <div>
                 <div style={fieldLabel}>Validez</div>

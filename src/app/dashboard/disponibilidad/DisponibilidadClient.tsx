@@ -361,9 +361,16 @@ function SoporteCard({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
           {estadoBadge(soporte.estado)}
           {soporte.fechaDesde && soporte.fechaHasta && (
-            <span style={{ fontSize: 11, color: '#9a9895' }}>
-              {formatDate(soporte.fechaDesde)} — {formatDate(soporte.fechaHasta)}
-            </span>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: 11, color: '#9a9895' }}>
+                {formatDate(soporte.fechaDesde)} — {formatDate(soporte.fechaHasta)}
+              </span>
+              {(soporte.fechaDesdePrevista || soporte.fechaHastaPrevista) && (
+                <div style={{ fontSize: 10, color: '#b45309', marginTop: 2 }}>
+                  Prevista: {formatDate(soporte.fechaDesdePrevista ?? soporte.fechaDesde)} — {formatDate(soporte.fechaHastaPrevista ?? soporte.fechaHasta)}
+                </div>
+              )}
+            </div>
           )}
         </div>
 

@@ -71,6 +71,8 @@ interface OrdenVenta {
   referencia: string | null
   fecha_alta_prevista: string | null
   fecha_baja_prevista: string | null
+  fecha_alta_real: string | null
+  fecha_baja_real: string | null
   clientes: Cliente | null
 }
 
@@ -130,7 +132,7 @@ export default async function OicPage() {
       soportes(nombre, seccion, ubicacion),
       ordenes_venta!inner(
         id, numero, estado, marca, referencia,
-        fecha_alta_prevista, fecha_baja_prevista,
+        fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real,
         clientes(nombre, empresa)
       )
     `)
@@ -266,9 +268,12 @@ export default async function OicPage() {
                         )}
                       </td>
 
-                      {/* Alta prevista */}
+                      {/* Alta real o prevista */}
                       <td style={{ padding: '12px 16px', whiteSpace: 'nowrap', color: '#4a4845' }}>
-                        {formatDate(orden?.fecha_alta_prevista)}
+                        {formatDate(orden?.fecha_alta_real ?? orden?.fecha_alta_prevista)}
+                        {orden?.fecha_alta_real && orden?.fecha_alta_real !== orden?.fecha_alta_prevista && (
+                          <div style={{ fontSize: 10, color: '#b45309' }}>Prev: {formatDate(orden.fecha_alta_prevista)}</div>
+                        )}
                       </td>
 
                       {/* Grabado */}
