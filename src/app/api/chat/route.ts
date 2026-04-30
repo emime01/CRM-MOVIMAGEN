@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { searchMessages, refreshAccessToken } from '@/lib/gmail'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -102,6 +103,17 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: 'buscar_emails',
+    description: 'Busca en los correos de Gmail del usuario. Usar cuando pregunta por información que podría estar en sus emails: confirmaciones de clientes, fechas acordadas, materiales enviados, conversaciones comerciales, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Términos de búsqueda para Gmail (ej: "Renault materiales", "confirmación campaña", "fecha alta"). Puede incluir operadores de Gmail como from:, subject:.' },
+      },
+      required: ['query'],
     },
   },
 ]
@@ -443,6 +455,45 @@ async function runEstadoRegistros(supabase: ReturnType<typeof createServerClient
   return `Reservas activas SIN registros subidos: ${sinRegistros.length}\n${lines.join('\n')}`
 }
 
+async function runBuscarEmails(supabase: ReturnType<typeof createServerClient>, userId: string, input: { query: string }): Promise<string> {
+  const { data: tokenRow } = await supabase
+    .from('google_tokens')
+    .select('access_token, refresh_token, expires_at')
+    .eq('user_id', userId)
+    .single()
+
+  if (!tokenRow) return 'El usuario no tiene Gmail conectado. Puede conectarlo desde Mi Perfil.'
+
+  let accessToken = tokenRow.access_token
+  if (new Date(tokenRow.expires_at) <= new Date()) {
+    try {
+      const refreshed = await refreshAccessToken(tokenRow.refresh_token)
+      accessToken = refreshed.access_token
+      await supabase.from('google_tokens').update({
+        access_token: refreshed.access_token,
+        expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('user_id', userId)
+    } catch {
+      return 'El token de Gmail expiró. Por favor reconectá Gmail desde Mi Perfil.'
+    }
+  }
+
+  try {
+    const messages = await searchMessages(accessToken, input.query, 8)
+    if (!messages.length) return `No se encontraron emails con la búsqueda: "${input.query}"`
+
+    const lines = messages.map(m => {
+      const date = new Date(m.receivedAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      return `**${m.subject || '(sin asunto)'}**\nDe: ${m.from} | ${date}\n${m.bodyText.slice(0, 300)}...`
+    })
+
+    return `Emails encontrados (${messages.length}) para "${input.query}":\n\n${lines.join('\n\n---\n\n')}`
+  } catch {
+    return 'Error al acceder a Gmail. Intentá reconectar desde Mi Perfil.'
+  }
+}
+
 // ─── Tool dispatcher ─────────────────────────────────────────────────────────
 
 async function executeTool(name: string, input: Record<string, any>, supabase: ReturnType<typeof createServerClient>, userId: string, rol: string): Promise<string> {
@@ -454,6 +505,7 @@ async function executeTool(name: string, input: Record<string, any>, supabase: R
     case 'resumen_ventas':           return runResumenVentas(supabase, userId, rol, input as any)
     case 'consultar_deudores':       return runDeudores(supabase, input as any)
     case 'estado_registros':         return runEstadoRegistros(supabase)
+    case 'buscar_emails':            return runBuscarEmails(supabase, userId, input as any)
     default: return `Herramienta desconocida: ${name}`
   }
 }

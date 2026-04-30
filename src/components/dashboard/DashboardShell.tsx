@@ -8,7 +8,8 @@ import {
   Users, Target, Star, Wrench, Truck, Monitor,
   Palette, Receipt, AlertCircle, Percent, Building2,
   CreditCard, Settings, MessageCircle, X, Send,
-  FlaskConical, Package, BookUser, Camera,
+  FlaskConical, Package, BookUser, Camera, Bell,
+  UserCircle, Mail, Check, ChevronRight,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/admin/gastos', label: 'Gastos', icon: <CreditCard size={16} />, roles: ['administracion'] },
   { href: '/dashboard/admin/soportes', label: 'Soportes', icon: <Package size={16} />, roles: ['asistente_ventas', 'administracion'] },
   { href: '/dashboard/config', label: 'Configuración', icon: <Settings size={16} />, roles: ['administracion'] },
+  { href: '/dashboard/perfil', label: 'Mi Perfil', icon: <UserCircle size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion'] },
 ]
 
 const PAGE_TITLES: Record<string, string> = {
@@ -136,6 +138,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/admin/gastos': 'Gastos',
   '/dashboard/admin/soportes': 'Soportes',
   '/dashboard/config': 'Configuración',
+  '/dashboard/perfil': 'Mi Perfil',
 }
 
 const ROL_LABELS: Record<Rol, string> = {
@@ -167,6 +170,56 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   const [chatLoading, setChatLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [testMode, setTestMode] = useState(false)
+
+  // Gmail suggestions state
+  interface EmailSuggestion {
+    id: string
+    from_name: string
+    from_email: string
+    subject: string
+    body_preview: string
+    received_at: string
+    suggestion_type: string
+    suggestion_data: { summary?: string; suggested_action?: string }
+    lead_id: string | null
+    orden_id: string | null
+  }
+  const [suggestions, setSuggestions] = useState<EmailSuggestion[]>([])
+  const [bellOpen, setBellOpen] = useState(false)
+  const bellRef = useRef<HTMLDivElement>(null)
+
+  // Fetch suggestions on mount + poll every 5 min
+  useEffect(() => {
+    async function pollGmail() {
+      try {
+        await fetch('/api/gmail/poll', { method: 'POST' })
+        const res = await fetch('/api/gmail/suggestions')
+        if (res.ok) setSuggestions(await res.json())
+      } catch { /* silent */ }
+    }
+    pollGmail()
+    const interval = setInterval(pollGmail, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Close bell panel on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  async function dismissSuggestion(id: string) {
+    await fetch(`/api/gmail/suggestions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'dismissed' }) })
+    setSuggestions(prev => prev.filter(s => s.id !== id))
+  }
+
+  async function applySuggestion(id: string) {
+    await fetch(`/api/gmail/suggestions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'applied' }) })
+    setSuggestions(prev => prev.filter(s => s.id !== id))
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -357,9 +410,165 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           zIndex: 20,
           gap: 8,
         }}>
-          <h1 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+          <h1 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1 }}>
             {pageTitle}
           </h1>
+
+          {/* Bell notifications */}
+          <div ref={bellRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setBellOpen(v => !v)}
+              style={{
+                width: 36, height: 36,
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: bellOpen ? 'var(--orange-pale)' : 'transparent',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <Bell size={16} color={suggestions.length > 0 ? 'var(--orange)' : undefined} />
+              {suggestions.length > 0 && (
+                <span style={{
+                  position: 'absolute', top: 5, right: 5,
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: 'var(--orange)',
+                  border: '1.5px solid var(--bg-card)',
+                }} />
+              )}
+            </button>
+
+            {/* Bell dropdown */}
+            {bellOpen && (
+              <div style={{
+                position: 'absolute', top: 44, right: 0,
+                width: 360,
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                zIndex: 100,
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  padding: '12px 16px',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Mail size={14} color="var(--orange)" />
+                    Sugerencias de Gmail
+                    {suggestions.length > 0 && (
+                      <span style={{
+                        background: 'var(--orange)', color: '#fff',
+                        borderRadius: 99, fontSize: 10, fontWeight: 700,
+                        padding: '1px 6px',
+                      }}>
+                        {suggestions.length}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                  {suggestions.length === 0 ? (
+                    <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                      Sin sugerencias pendientes
+                    </div>
+                  ) : (
+                    suggestions.map(s => (
+                      <div key={s.id} style={{
+                        padding: '12px 16px',
+                        borderBottom: '1px solid var(--border)',
+                        background: '#fff',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <Mail size={13} color="var(--orange)" style={{ marginTop: 2, flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {s.from_name || s.from_email}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {s.subject}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--orange)', marginTop: 4, fontWeight: 500 }}>
+                              {s.suggestion_data?.summary || s.suggestion_type}
+                            </div>
+                            {s.suggestion_data?.suggested_action && (
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic' }}>
+                                {s.suggestion_data.suggested_action}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                          {(s.lead_id || s.orden_id) && (
+                            <a
+                              href={s.orden_id ? `/dashboard/ventas/${s.orden_id}` : `/dashboard/leads`}
+                              onClick={() => { applySuggestion(s.id); setBellOpen(false) }}
+                              style={{
+                                flex: 1,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                                padding: '5px 10px',
+                                borderRadius: 6,
+                                background: 'var(--orange)', color: '#fff',
+                                fontSize: 11, fontWeight: 600,
+                                textDecoration: 'none',
+                              }}
+                            >
+                              <ChevronRight size={11} /> Ver
+                            </a>
+                          )}
+                          <button
+                            onClick={() => applySuggestion(s.id)}
+                            style={{
+                              flex: 1,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                              padding: '5px 10px',
+                              borderRadius: 6,
+                              border: '1px solid #bbf7d0',
+                              background: '#f0fdf4', color: '#15803d',
+                              fontSize: 11, fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Check size={11} /> Aplicado
+                          </button>
+                          <button
+                            onClick={() => dismissSuggestion(s.id)}
+                            style={{
+                              width: 28, height: 28,
+                              borderRadius: 6,
+                              border: '1px solid var(--border)',
+                              background: 'transparent', color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 11,
+                            }}
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+                  <a
+                    href="/dashboard/perfil"
+                    onClick={() => setBellOpen(false)}
+                    style={{ fontSize: 11, color: 'var(--orange)', textDecoration: 'none', fontWeight: 600 }}
+                  >
+                    Gestionar integración Gmail →
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
         {/* Page content */}
