@@ -13,7 +13,8 @@ interface Soporte {
   id: string
   cotizador_id: number | null
   nombre: string
-  categoria: string
+  categoria: string   // constrained: Digital | Shopping | Exterior | Bus | Otro
+  seccion: string | null  // full cotizador category name, used for display/grouping
   ubicacion: string | null
   precio_semanal: number | null
   produccion: number
@@ -63,7 +64,9 @@ interface SavedItem {
 interface Cliente { id: string; nombre: string; empresa: string | null }
 
 const DIGITAL_CATS = ['PANTALLAS GIGANTES', 'CIRCUITOS DE PANTALLAS SHOPPINGS']
-const isDigital = (s: Soporte) => DIGITAL_CATS.includes(s.categoria)
+// seccion holds the full cotizador category name; categoria is the constrained DB value
+const isDigital = (s: Soporte) => DIGITAL_CATS.includes(s.seccion ?? s.categoria)
+const displayCat = (s: Soporte) => s.seccion || s.categoria
 
 function getSemanas(inicio: string | null, fin: string | null): number {
   if (!inicio || !fin) return 1
@@ -175,7 +178,8 @@ export default function CotizadorClient({
             id: it.soporte_id ?? it.nombre_soporte,
             cotizador_id: null,
             nombre: it.nombre_soporte,
-            categoria: it.es_digital ? 'PANTALLAS GIGANTES' : 'BANNERS EN SHOPPINGS',
+            categoria: it.es_digital ? 'Digital' : 'Shopping',
+            seccion: it.es_digital ? 'PANTALLAS GIGANTES' : 'BANNERS EN SHOPPINGS',
             ubicacion: it.ubicacion ?? null,
             precio_semanal: it.precio_unitario,
             produccion: it.produccion,
@@ -228,11 +232,11 @@ export default function CotizadorClient({
 
   // ── Catalog filtering ───────────────────────────────────────────────────────
 
-  const categories = Array.from(new Set(catalog.map(s => s.categoria))).sort()
+  const categories = Array.from(new Set(catalog.map(s => displayCat(s)))).sort()
   const filtered = catalog.filter(s => {
     const q = search.toLowerCase()
     const matchSearch = !q || s.nombre.toLowerCase().includes(q) || (s.ubicacion ?? '').toLowerCase().includes(q)
-    const matchCat = !catFilter || s.categoria === catFilter
+    const matchCat = !catFilter || displayCat(s) === catFilter
     return matchSearch && matchCat && s.activo !== false
   })
 
@@ -353,7 +357,7 @@ export default function CotizadorClient({
       return `
         <tr>
           <td>${s.nombre}</td>
-          <td style="color:#6b7280;font-size:11px">${s.categoria}</td>
+          <td style="color:#6b7280;font-size:11px">${displayCat(s)}</td>
           <td style="color:#6b7280;font-size:11px">${s.ubicacion ?? ''}</td>
           <td style="text-align:center">${cantidad}</td>
           ${isDigital(s) ? `<td style="text-align:center">${weeks}</td>` : '<td style="text-align:center;color:#9ca3af">—</td>'}
@@ -710,14 +714,15 @@ export default function CotizadorClient({
                       {Object.entries(
                         plan.reduce((acc, { soporte: s, cantidad }) => {
                           const base = calcBase(s, cantidad, semanas)
-                          acc[s.categoria] = (acc[s.categoria] ?? 0) + base
+                          const key = displayCat(s)
+                          acc[key] = (acc[key] ?? 0) + base
                           return acc
                         }, {} as Record<string, number>)
                       ).sort((a, b) => b[1] - a[1]).map(([cat, val]) => (
                         <tr key={cat} style={{ borderBottom: '1px solid #f3f4f6' }}>
                           <td style={{ padding: '8px 10px' }}>{cat}</td>
                           <td style={{ padding: '8px 10px', color: '#6b7280' }}>
-                            {plan.filter(it => it.soporte.categoria === cat).reduce((a, it) => a + it.cantidad, 0)}
+                            {plan.filter(it => displayCat(it.soporte) === cat).reduce((a, it) => a + it.cantidad, 0)}
                           </td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{fmtNum(val, moneda)}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', color: '#6b7280' }}>
