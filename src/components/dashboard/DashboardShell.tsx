@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, Fragment } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Home, FileText, Filter, Calendar, BarChart2,
@@ -9,7 +9,7 @@ import {
   Palette, Receipt, AlertCircle, Percent, Building2,
   CreditCard, Settings, MessageCircle, X, Send,
   FlaskConical, Package, BookUser, Camera, Bell,
-  UserCircle, Mail, Check, ChevronRight,
+  UserCircle, Mail, Check, ChevronRight, Reply, Copy, Loader2,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -164,6 +164,7 @@ interface DashboardShellProps {
 
 export default function DashboardShell({ user, children }: DashboardShellProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
   const [chatInput, setChatInput] = useState('')
@@ -187,6 +188,12 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   const [suggestions, setSuggestions] = useState<EmailSuggestion[]>([])
   const [bellOpen, setBellOpen] = useState(false)
   const bellRef = useRef<HTMLDivElement>(null)
+
+  // Reply modal state
+  const [replyModal, setReplyModal] = useState<{ id: string; from: string; subject: string } | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
+  const [replyLoading, setReplyLoading] = useState(false)
+  const [replyCopied, setReplyCopied] = useState(false)
 
   // Fetch suggestions on mount + poll every 5 min
   useEffect(() => {
@@ -217,8 +224,45 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   }
 
   async function applySuggestion(id: string) {
-    await fetch(`/api/gmail/suggestions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'applied' }) })
+    const res = await fetch(`/api/gmail/suggestions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'applied' }),
+    })
     setSuggestions(prev => prev.filter(s => s.id !== id))
+    if (res.ok) {
+      const data = await res.json()
+      if (data.createdLeadId || data.updatedLeadId) {
+        setBellOpen(false)
+        router.push('/dashboard/leads')
+      }
+    }
+  }
+
+  async function openReply(s: EmailSuggestion) {
+    setReplyModal({ id: s.id, from: s.from_name || s.from_email, subject: s.subject })
+    setReplyDraft('')
+    setReplyCopied(false)
+    setReplyLoading(true)
+    try {
+      const res = await fetch(`/api/gmail/suggestions/${s.id}/reply`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        setReplyDraft(data.draft ?? '')
+      } else {
+        setReplyDraft('No se pudo generar el borrador. Intentá de nuevo.')
+      }
+    } finally {
+      setReplyLoading(false)
+    }
+  }
+
+  async function copyReply() {
+    try {
+      await navigator.clipboard.writeText(replyDraft)
+      setReplyCopied(true)
+      setTimeout(() => setReplyCopied(false), 2000)
+    } catch { /* silent */ }
   }
 
   useEffect(() => {
@@ -524,6 +568,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                           )}
                           <button
                             onClick={() => applySuggestion(s.id)}
+                            title={s.suggestion_type === 'new_lead' ? 'Crear lead automáticamente' : 'Marcar como aplicado'}
                             style={{
                               flex: 1,
                               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
@@ -535,10 +580,26 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                               cursor: 'pointer',
                             }}
                           >
-                            <Check size={11} /> Aplicado
+                            <Check size={11} /> {s.suggestion_type === 'new_lead' ? 'Crear lead' : 'Aplicar'}
+                          </button>
+                          <button
+                            onClick={() => openReply(s)}
+                            title="Generar borrador de respuesta"
+                            style={{
+                              width: 28, height: 28,
+                              borderRadius: 6,
+                              border: '1px solid #bfdbfe',
+                              background: '#eff6ff', color: '#1d4ed8',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Reply size={12} />
                           </button>
                           <button
                             onClick={() => dismissSuggestion(s.id)}
+                            title="Descartar"
                             style={{
                               width: 28, height: 28,
                               borderRadius: 6,
@@ -547,6 +608,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                               cursor: 'pointer',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               fontSize: 11,
+                              flexShrink: 0,
                             }}
                           >
                             <X size={12} />
@@ -728,6 +790,140 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           </button>
         </div>
       </div>
+
+      {/* Reply modal */}
+      {replyModal && (
+        <div
+          onClick={() => setReplyModal(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 60,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 12,
+              width: '100%',
+              maxWidth: 600,
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Borrador de respuesta
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Para: {replyModal.from} · Re: {replyModal.subject}
+                </div>
+              </div>
+              <button
+                onClick={() => setReplyModal(null)}
+                style={{
+                  width: 30, height: 30,
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div style={{ padding: 20, flex: 1, overflowY: 'auto' }}>
+              {replyLoading ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: 60,
+                  color: 'var(--text-muted)',
+                  fontSize: 13,
+                }}>
+                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  Generando respuesta...
+                </div>
+              ) : (
+                <textarea
+                  value={replyDraft}
+                  onChange={e => setReplyDraft(e.target.value)}
+                  rows={14}
+                  style={{
+                    width: '100%',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 13,
+                    fontFamily: 'Montserrat, sans-serif',
+                    color: 'var(--text-primary)',
+                    lineHeight: 1.5,
+                    resize: 'vertical',
+                    outline: 'none',
+                  }}
+                />
+              )}
+            </div>
+
+            <div style={{
+              padding: '12px 20px',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              gap: 8,
+              justifyContent: 'flex-end',
+            }}>
+              <button
+                onClick={() => setReplyModal(null)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  fontSize: 13, fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontFamily: 'Montserrat, sans-serif',
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={copyReply}
+                disabled={replyLoading || !replyDraft}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: replyCopied ? '#16a34a' : 'var(--orange)',
+                  color: '#fff',
+                  fontSize: 13, fontWeight: 600,
+                  cursor: replyLoading || !replyDraft ? 'not-allowed' : 'pointer',
+                  opacity: replyLoading || !replyDraft ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontFamily: 'Montserrat, sans-serif',
+                }}
+              >
+                {replyCopied ? <><Check size={14} /> Copiado</> : <><Copy size={14} /> Copiar texto</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating chat button */}
       <button
