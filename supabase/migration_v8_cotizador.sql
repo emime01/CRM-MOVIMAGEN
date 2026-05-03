@@ -1,8 +1,24 @@
 -- Migration V8: Cotizador integration
 -- Adds pricing fields to soportes, enriches propuestas/propuesta_items, seeds 64 soportes
 
--- 0. Drop categoria check constraint so cotizador categories can be stored
-ALTER TABLE soportes DROP CONSTRAINT IF EXISTS soportes_categoria_check;
+-- 0. Drop any CHECK constraint on soportes.categoria (name may vary by environment)
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class cls ON cls.oid = con.conrelid
+    JOIN pg_attribute att ON att.attrelid = cls.oid
+      AND att.attnum = ANY(con.conkey)
+    WHERE cls.relname = 'soportes'
+      AND att.attname = 'categoria'
+      AND con.contype = 'c'
+  LOOP
+    EXECUTE format('ALTER TABLE soportes DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+END $$;
 
 -- 1. Enrich soportes
 ALTER TABLE soportes ADD COLUMN IF NOT EXISTS produccion        NUMERIC(12,2)  DEFAULT 0;
