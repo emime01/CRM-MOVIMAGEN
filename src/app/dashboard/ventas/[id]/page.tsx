@@ -46,6 +46,13 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
 
   if (!orden) notFound()
 
+  const userId = (session.user as { id: string }).id
+  const { data: tokenRow } = await supabase
+    .from('google_tokens')
+    .select('gmail_email')
+    .eq('user_id', userId)
+    .maybeSingle()
+
   // Fetch leads from same client to show lead history
   let leads: unknown[] = []
   if (orden.cliente_id) {
@@ -71,6 +78,7 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
       leads={leads as any}
       userRol={session.user.rol}
       userId={session.user.id}
+      driveConnected={!!tokenRow}
     />
   )
 }

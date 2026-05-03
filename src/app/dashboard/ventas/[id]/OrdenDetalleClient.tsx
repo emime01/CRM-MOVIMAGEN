@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen } from 'lucide-react'
 
 type JoinedNombre = { id?: string; nombre: string; empresa?: string | null } | { id?: string; nombre: string; empresa?: string | null }[] | null
 
@@ -102,6 +102,7 @@ interface Props {
   leads: LeadRow[]
   userRol: string
   userId: string
+  driveConnected?: boolean
 }
 
 const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -183,7 +184,7 @@ const fieldValue: React.CSSProperties = {
   fontWeight: 500,
 }
 
-export default function OrdenDetalleClient({ orden, leads, userRol, userId }: Props) {
+export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false }: Props) {
   const router = useRouter()
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [expandedHistorial, setExpandedHistorial] = useState(true)
@@ -243,9 +244,25 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId }: Pr
     try {
       const fd = new FormData()
       fd.append('file', docFile)
-      const upRes = await fetch('/api/upload', { method: 'POST', body: fd })
-      if (!upRes.ok) return
-      const { url } = await upRes.json()
+
+      let url: string
+      if (driveConnected) {
+        const clienteName = joinedEmpresa(orden.clientes) || joinedNombre(orden.clientes) || 'Clientes'
+        fd.append('clienteNombre', clienteName)
+        const upRes = await fetch('/api/drive/upload', { method: 'POST', body: fd })
+        if (!upRes.ok) {
+          const { error } = await upRes.json().catch(() => ({ error: '' }))
+          if (error === 'drive_scope_missing') {
+            alert('Necesitás reconectar Google desde Mi Perfil para habilitar Drive.')
+          }
+          return
+        }
+        ;({ url } = await upRes.json())
+      } else {
+        const upRes = await fetch('/api/upload', { method: 'POST', body: fd })
+        if (!upRes.ok) return
+        ;({ url } = await upRes.json())
+      }
 
       const res = await fetch(`/api/ordenes/${orden.id}/documentos`, {
         method: 'POST',
@@ -515,18 +532,24 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId }: Pr
                 No hay documentos. Subí PDFs, imágenes o documentos de la orden.
               </div>
             )}
-            {documentos.map(doc => (
-              <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: '#f7f6f3', borderRadius: 8, marginBottom: 8 }}>
-                <FileText size={16} color="#eb691c" />
-                <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', textDecoration: 'none', fontWeight: 500 }}>
-                  {doc.nombre}
-                </a>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDate(doc.created_at)}</span>
-                <button onClick={() => handleDeleteDoc(doc.id)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#c82f2f' }}>
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
+            {documentos.map(doc => {
+              const isDrive = doc.url?.includes('drive.google.com')
+              return (
+                <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: '#f7f6f3', borderRadius: 8, marginBottom: 8 }}>
+                  {isDrive
+                    ? <FolderOpen size={16} color="#1a73e8" />
+                    : <FileText size={16} color="#eb691c" />}
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', textDecoration: 'none', fontWeight: 500 }}>
+                    {doc.nombre}
+                  </a>
+                  {isDrive && <span style={{ fontSize: 10, color: '#1a73e8', fontWeight: 600, background: '#e8f0fe', padding: '2px 6px', borderRadius: 4 }}>Drive</span>}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDate(doc.created_at)}</span>
+                  <button onClick={() => handleDeleteDoc(doc.id)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#c82f2f' }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              )
+            })}
             {canUploadDoc && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: 12, border: '1px dashed var(--border)', borderRadius: 8 }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, background: '#fff', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12 }}>
@@ -534,9 +557,15 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId }: Pr
                   <Upload size={13} /> Seleccionar
                 </label>
                 <span style={{ flex: 1, fontSize: 12, color: 'var(--text-muted)' }}>{docFile ? docFile.name : 'Ningún archivo seleccionado'}</span>
+                {driveConnected && !docFile && (
+                  <span style={{ fontSize: 11, color: '#1a73e8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <FolderOpen size={12} /> Se guardará en Drive
+                  </span>
+                )}
                 {docFile && (
-                  <button onClick={handleUploadDoc} disabled={uploading} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                    {uploading ? 'Subiendo...' : 'Subir'}
+                  <button onClick={handleUploadDoc} disabled={uploading} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: driveConnected ? '#1a73e8' : 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {driveConnected && <FolderOpen size={12} />}
+                    {uploading ? 'Subiendo...' : driveConnected ? 'Subir a Drive' : 'Subir'}
                   </button>
                 )}
               </div>
