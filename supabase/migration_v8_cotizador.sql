@@ -1,115 +1,160 @@
--- Migration V8: Cotizador integration
--- Adds pricing fields to soportes, enriches propuestas/propuesta_items, seeds 64 soportes
--- Note: soportes.categoria is constrained to ('Shopping','Digital','Exterior','Bus','Otro')
---       so we map cotizador categories to those values and store the full name in `seccion`.
+-- Migration V8: Cotizador (planificador) integration
+-- Source: github.com/emime01/planificador (supabase_completo.sql)
+-- Schema enrichment + 64 soportes seed with full pricing logic
+-- Note: soportes.categoria CHECK already allows ('Shopping','Digital','Exterior','Bus','Otro')
+--       so planificador's 4 values fit cleanly. We use a separate `tipo_cotizador` column
+--       (instead of mutating `tipo`) to avoid conflicts with any existing tipo CHECK.
 
--- 1. Enrich soportes
-ALTER TABLE soportes ADD COLUMN IF NOT EXISTS produccion        NUMERIC(12,2)  DEFAULT 0;
-ALTER TABLE soportes ADD COLUMN IF NOT EXISTS imp_municipal     BOOLEAN        DEFAULT FALSE;
-ALTER TABLE soportes ADD COLUMN IF NOT EXISTS impactos          INTEGER        DEFAULT 0;
-ALTER TABLE soportes ADD COLUMN IF NOT EXISTS cotizador_id      INTEGER        UNIQUE;
+-- ============================================================
+-- 1. ENRICH SOPORTES (planificador columns)
+-- ============================================================
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS cotizador_id          INTEGER UNIQUE;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS tipo_cotizador        TEXT;  -- led | circuito | estatico_bus | banner_shopping | estatico_shopping | medianera
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS salidas_por_hora      INTEGER;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS horas_encendido       INTEGER;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS impactos_mensuales    INTEGER;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS costo_produccion      NUMERIC(12,2);
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS impuestos_municipales NUMERIC(12,2);
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS cantidad_default      INTEGER DEFAULT 1;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS semanas_minimas       INTEGER DEFAULT 1;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS temporada_alta        BOOLEAN DEFAULT FALSE;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS temporada_baja        BOOLEAN DEFAULT FALSE;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS comentario            TEXT;
+ALTER TABLE soportes ADD COLUMN IF NOT EXISTS url_imagen            TEXT;
 
--- 2. Enrich propuestas
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS cliente_id          UUID    REFERENCES clientes(id);
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS numero              TEXT;
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS nombre              TEXT;
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS fecha_inicio        DATE;
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS fecha_fin           DATE;
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS monto_neto          NUMERIC(14,2);
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS monto_total         NUMERIC(14,2);
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS moneda              TEXT DEFAULT 'UYU';
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS iva_pct             NUMERIC(5,2)  DEFAULT 22;
-ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS imp_municipal_pct   NUMERIC(5,2)  DEFAULT 8;
+-- Legacy columns from previous v8 attempt — kept for backwards compat, no longer used
+-- (produccion / imp_municipal / impactos still exist but the cotizador now reads
+--  costo_produccion / impuestos_municipales / impactos_mensuales)
 
--- 3. Enrich propuesta_items (snapshot fields so pricing never changes retroactively)
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS nombre_soporte     TEXT;
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS ubicacion          TEXT;
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS produccion         NUMERIC(12,2)  DEFAULT 0;
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS tiene_iva          BOOLEAN        DEFAULT FALSE;
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS tiene_imp_mun      BOOLEAN        DEFAULT FALSE;
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS impactos           INTEGER        DEFAULT 0;
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS es_digital         BOOLEAN        DEFAULT FALSE;
-ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS subtotal           NUMERIC(14,2);
+-- ============================================================
+-- 2. ENRICH PROPUESTAS
+-- ============================================================
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS cliente_id     UUID REFERENCES clientes(id);
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS numero         TEXT;
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS nombre         TEXT;
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS marca          TEXT;
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS observaciones  TEXT;
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS fecha_inicio   DATE;
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS fecha_fin      DATE;
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS monto_neto     NUMERIC(14,2);
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS monto_total    NUMERIC(14,2);
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS monto_impactos BIGINT;
+ALTER TABLE propuestas ADD COLUMN IF NOT EXISTS moneda         TEXT DEFAULT 'UYU';
 
--- 4. Auto-number sequence for propuestas
+-- ============================================================
+-- 3. ENRICH PROPUESTA_ITEMS
+-- ============================================================
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS salidas_elegidas  INTEGER;
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS cantidad_soportes INTEGER DEFAULT 1;
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS subtotal          NUMERIC(14,2);
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS impactos_calc     BIGINT;
+-- Snapshot fields (so pricing stays stable if catalog changes)
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS nombre_soporte    TEXT;
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS ubicacion         TEXT;
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS categoria_soporte TEXT;
+ALTER TABLE propuesta_items ADD COLUMN IF NOT EXISTS tipo_cotizador    TEXT;
+
+-- ============================================================
+-- 4. SEQUENCE for propuesta numero (COT-XXXX)
+-- ============================================================
 CREATE SEQUENCE IF NOT EXISTS propuestas_numero_seq START 1;
 
--- 5. Seed / upsert 64 soportes from cotizador
---    categoria = constrained column ('Digital','Shopping','Exterior','Bus')
---    seccion   = full cotizador category name used for display/grouping in the UI
-INSERT INTO soportes (cotizador_id, nombre, categoria, seccion, ubicacion, precio_semanal, produccion, tiene_iva, imp_municipal, impactos, activo)
+-- ============================================================
+-- 5. SEED 64 soportes (planificador — Movimagen 2026)
+-- ============================================================
+INSERT INTO soportes (cotizador_id, nombre, seccion, categoria, tipo_cotizador, ubicacion, precio_semanal, tiene_iva,
+  salidas_por_hora, horas_encendido, impactos_mensuales, costo_produccion, impuestos_municipales,
+  cantidad_default, semanas_minimas, temporada_alta, temporada_baja, comentario, activo)
 VALUES
-  (1,  'PANTALLA GIGANTE CURVA',                'Digital',   'PANTALLAS GIGANTES',                    'Rivera y L.A.Herrera',                                              23000,  0,      false, true,  728530,  true),
-  (2,  'PANTALLA GIGANTE',                      'Digital',   'PANTALLAS GIGANTES',                    'Av Italia y Ricaldoni',                                             23000,  0,      false, true,  1059298, true),
-  (3,  'PANTALLA GIGANTE',                      'Digital',   'PANTALLAS GIGANTES',                    'Rivera y Bvar Batlle y Ordoñez',                                    23000,  0,      false, true,  489014,  true),
-  (4,  'PANTALLA GIGANTE 360',                  'Digital',   'PANTALLAS GIGANTES',                    'Atlántico Shopping Punta del Este (Temp Alta)',                      32000,  0,      true,  false, 1209302, true),
-  (5,  'PANTALLA GIGANTE 360',                  'Digital',   'PANTALLAS GIGANTES',                    'Atlántico Shopping Punta del Este (Temp Baja)',                      21000,  0,      true,  false, 46511,   true),
-  (6,  'CIRCUITO SHOPPING',                     'Digital',   'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Atlántico Shopping Punta del Este (Temp Alta)',                      25200,  0,      true,  false, 1813953, true),
-  (7,  'CIRCUITO SHOPPING',                     'Digital',   'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Atlántico Shopping Punta del Este (Temp Baja)',                      15600,  0,      true,  false, 58139,   true),
-  (8,  'CIRCUITO SHOPPING',                     'Digital',   'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Minas (2 gigantes en circuito)',                                     11800,  0,      true,  false, 42732,   true),
-  (9,  'CIRCUITO SHOPPING',                     'Digital',   'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Salto',                                                             10400,  0,      true,  false, 71220,   true),
-  (10, 'CIRCUITO SHOPPING',                     'Digital',   'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Paysandú',                                                          11700,  0,      true,  false, 70930,   true),
-  (11, 'CIRCUITO SHOPPING',                     'Digital',   'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Mercedes',                                                          6500,   0,      true,  false, 47480,   true),
-  (12, 'CIRCUITO SHOPPING',                     'Digital',   'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Colonia',                                                           6500,   0,      true,  false, 32049,   true),
-  (13, 'PUERTA ENTRADA SHOPPING',               'Shopping',  'PLOTEO PUERTAS',                        'Atlántico Shopping Punta del Este (Temp Alta)',                      19700,  44625,  true,  false, 0,       true),
-  (14, 'PUERTA ENTRADA SHOPPING',               'Shopping',  'PLOTEO PUERTAS',                        'Atlántico Shopping Punta del Este (Temp Baja)',                      11800,  44625,  true,  false, 0,       true),
-  (15, 'PUERTA ENTRADA SHOPPING',               'Shopping',  'PLOTEO PUERTAS',                        'Salto',                                                             11800,  44625,  true,  false, 0,       true),
-  (16, 'PUERTA ENTRADA SHOPPING',               'Shopping',  'PLOTEO PUERTAS',                        'Paysandú',                                                          11800,  44625,  true,  false, 0,       true),
-  (17, 'PUERTA ENTRADA SHOPPING',               'Shopping',  'PLOTEO PUERTAS',                        'Mercedes',                                                          11800,  44625,  true,  false, 0,       true),
-  (18, 'PUERTA ENTRADA SHOPPING',               'Shopping',  'PLOTEO PUERTAS',                        'Colonia',                                                           11800,  44625,  true,  false, 0,       true),
-  (19, 'PUERTA ENTRADA SHOPPING',               'Shopping',  'PLOTEO PUERTAS',                        'Minas',                                                             11800,  44625,  true,  false, 0,       true),
-  (20, 'BANNER EXTRA GIGANTE',                  'Shopping',  'BANNERS EN SHOPPINGS',                  'Atlántico Shopping Punta del Este (Temp Alta)',                      19700,  101050, true,  false, 0,       true),
-  (21, 'BANNER EXTRA GIGANTE',                  'Shopping',  'BANNERS EN SHOPPINGS',                  'Atlántico Shopping Punta del Este (Temp Baja)',                      11800,  101050, true,  false, 0,       true),
-  (22, 'BANNER GIGANTE SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Salto',                                                             5800,   34150,  true,  false, 0,       true),
-  (23, 'BANNER GIGANTE SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Paysandú',                                                          5800,   34150,  true,  false, 0,       true),
-  (24, 'BANNER GIGANTE SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Mercedes',                                                          5800,   34150,  true,  false, 0,       true),
-  (25, 'BANNER GIGANTE SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Colonia',                                                           5800,   28900,  true,  false, 0,       true),
-  (26, 'BANNER GIGANTE SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Minas',                                                             5800,   26250,  true,  false, 0,       true),
-  (27, 'BANNER STANDARD SHOPPING',              'Shopping',  'BANNERS EN SHOPPINGS',                  'Salto',                                                             2900,   5250,   true,  false, 0,       true),
-  (28, 'BANNER STANDARD SHOPPING',              'Shopping',  'BANNERS EN SHOPPINGS',                  'Paysandú',                                                          2900,   5250,   true,  false, 0,       true),
-  (29, 'BANNER STANDARD SHOPPING',              'Shopping',  'BANNERS EN SHOPPINGS',                  'Mercedes',                                                          2900,   5250,   true,  false, 0,       true),
-  (30, 'BANNER PARKING SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Atlántico Shopping Punta del Este (Temp Alta)',                      4350,   8150,   true,  false, 0,       true),
-  (31, 'BANNER PARKING SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Atlántico Shopping Punta del Este (Temp Baja)',                      2900,   8150,   true,  false, 0,       true),
-  (32, 'BANNER PARKING SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Salto',                                                             2900,   8150,   true,  false, 0,       true),
-  (33, 'BANNER PARKING SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Paysandú',                                                          2900,   8150,   true,  false, 0,       true),
-  (34, 'BANNER PARKING SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Minas',                                                             2900,   8150,   true,  false, 0,       true),
-  (35, 'BANNER PARKING SHOPPING',               'Shopping',  'BANNERS EN SHOPPINGS',                  'Colonia',                                                           2900,   8150,   true,  false, 0,       true),
-  (36, 'LONA PARKING SHOPPING',                 'Shopping',  'BANNERS EN SHOPPINGS',                  'Mercedes',                                                          5800,   28875,  true,  false, 0,       true),
-  (37, 'ESCALERA SHOPPING',                     'Shopping',  'PLOTEO ESCALERAS Y ASCENSORES',         'Atlántico Shopping Punta del Este (Temp Alta)',                      19700,  42250,  true,  false, 0,       true),
-  (38, 'ESCALERA SHOPPING',                     'Shopping',  'PLOTEO ESCALERAS Y ASCENSORES',         'Atlántico Shopping Punta del Este (Temp Baja)',                      11800,  42250,  true,  false, 0,       true),
-  (39, 'ESCALERA SHOPPING',                     'Shopping',  'PLOTEO ESCALERAS Y ASCENSORES',         'Salto',                                                             11800,  42250,  true,  false, 0,       true),
-  (40, 'ASCENSOR SHOPPING',                     'Shopping',  'PLOTEO ESCALERAS Y ASCENSORES',         'Atlántico Shopping Punta del Este (Temp Alta)',                      11800,  34650,  true,  false, 0,       true),
-  (41, 'ASCENSOR SHOPPING',                     'Shopping',  'PLOTEO ESCALERAS Y ASCENSORES',         'Atlántico Shopping Punta del Este (Temp Baja)',                      7900,   34650,  true,  false, 0,       true),
-  (42, 'ASCENSOR SHOPPING',                     'Shopping',  'PLOTEO ESCALERAS Y ASCENSORES',         'Salto',                                                             7900,   34650,  true,  false, 0,       true),
-  (43, 'CARA PALETAS BACKLIGHT SHOPPING',       'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Salto',                                                             2900,   8150,   true,  false, 0,       true),
-  (44, 'CARA PALETAS BACKLIGHT SHOPPING',       'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Mercedes',                                                          2900,   8150,   true,  false, 0,       true),
-  (45, 'CARA PALETAS BACKLIGHT SHOPPING',       'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Colonia',                                                           2900,   8150,   true,  false, 0,       true),
-  (46, 'PISOS PASILLO SHOPPING',                'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Atlántico Shopping Punta del Este (Temp Alta)',                      4350,   13650,  true,  false, 0,       true),
-  (47, 'PISOS PASILLO SHOPPING',                'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Atlántico Shopping Punta del Este (Temp Baja)',                      2900,   13650,  true,  false, 0,       true),
-  (48, 'PISOS PASILLO SHOPPING',                'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Salto',                                                             2900,   13650,  true,  false, 0,       true),
-  (49, 'PISOS PASILLO SHOPPING',                'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Paysandú',                                                          2900,   13650,  true,  false, 0,       true),
-  (50, 'PISOS PASILLO SHOPPING',                'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Mercedes',                                                          2900,   13650,  true,  false, 0,       true),
-  (51, 'PISOS PASILLO SHOPPING',                'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Colonia',                                                           2900,   13650,  true,  false, 0,       true),
-  (52, 'PISOS PASILLO SHOPPING',                'Shopping',  'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Minas',                                                             2900,   13650,  true,  false, 0,       true),
-  (53, 'MEDIANERA EDIFICIO',                    'Exterior',  'MEDIANERAS EN EDIFICIOS',               'Av 18 de Julio y Roxlo - visual publico al Este',                    21650,  111550, false, true,  0,       true),
-  (54, 'MEDIANERA EDIFICIO',                    'Exterior',  'MEDIANERAS EN EDIFICIOS',               'Bvar. Batlle y Ordoñez y Av. Rivera - visual hacia N y E',           21650,  133875, false, true,  0,       true),
-  (55, 'MEDIANERA EDIFICIO',                    'Exterior',  'MEDIANERAS EN EDIFICIOS',               'Av Italia y Caldas - visual publico hacia el Este',                  21650,  127300, false, true,  0,       true),
-  (56, 'MegaBus Exclusivo',                     'Bus',       'CARTELES EN BUSES',                     'Coetc - Línea D9 y DM1 (Montevideo)',                               27550,  107800, false, false, 0,       true),
-  (57, 'FullBus Exclusivo',                     'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Suburbanas (Mvd y Canelones)',                        17050,  63525,  false, false, 0,       true),
-  (58, 'InteriorBus Exclusivo',                 'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Urbanas (Montevideo)',                                5650,   20450,  false, false, 0,       true),
-  (59, 'TraseroFull',                           'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Suburbanas (Mvd y Canelones)',                        2100,   7600,   false, false, 0,       true),
-  (60, 'LateralFull',                           'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Suburbanas (Mvd y Canelones)',                        26200,  36500,  false, false, 0,       true),
-  (61, 'Lateral Extra o 2 Paños',               'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Urbanas (Montevideo)',                                1050,   2900,   false, false, 0,       true),
-  (62, 'Lateral 1 Paño',                        'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Urbanas (Montevideo)',                                900,    2350,   false, false, 0,       true),
-  (63, 'Trasero Premium',                       'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Urbanas (Montevideo)',                                850,    1575,   false, false, 0,       true),
-  (64, 'Luneta Premium',                        'Bus',       'CARTELES EN BUSES',                     'Coetc - Líneas Urbanas (Montevideo)',                                850,    2625,   false, false, 0,       true)
+  (1,  'PANTALLA GIGANTE CURVA',          'PANTALLAS GIGANTES',                    'Digital',  'led',                'Rivera y L.A.Herrera',                                                23000.0, FALSE, 30, 16, 3154539, NULL,    2200.0, 1,  1,  FALSE, FALSE, '', TRUE),
+  (2,  'PANTALLA GIGANTE',                'PANTALLAS GIGANTES',                    'Digital',  'led',                'Av Italia y Ricaldoni',                                               23000.0, FALSE, 30, 16, 4586760, NULL,    2200.0, 1,  1,  FALSE, FALSE, '', TRUE),
+  (3,  'PANTALLA GIGANTE',                'PANTALLAS GIGANTES',                    'Digital',  'led',                'Rivera y Bvar Batlle y Ordoñez',                                      23000.0, FALSE, 30, 16, 2117435, NULL,    2200.0, 1,  1,  FALSE, FALSE, '', TRUE),
+  (4,  'PANTALLA GIGANTE 360',            'PANTALLAS GIGANTES',                    'Digital',  'led',                'Atlántico Shopping Punta del Este',                                   32000.0, FALSE, 30, 16, 5236278, NULL,    NULL,   1,  13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (5,  'PANTALLA GIGANTE 360',            'PANTALLAS GIGANTES',                    'Digital',  'led',                'Atlántico Shopping Punta del Este',                                   21000.0, FALSE, 30, 16, 201397,  NULL,    NULL,   1,  1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (6,  'CIRCUITO SHOPPING',               'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Digital',  'circuito',           'Atlántico Shopping Punta del Este',                                   2100.0,  FALSE, 10, 16, 7854416, NULL,    NULL,   12, 13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (7,  'CIRCUITO SHOPPING',               'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Digital',  'circuito',           'Atlántico Shopping Punta del Este',                                   1300.0,  FALSE, 10, 16, 251746,  NULL,    NULL,   12, 1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (8,  'CIRCUITO SHOPPING',               'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Digital',  'circuito',           'Minas (2 gigantes en circuito)',                                      5900.0,  FALSE, 10, 16, 185034,  NULL,    NULL,   2,  1,  FALSE, FALSE, '', TRUE),
+  (9,  'CIRCUITO SHOPPING',               'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Digital',  'circuito',           'Salto',                                                               1300.0,  FALSE, 10, 16, 308387,  NULL,    NULL,   8,  1,  FALSE, FALSE, '', TRUE),
+  (10, 'CIRCUITO SHOPPING',               'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Digital',  'circuito',           'Paysandú',                                                            1300.0,  FALSE, 10, 16, 307127,  NULL,    NULL,   9,  1,  FALSE, FALSE, '', TRUE),
+  (11, 'CIRCUITO SHOPPING',               'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Digital',  'circuito',           'Mercedes',                                                            1300.0,  FALSE, 10, 16, 205593,  NULL,    NULL,   5,  1,  FALSE, FALSE, '', TRUE),
+  (12, 'CIRCUITO SHOPPING',               'CIRCUITOS DE PANTALLAS SHOPPINGS',      'Digital',  'circuito',           'Colonia',                                                             1300.0,  FALSE, 10, 16, 138772,  NULL,    NULL,   5,  1,  FALSE, FALSE, '', TRUE),
+  (13, 'PUERTA ENTRADA SHOPPING',         'PLOTEO PUERTAS',                        'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   19700.0, FALSE, NULL, NULL, NULL, 44625.0, NULL, 1,  13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (14, 'PUERTA ENTRADA SHOPPING',         'PLOTEO PUERTAS',                        'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   11800.0, FALSE, NULL, NULL, NULL, 44625.0, NULL, 1,  1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (15, 'PUERTA ENTRADA SHOPPING',         'PLOTEO PUERTAS',                        'Shopping', 'estatico_shopping',  'Salto',                                                               11800.0, FALSE, NULL, NULL, NULL, 44625.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (16, 'PUERTA ENTRADA SHOPPING',         'PLOTEO PUERTAS',                        'Shopping', 'estatico_shopping',  'Paysandú',                                                            11800.0, FALSE, NULL, NULL, NULL, 44625.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (17, 'PUERTA ENTRADA SHOPPING',         'PLOTEO PUERTAS',                        'Shopping', 'estatico_shopping',  'Mercedes',                                                            11800.0, FALSE, NULL, NULL, NULL, 44625.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (18, 'PUERTA ENTRADA SHOPPING',         'PLOTEO PUERTAS',                        'Shopping', 'estatico_shopping',  'Colonia',                                                             11800.0, FALSE, NULL, NULL, NULL, 44625.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (19, 'PUERTA ENTRADA SHOPPING',         'PLOTEO PUERTAS',                        'Shopping', 'estatico_shopping',  'Minas',                                                               11800.0, FALSE, NULL, NULL, NULL, 44625.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (20, 'BANNER EXTRA GIGANTE',            'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Atlántico Shopping Punta del Este',                                   19700.0, FALSE, NULL, NULL, NULL, 101050.0, NULL, 1,  13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (21, 'BANNER EXTRA GIGANTE',            'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Atlántico Shopping Punta del Este',                                   11800.0, FALSE, NULL, NULL, NULL, 101050.0, NULL, 1,  1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (22, 'BANNER GIGANTE SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Salto',                                                               5800.0,  FALSE, NULL, NULL, NULL, 34150.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (23, 'BANNER GIGANTE SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Paysandú',                                                            5800.0,  FALSE, NULL, NULL, NULL, 34150.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (24, 'BANNER GIGANTE SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Mercedes',                                                            5800.0,  FALSE, NULL, NULL, NULL, 34150.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (25, 'BANNER GIGANTE SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Colonia',                                                             5800.0,  FALSE, NULL, NULL, NULL, 28900.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (26, 'BANNER GIGANTE SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Minas',                                                               5800.0,  FALSE, NULL, NULL, NULL, 26250.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (27, 'BANNER STANDARD SHOPPING',        'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Salto',                                                               2900.0,  FALSE, NULL, NULL, NULL, 5250.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (28, 'BANNER STANDARD SHOPPING',        'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Paysandú',                                                            2900.0,  FALSE, NULL, NULL, NULL, 5250.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (29, 'BANNER STANDARD SHOPPING',        'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Mercedes',                                                            2900.0,  FALSE, NULL, NULL, NULL, 5250.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (30, 'BANNER PARKING SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Atlántico Shopping Punta del Este',                                   4350.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (31, 'BANNER PARKING SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Atlántico Shopping Punta del Este',                                   2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (32, 'BANNER PARKING SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Salto',                                                               2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (33, 'BANNER PARKING SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Paysandú',                                                            2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (34, 'BANNER PARKING SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Minas',                                                               2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (35, 'BANNER PARKING SHOPPING',         'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Colonia',                                                             2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (36, 'LONA PARKING SHOPPING',           'BANNERS EN SHOPPINGS',                  'Shopping', 'banner_shopping',    'Mercedes',                                                            5800.0,  FALSE, NULL, NULL, NULL, 28875.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (37, 'ESCALERA SHOPPING',               'PLOTEO ESCALERAS Y ASCENSORES',         'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   19700.0, FALSE, NULL, NULL, NULL, 42250.0, NULL, 1,  13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (38, 'ESCALERA SHOPPING',               'PLOTEO ESCALERAS Y ASCENSORES',         'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   11800.0, FALSE, NULL, NULL, NULL, 42250.0, NULL, 1,  1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (39, 'ESCALERA SHOPPING',               'PLOTEO ESCALERAS Y ASCENSORES',         'Shopping', 'estatico_shopping',  'Salto',                                                               11800.0, FALSE, NULL, NULL, NULL, 42250.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (40, 'ASCENSOR SHOPPING',               'PLOTEO ESCALERAS Y ASCENSORES',         'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   11800.0, FALSE, NULL, NULL, NULL, 34650.0, NULL, 1,  13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (41, 'ASCENSOR SHOPPING',               'PLOTEO ESCALERAS Y ASCENSORES',         'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   7900.0,  FALSE, NULL, NULL, NULL, 34650.0, NULL, 1,  1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (42, 'ASCENSOR SHOPPING',               'PLOTEO ESCALERAS Y ASCENSORES',         'Shopping', 'estatico_shopping',  'Salto',                                                               7900.0,  FALSE, NULL, NULL, NULL, 34650.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (43, 'CARA PALETAS BACKLIGHT SHOPPING', 'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Salto',                                                               2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (44, 'CARA PALETAS BACKLIGHT SHOPPING', 'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Mercedes',                                                            2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (45, 'CARA PALETAS BACKLIGHT SHOPPING', 'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Colonia',                                                             2900.0,  FALSE, NULL, NULL, NULL, 8150.0,  NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (46, 'PISOS PASILLO SHOPPING',          'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   4350.0,  FALSE, NULL, NULL, NULL, 13650.0, NULL, 1,  13, TRUE,  FALSE, 'Temporada alta Punta del Este (dic-feb). Mínimo 13 semanas, solo reservas.', TRUE),
+  (47, 'PISOS PASILLO SHOPPING',          'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Atlántico Shopping Punta del Este',                                   2900.0,  FALSE, NULL, NULL, NULL, 13650.0, NULL, 1,  1,  FALSE, TRUE,  'Temporada baja Punta del Este (mar-nov).', TRUE),
+  (48, 'PISOS PASILLO SHOPPING',          'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Salto',                                                               2900.0,  FALSE, NULL, NULL, NULL, 13650.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (49, 'PISOS PASILLO SHOPPING',          'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Paysandú',                                                            2900.0,  FALSE, NULL, NULL, NULL, 13650.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (50, 'PISOS PASILLO SHOPPING',          'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Mercedes',                                                            2900.0,  FALSE, NULL, NULL, NULL, 13650.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (51, 'PISOS PASILLO SHOPPING',          'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Colonia',                                                             2900.0,  FALSE, NULL, NULL, NULL, 13650.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (52, 'PISOS PASILLO SHOPPING',          'CARA PALETAS BACKLIGHT Y PLOTEO PISOS', 'Shopping', 'estatico_shopping',  'Minas',                                                               2900.0,  FALSE, NULL, NULL, NULL, 13650.0, NULL, 1,  1,  FALSE, FALSE, '', TRUE),
+  (53, 'MEDIANERA EDIFICIO',              'MEDIANERAS EN EDIFICIOS',               'Exterior', 'medianera',          'Av 18 de Julio y Roxlo - visual  publico al Este',                    21650.0, FALSE, NULL, NULL, NULL, 111550.0, 3812.5, 1, 1, FALSE, FALSE, '', TRUE),
+  (54, 'MEDIANERA EDIFICIO',              'MEDIANERAS EN EDIFICIOS',               'Exterior', 'medianera',          'Bvar. Batlle y Ordoñez y Av. Rivera - visual hacia N y E',            21650.0, FALSE, NULL, NULL, NULL, 133875.0, 4600.0, 1, 1, FALSE, FALSE, '', TRUE),
+  (55, 'MEDIANERA EDIFICIO',              'MEDIANERAS EN EDIFICIOS',               'Exterior', 'medianera',          'Av Italia y Caldas - visual publico hacia el Este',                   21650.0, FALSE, NULL, NULL, NULL, 127300.0, 4262.5, 1, 1, FALSE, FALSE, '', TRUE),
+  (56, 'MegaBus Exclusivo',               'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Línea D9 y DM1 (Montevideo)',                                 27550.0, FALSE, NULL, NULL, NULL, 107800.0, NULL, 1, 1, FALSE, FALSE, '', TRUE),
+  (57, 'FullBus Exclusivo',               'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Suburbanas (Mvd y Canelones)',                         17050.0, FALSE, NULL, NULL, NULL, 63525.0,  NULL, 1, 1, FALSE, FALSE, '', TRUE),
+  (58, 'InteriorBus Exclusivo',           'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Urbanas (Montevideo)',                                 5650.0,  FALSE, NULL, NULL, NULL, 20450.0,  NULL, 1, 1, FALSE, FALSE, '', TRUE),
+  (59, 'TraseroFull',                     'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Suburbanas (Mvd y Canelones)',                         2100.0,  FALSE, NULL, NULL, NULL, 7600.0,   NULL, 1, 1, FALSE, FALSE, '', TRUE),
+  (60, 'LateralFull',                     'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Suburbanas (Mvd y Canelones)',                         6550.0,  FALSE, NULL, NULL, NULL, 36500.0,  NULL, 4, 1, FALSE, FALSE, '', TRUE),
+  (61, 'Lateral Extra o 2 Paños',         'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Urbanas (Montevideo)',                                 1050.0,  FALSE, NULL, NULL, NULL, 2900.0,   NULL, 1, 1, FALSE, FALSE, '', TRUE),
+  (62, 'Lateral 1 Paño',                  'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Urbanas (Montevideo)',                                 900.0,   FALSE, NULL, NULL, NULL, 2350.0,   NULL, 1, 1, FALSE, FALSE, '', TRUE),
+  (63, 'Trasero Premium',                 'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Urbanas (Montevideo)',                                 850.0,   FALSE, NULL, NULL, NULL, 1575.0,   NULL, 1, 1, FALSE, FALSE, '', TRUE),
+  (64, 'Luneta Premium',                  'CARTELES EN BUSES',                     'Bus',      'estatico_bus',       'Coetc - Líneas Urbanas (Montevideo)',                                 850.0,   FALSE, NULL, NULL, NULL, 2625.0,   NULL, 1, 1, FALSE, FALSE, '', TRUE)
 ON CONFLICT (cotizador_id) DO UPDATE SET
-  nombre          = EXCLUDED.nombre,
-  categoria       = EXCLUDED.categoria,
-  seccion         = EXCLUDED.seccion,
-  ubicacion       = EXCLUDED.ubicacion,
-  precio_semanal  = EXCLUDED.precio_semanal,
-  produccion      = EXCLUDED.produccion,
-  tiene_iva       = EXCLUDED.tiene_iva,
-  imp_municipal   = EXCLUDED.imp_municipal,
-  impactos        = EXCLUDED.impactos;
+  nombre                = EXCLUDED.nombre,
+  seccion               = EXCLUDED.seccion,
+  categoria             = EXCLUDED.categoria,
+  tipo_cotizador        = EXCLUDED.tipo_cotizador,
+  ubicacion             = EXCLUDED.ubicacion,
+  precio_semanal        = EXCLUDED.precio_semanal,
+  tiene_iva             = EXCLUDED.tiene_iva,
+  salidas_por_hora      = EXCLUDED.salidas_por_hora,
+  horas_encendido       = EXCLUDED.horas_encendido,
+  impactos_mensuales    = EXCLUDED.impactos_mensuales,
+  costo_produccion      = EXCLUDED.costo_produccion,
+  impuestos_municipales = EXCLUDED.impuestos_municipales,
+  cantidad_default      = EXCLUDED.cantidad_default,
+  semanas_minimas       = EXCLUDED.semanas_minimas,
+  temporada_alta        = EXCLUDED.temporada_alta,
+  temporada_baja        = EXCLUDED.temporada_baja,
+  comentario            = EXCLUDED.comentario,
+  activo                = EXCLUDED.activo;
+
+-- ============================================================
+-- 6. VERIFY
+-- ============================================================
+SELECT categoria, seccion, COUNT(*) AS cant
+FROM soportes
+WHERE cotizador_id IS NOT NULL
+GROUP BY categoria, seccion
+ORDER BY categoria, seccion;

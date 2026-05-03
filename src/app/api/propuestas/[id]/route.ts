@@ -13,8 +13,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { data: propuesta, error } = await supabase
     .from('propuestas')
     .select(`
-      id, numero, nombre, estado, moneda, monto_neto, monto_total,
-      fecha_inicio, fecha_fin, notas, iva_pct, imp_municipal_pct,
+      id, numero, nombre, marca, observaciones, estado, moneda,
+      monto_neto, monto_total, monto_impactos,
+      fecha_inicio, fecha_fin, notas,
       lead_id, cliente_id, vendedor_id, created_at, updated_at,
       clientes(id, nombre, empresa),
       leads(id, descripcion),
@@ -58,46 +59,45 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
   if (!canEdit) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  // Update propuesta header
   const { error: updateErr } = await supabase
     .from('propuestas')
     .update({
-      nombre:             body.nombre,
-      cliente_id:         body.cliente_id ?? null,
-      lead_id:            body.lead_id ?? null,
-      fecha_inicio:       body.fecha_inicio ?? null,
-      fecha_fin:          body.fecha_fin ?? null,
-      estado:             body.estado ?? existing.estado,
-      notas:              body.notas ?? null,
-      moneda:             body.moneda ?? 'UYU',
-      iva_pct:            body.iva_pct ?? 22,
-      imp_municipal_pct:  body.imp_municipal_pct ?? 8,
-      monto_neto:         body.monto_neto ?? null,
-      monto_total:        body.monto_total ?? null,
-      updated_at:         new Date().toISOString(),
+      nombre:         body.nombre,
+      marca:          body.marca ?? null,
+      observaciones:  body.observaciones ?? null,
+      cliente_id:     body.cliente_id ?? null,
+      lead_id:        body.lead_id ?? null,
+      fecha_inicio:   body.fecha_inicio ?? null,
+      fecha_fin:      body.fecha_fin ?? null,
+      estado:         body.estado ?? existing.estado,
+      notas:          body.notas ?? null,
+      moneda:         body.moneda ?? 'UYU',
+      monto_neto:     body.monto_neto ?? null,
+      monto_total:    body.monto_total ?? null,
+      monto_impactos: body.monto_impactos ?? null,
+      updated_at:     new Date().toISOString(),
     })
     .eq('id', params.id)
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
-  // Replace items if provided
   if (Array.isArray(body.items)) {
     await supabase.from('propuesta_items').delete().eq('propuesta_id', params.id)
     if (body.items.length > 0) {
       const rows = body.items.map((it: any) => ({
-        propuesta_id:   params.id,
-        soporte_id:     it.soporte_id ?? null,
-        nombre_soporte: it.nombre_soporte,
-        ubicacion:      it.ubicacion ?? null,
-        cantidad:       it.cantidad ?? 1,
-        semanas:        it.semanas ?? 1,
-        precio_unitario: it.precio_unitario,
-        produccion:     it.produccion ?? 0,
-        tiene_iva:      it.tiene_iva ?? false,
-        tiene_imp_mun:  it.tiene_imp_mun ?? false,
-        impactos:       it.impactos ?? 0,
-        es_digital:     it.es_digital ?? false,
-        subtotal:       it.subtotal ?? null,
+        propuesta_id:      params.id,
+        soporte_id:        it.soporte_id ?? null,
+        nombre_soporte:    it.nombre_soporte,
+        ubicacion:         it.ubicacion ?? null,
+        categoria_soporte: it.categoria_soporte ?? null,
+        tipo_cotizador:    it.tipo_cotizador ?? null,
+        cantidad:          it.cantidad ?? 1,
+        cantidad_soportes: it.cantidad_soportes ?? it.cantidad ?? 1,
+        salidas_elegidas:  it.salidas_elegidas ?? null,
+        semanas:           it.semanas ?? 1,
+        precio_unitario:   it.precio_unitario,
+        subtotal:          it.subtotal ?? null,
+        impactos_calc:     it.impactos_calc ?? null,
       }))
       await supabase.from('propuesta_items').insert(rows)
     }
