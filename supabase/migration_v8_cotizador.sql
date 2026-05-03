@@ -1,6 +1,9 @@
 -- Migration V8: Cotizador integration
 -- Adds pricing fields to soportes, enriches propuestas/propuesta_items, seeds 64 soportes
 
+-- 0. Drop categoria check constraint so cotizador categories can be stored
+ALTER TABLE soportes DROP CONSTRAINT IF EXISTS soportes_categoria_check;
+
 -- 1. Enrich soportes
 ALTER TABLE soportes ADD COLUMN IF NOT EXISTS produccion        NUMERIC(12,2)  DEFAULT 0;
 ALTER TABLE soportes ADD COLUMN IF NOT EXISTS imp_municipal     BOOLEAN        DEFAULT FALSE;
