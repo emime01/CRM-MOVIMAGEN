@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
+  // Vendedores solo consultan; carga la hace operaciones / administración / ventas internas.
+  const canUpload = ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'].includes(session.user.rol)
+  if (!canUpload) return NextResponse.json({ error: 'Sin permisos para subir registros' }, { status: 403 })
+
   const body = await req.json()
   const { soporte_id, reserva_id, tipo, storage_path, nombre_archivo, notas, fecha_registro } = body
 

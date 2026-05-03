@@ -3,16 +3,20 @@ import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
-const TEST_USERS = [
-  { email: 'vendedor@test.com',     password: 'test1234', nombre: 'Vendedor Test',    rol: 'vendedor' },
-  { email: 'vendedor2@test.com',    password: 'test1234', nombre: 'Vendedor 2',       rol: 'vendedor' },
-  { email: 'vendedor3@test.com',    password: 'test1234', nombre: 'Vendedor 3',       rol: 'vendedor' },
-  { email: 'asistente@test.com',    password: 'test1234', nombre: 'Asistente Test',   rol: 'asistente_ventas' },
-  { email: 'gerente@test.com',      password: 'test1234', nombre: 'Gerente Test',     rol: 'gerente_comercial' },
-  { email: 'operaciones@test.com',  password: 'test1234', nombre: 'Operaciones Test', rol: 'operaciones' },
-  { email: 'arte@test.com',         password: 'test1234', nombre: 'Arte Test',        rol: 'arte' },
-  { email: 'admin@test.com',        password: 'test1234', nombre: 'Admin Test',       rol: 'administracion' },
+const REAL_USERS = [
+  { email: 'natalia@movimagen.com.uy',   nombre: 'Natalia',   rol: 'vendedor' },
+  { email: 'federico@movimagen.com.uy',  nombre: 'Federico',  rol: 'vendedor' },
+  { email: 'fabian@movimagen.com.uy',    nombre: 'Fabián',    rol: 'vendedor' },
+  { email: 'emiliano@movimagen.com.uy',  nombre: 'Emiliano',  rol: 'asistente_ventas' },
+  { email: 'gonzalo@movimagen.com.uy',   nombre: 'Gonzalo',   rol: 'gerente_comercial' },  // CEO → mapeado a gerente_comercial
+  { email: 'belen@movimagen.com.uy',     nombre: 'Belén',     rol: 'administracion' },
+  { email: 'romina@movimagen.com.uy',    nombre: 'Romina',    rol: 'administracion' },
+  { email: 'mauricio@movimagen.com.uy',  nombre: 'Mauricio',  rol: 'administracion' },
+  { email: 'emilia@movimagen.com.uy',    nombre: 'Emilia',    rol: 'operaciones' },
+  { email: 'victoria@movimagen.com.uy',  nombre: 'Victoria',  rol: 'arte' },
 ]
+
+const DEFAULT_PASSWORD = 'Movimagen2026'
 
 // Allow running in production with a secret token
 const SEED_SECRET = 'crm-seed-movimagen-2026'
@@ -36,17 +40,24 @@ export async function GET(req: NextRequest) {
   const { data: { users: existingUsers } } = await supabase.auth.admin.listUsers()
   const existingByEmail = new Map(existingUsers.map(u => [u.email, u]))
 
-  for (const u of TEST_USERS) {
+  for (const u of REAL_USERS) {
     const existingAuthUser = existingByEmail.get(u.email)
 
     if (existingAuthUser) {
       const { data: perfiles } = await supabase
         .from('perfiles')
-        .select('id')
+        .select('id, rol, nombre')
         .eq('user_id', existingAuthUser.id)
 
       if (perfiles && perfiles.length > 0) {
-        results.push({ email: u.email, status: 'ya existe', detail: `perfil id: ${perfiles[0].id}` })
+        // Update perfil if rol/nombre differ
+        const p = perfiles[0]
+        if (p.rol !== u.rol || p.nombre !== u.nombre) {
+          await supabase.from('perfiles').update({ rol: u.rol, nombre: u.nombre }).eq('id', p.id)
+          results.push({ email: u.email, status: 'perfil actualizado ✓' })
+        } else {
+          results.push({ email: u.email, status: 'ya existe', detail: `perfil id: ${p.id}` })
+        }
       } else {
         const { error: perfilError } = await supabase.from('perfiles').insert({
           user_id: existingAuthUser.id,
@@ -61,7 +72,7 @@ export async function GET(req: NextRequest) {
 
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: u.email,
-      password: u.password,
+      password: DEFAULT_PASSWORD,
       email_confirm: true,
     })
 
@@ -85,7 +96,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     mensaje: 'Seed completado',
-    contraseña_todos: 'test1234',
+    contraseña_todos: DEFAULT_PASSWORD,
     usuarios: results,
   })
 }

@@ -18,8 +18,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   if (!registro) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
 
-  const canDelete = session.user.id === registro.subido_por ||
+  // Vendedores nunca pueden borrar; solo operaciones / administración o el uploader (no-vendedor).
+  const isVendor = session.user.rol === 'vendedor'
+  const canDelete = !isVendor && (
+    session.user.id === registro.subido_por ||
     ['administracion', 'operaciones'].includes(session.user.rol)
+  )
   if (!canDelete) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   // Delete from storage

@@ -82,8 +82,12 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
     }
   }
 
+  // Vendedores solo pueden ver registros y comprobantes ya generados.
+  // Operaciones / administración cargan los registros y generan los comprobantes.
+  const canUpload = ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'].includes(userRol)
+  const canGenerateComprobante = canUpload
   const canDelete = (reg: Registro) =>
-    reg.subido_por === userId || ['administracion', 'operaciones'].includes(userRol)
+    canUpload && (reg.subido_por === userId || ['administracion', 'operaciones'].includes(userRol))
 
   const reservasFiltradas = useMemo(() => {
     let list = reservas
@@ -201,16 +205,18 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                       {c.tipo === 'video' ? 'Video' : c.tipo === 'pdf_buses' ? 'PDF Buses' : 'PDF'}
                     </a>
                   ))}
-                  {/* Generate comprobante button */}
-                  <button
-                    onClick={() => handleGenerarComprobante(reserva.id)}
-                    disabled={generando[reserva.id]}
-                    title="Generar comprobante"
-                    style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: generando[reserva.id] ? '#e5e7eb' : '#1a1a2e', color: generando[reserva.id] ? 'var(--text-muted)' : '#fff', cursor: generando[reserva.id] ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Montserrat, sans-serif' }}
-                  >
-                    {generando[reserva.id] ? <Loader2 size={12} /> : <Film size={12} />}
-                    {generando[reserva.id] ? 'Generando...' : 'Comprobante'}
-                  </button>
+                  {/* Generate comprobante button (oculto para vendedores) */}
+                  {canGenerateComprobante && (
+                    <button
+                      onClick={() => handleGenerarComprobante(reserva.id)}
+                      disabled={generando[reserva.id]}
+                      title="Generar comprobante"
+                      style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: generando[reserva.id] ? '#e5e7eb' : '#1a1a2e', color: generando[reserva.id] ? 'var(--text-muted)' : '#fff', cursor: generando[reserva.id] ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Montserrat, sans-serif' }}
+                    >
+                      {generando[reserva.id] ? <Loader2 size={12} /> : <Film size={12} />}
+                      {generando[reserva.id] ? 'Generando...' : 'Comprobante'}
+                    </button>
+                  )}
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{cli?.empresa ?? cli?.nombre ?? '—'}</div>
                     <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: reserva.estado === 'confirmada' ? '#f0fdf4' : '#fef9ec', color: reserva.estado === 'confirmada' ? '#15803d' : '#b45309' }}>
@@ -248,21 +254,25 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                             Ver registros
                           </button>
                         )}
-                        <button
-                          onClick={() => fileInputRefs.current[key]?.click()}
-                          disabled={isUploading}
-                          style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: 'var(--orange)', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, opacity: isUploading ? 0.6 : 1, fontFamily: 'Montserrat, sans-serif' }}
-                        >
-                          <Upload size={12} /> {isUploading ? 'Subiendo...' : 'Agregar'}
-                        </button>
-                        <input
-                          ref={el => { fileInputRefs.current[key] = el }}
-                          type="file"
-                          accept="image/*,video/*"
-                          multiple
-                          style={{ display: 'none' }}
-                          onChange={e => handleUpload(soporte.id, reserva.id, e.target.files)}
-                        />
+                        {canUpload && (
+                          <>
+                            <button
+                              onClick={() => fileInputRefs.current[key]?.click()}
+                              disabled={isUploading}
+                              style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: 'var(--orange)', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, opacity: isUploading ? 0.6 : 1, fontFamily: 'Montserrat, sans-serif' }}
+                            >
+                              <Upload size={12} /> {isUploading ? 'Subiendo...' : 'Agregar'}
+                            </button>
+                            <input
+                              ref={el => { fileInputRefs.current[key] = el }}
+                              type="file"
+                              accept="image/*,video/*"
+                              multiple
+                              style={{ display: 'none' }}
+                              onChange={e => handleUpload(soporte.id, reserva.id, e.target.files)}
+                            />
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -295,14 +305,16 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                                   <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{reg.nombre_archivo ?? 'video'}</span>
                                 </div>
                               )}
-                              {/* Delete button */}
-                              <button
-                                onClick={e => { e.stopPropagation(); handleDelete(reg, key) }}
-                                title="Eliminar"
-                                style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 4, cursor: 'pointer', padding: 3, display: 'flex', alignItems: 'center' }}
-                              >
-                                <Trash2 size={10} color="#fff" />
-                              </button>
+                              {/* Delete button (oculto para vendedores) */}
+                              {canDelete(reg) && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDelete(reg, key) }}
+                                  title="Eliminar"
+                                  style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 4, cursor: 'pointer', padding: 3, display: 'flex', alignItems: 'center' }}
+                                >
+                                  <Trash2 size={10} color="#fff" />
+                                </button>
+                              )}
                             </div>
                           )
                         })}
