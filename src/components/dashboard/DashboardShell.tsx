@@ -9,7 +9,7 @@ import {
   Palette, Receipt, AlertCircle, Percent, Building2,
   CreditCard, Settings, MessageCircle, X, Send,
   FlaskConical, Package, BookUser, Camera, Bell,
-  UserCircle, Mail, Check, ChevronRight, Reply, Copy, Loader2,
+  UserCircle, Mail, Check, ChevronRight, Reply, Copy, Loader2, CalendarDays,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -98,6 +98,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones'] },
   { href: '/dashboard/leads', label: 'Leads', icon: <Filter size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/disponibilidad', label: 'Disponibilidad', icon: <Calendar size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'administracion'] },
+  { href: '/dashboard/agenda', label: 'Agenda', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/reportes', label: 'Reportes', icon: <BarChart2 size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
   { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
   { href: '/dashboard/gerente', label: 'Mi Equipo', icon: <Users size={16} />, roles: ['gerente_comercial', 'administracion'] },
@@ -122,6 +123,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/ventas/nueva': 'Nueva Orden',
   '/dashboard/leads': 'Leads',
   '/dashboard/disponibilidad': 'Disponibilidad',
+  '/dashboard/agenda': 'Agenda',
   '/dashboard/reportes': 'Reportes',
   '/dashboard/cuentas': 'Cuentas',
   '/dashboard/gerente': 'Mi Equipo',

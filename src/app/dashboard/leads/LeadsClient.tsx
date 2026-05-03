@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, X, Pencil, ShoppingCart, Gift, Check, XCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, X, Pencil, ShoppingCart, Gift, Check, XCircle, ChevronLeft, ChevronRight, CalendarPlus } from 'lucide-react'
 
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 const DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -835,6 +835,26 @@ function LeadCard({
           {vendorName(lead)}
         </div>
       )}
+
+      {/* Agendar button */}
+      <Link
+        href={`/dashboard/agenda?lead=${lead.id}`}
+        onClick={e => e.stopPropagation()}
+        title="Agendar evento en Calendar"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+          marginTop: 8, padding: '6px 10px',
+          background: '#eff6ff', color: '#1d4ed8',
+          border: '1px solid #bfdbfe',
+          borderRadius: 6, fontSize: 11, fontWeight: 600,
+          textDecoration: 'none', transition: 'background 150ms',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = '#dbeafe')}
+        onMouseLeave={e => (e.currentTarget.style.background = '#eff6ff')}
+      >
+        <CalendarPlus size={11} />
+        Agendar
+      </Link>
 
       {/* Crear venta button */}
       {(lead.estado === 'ganado' || lead.estado === 'negociacion' || lead.estado === 'propuesta_enviada') && (
