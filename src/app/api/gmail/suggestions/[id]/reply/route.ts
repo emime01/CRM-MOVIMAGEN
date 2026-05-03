@@ -36,7 +36,7 @@ ${suggestion.body_preview || ''}
 Redactá la respuesta directa, sin saludos largos. Empezá con "Hola${suggestion.from_name ? ' ' + suggestion.from_name.split(' ')[0] : ''},". Cerrá con "Saludos,\n${userName}". Devolvé SOLO el texto de la respuesta, sin "Asunto:" ni meta-explicaciones.`
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 600,
     messages: [{ role: 'user', content: prompt }],
   })
