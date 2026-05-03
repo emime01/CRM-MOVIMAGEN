@@ -10,6 +10,7 @@ import {
   CreditCard, Settings, MessageCircle, X, Send,
   FlaskConical, Package, BookUser, Camera, Bell,
   UserCircle, Mail, Check, ChevronRight, Reply, Copy, Loader2, CalendarDays,
+  AlertTriangle, Clock, Megaphone,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -197,6 +198,18 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   const [replyLoading, setReplyLoading] = useState(false)
   const [replyCopied, setReplyCopied] = useState(false)
 
+  // CRM notifications state
+  interface Notificacion {
+    id: string
+    tipo: string
+    titulo: string
+    mensaje: string | null
+    link: string | null
+    leida: boolean
+    created_at: string
+  }
+  const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
+
   // Fetch suggestions on mount + poll every 5 min
   useEffect(() => {
     async function pollGmail() {
@@ -206,8 +219,15 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         if (res.ok) setSuggestions(await res.json())
       } catch { /* silent */ }
     }
+    async function fetchNotifs() {
+      try {
+        const res = await fetch('/api/notificaciones')
+        if (res.ok) setNotificaciones(await res.json())
+      } catch { /* silent */ }
+    }
     pollGmail()
-    const interval = setInterval(pollGmail, 5 * 60 * 1000)
+    fetchNotifs()
+    const interval = setInterval(() => { pollGmail(); fetchNotifs() }, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -475,14 +495,19 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 color: 'var(--text-secondary)',
               }}
             >
-              <Bell size={16} color={suggestions.length > 0 ? 'var(--orange)' : undefined} />
-              {suggestions.length > 0 && (
+              <Bell size={16} color={(suggestions.length + notificaciones.length) > 0 ? 'var(--orange)' : undefined} />
+              {(suggestions.length + notificaciones.length) > 0 && (
                 <span style={{
-                  position: 'absolute', top: 5, right: 5,
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: 'var(--orange)',
+                  position: 'absolute', top: 4, right: 4,
+                  minWidth: 16, height: 16, borderRadius: 8,
+                  background: 'var(--orange)', color: '#fff',
                   border: '1.5px solid var(--bg-card)',
-                }} />
+                  fontSize: 9, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 3px',
+                }}>
+                  {suggestions.length + notificaciones.length}
+                </span>
               )}
             </button>
 
@@ -629,6 +654,72 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                   >
                     Gestionar integración Gmail →
                   </a>
+                </div>
+
+                {/* CRM Notifications section */}
+                <div style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-app)' }}>
+                  <div style={{
+                    padding: '10px 16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <AlertTriangle size={13} color="#f59e0b" />
+                      Recordatorios CRM
+                      {notificaciones.length > 0 && (
+                        <span style={{ background: '#f59e0b', color: '#fff', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
+                          {notificaciones.length}
+                        </span>
+                      )}
+                    </div>
+                    {notificaciones.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          await fetch('/api/notificaciones/all', { method: 'DELETE' })
+                          setNotificaciones([])
+                        }}
+                        style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                      >
+                        Marcar leídas
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                    {notificaciones.length === 0 ? (
+                      <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                        Sin recordatorios pendientes
+                      </div>
+                    ) : (
+                      notificaciones.map(n => {
+                        const icon = n.tipo === 'lead_sin_gestion'
+                          ? <Clock size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />
+                          : n.tipo === 'campana_proxima'
+                            ? <Megaphone size={13} color="#3b82f6" style={{ flexShrink: 0, marginTop: 2 }} />
+                            : <AlertTriangle size={13} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+                        return (
+                          <div
+                            key={n.id}
+                            style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: '#fff', cursor: n.link ? 'pointer' : 'default' }}
+                            onClick={async () => {
+                              await fetch(`/api/notificaciones/${n.id}`, { method: 'PATCH' })
+                              setNotificaciones(prev => prev.filter(x => x.id !== n.id))
+                              if (n.link) { setBellOpen(false); router.push(n.link) }
+                            }}
+                          >
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              {icon}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3 }}>{n.titulo}</div>
+                                {n.mensaje && (
+                                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4 }}>{n.mensaje}</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
             )}
