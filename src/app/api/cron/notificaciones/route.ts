@@ -137,5 +137,171 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // ── 4. Lead en propuesta enviada sin respuesta >5 días ──────────────────
+  const cutoff5 = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10)
+
+  const { data: propuestasSinRespuesta } = await supabase
+    .from('leads')
+    .select('id, descripcion, vendedor_id, updated_at, clientes(nombre, empresa)')
+    .eq('estado', 'propuesta_enviada')
+    .not('vendedor_id', 'is', null)
+    .lt('updated_at', cutoff5 + 'T00:00:00')
+
+  for (const lead of propuestasSinRespuesta ?? []) {
+    const cli = Array.isArray(lead.clientes) ? lead.clientes[0] : lead.clientes
+    const clienteNombre = (cli as any)?.empresa || (cli as any)?.nombre || 'cliente'
+    const dias = Math.floor((Date.now() - new Date(lead.updated_at).getTime()) / 86400000)
+
+    await createNotif(
+      lead.vendedor_id!,
+      'propuesta_sin_respuesta',
+      `Propuesta sin respuesta: ${clienteNombre}`,
+      `Hace ${dias} días que enviaste la propuesta a ${clienteNombre} y no hay respuesta. ¿Hiciste seguimiento?`,
+      '/dashboard/leads',
+      lead.id,
+    )
+  }
+
+  // ── 5. Campañas que terminan en 3 días ───────────────────────────────────
+  const in3days = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
+
+  const { data: campanasTerminan } = await supabase
+    .from('ordenes_venta')
+    .select('id, numero, vendedor_id, clientes(nombre, empresa), fecha_baja_prevista, fecha_baja_real')
+    .in('estado', ['aprobada', 'en_oic', 'facturada'])
+    .not('vendedor_id', 'is', null)
+
+  for (const orden of campanasTerminan ?? []) {
+    const baja = (orden as any).fecha_baja_real ?? (orden as any).fecha_baja_prevista
+    if (baja?.slice(0, 10) !== in3days) continue
+
+    const cli = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
+    const clienteNombre = (cli as any)?.empresa || (cli as any)?.nombre || 'cliente'
+    const numero = orden.numero ? `#${String(orden.numero).padStart(5, '0')}` : `#${orden.id.slice(0, 6)}`
+
+    await createNotif(
+      (orden as any).vendedor_id!,
+      'campana_por_terminar',
+      `Campaña de ${clienteNombre} termina en 3 días`,
+      `La orden ${numero} de ${clienteNombre} vence el ${in3days}. ¿Interesa renovar?`,
+      `/dashboard/ventas/${orden.id}`,
+      orden.id,
+    )
+  }
+
+  // ── 6. Campañas terminadas ayer sin registros fotográficos ───────────────
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+
+  const { data: campanasTerminadasAyer } = await supabase
+    .from('ordenes_venta')
+    .select('id, numero, vendedor_id, clientes(nombre, empresa), fecha_baja_prevista, fecha_baja_real')
+    .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+    .not('vendedor_id', 'is', null)
+
+  for (const orden of campanasTerminadasAyer ?? []) {
+    const baja = (orden as any).fecha_baja_real ?? (orden as any).fecha_baja_prevista
+    if (baja?.slice(0, 10) !== yesterday) continue
+
+    // Check if there are registros for this order
+    const { data: regs } = await supabase
+      .from('registros')
+      .select('id')
+      .eq('orden_id', orden.id)
+      .limit(1)
+
+    if ((regs?.length ?? 0) > 0) continue
+
+    const cli = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
+    const clienteNombre = (cli as any)?.empresa || (cli as any)?.nombre || 'cliente'
+    const numero = orden.numero ? `#${String(orden.numero).padStart(5, '0')}` : `#${orden.id.slice(0, 6)}`
+
+    // Notify operaciones and the vendedor
+    const { data: ops } = await supabase
+      .from('perfiles')
+      .select('id')
+      .in('rol', ['operaciones', 'gerente_comercial'])
+
+    for (const op of ops ?? []) {
+      await createNotif(
+        op.id,
+        'campana_sin_registro',
+        `Falta registro: ${clienteNombre}`,
+        `La campaña ${numero} de ${clienteNombre} terminó ayer y no tiene fotos/videos de registro subidos.`,
+        `/dashboard/registros`,
+        orden.id,
+      )
+    }
+  }
+
+  // ── 7. Deudas de más de 30 días ──────────────────────────────────────────
+  const cutoff30 = new Date(Date.now() - 30 * 86400000).toISOString()
+
+  const { data: deudasAntiguas } = await supabase
+    .from('ordenes_venta')
+    .select('id, numero, monto_total, moneda, clientes(nombre, empresa)')
+    .eq('estado', 'facturada')
+    .lt('updated_at', cutoff30)
+
+  if ((deudasAntiguas?.length ?? 0) > 0) {
+    const { data: admins } = await supabase
+      .from('perfiles')
+      .select('id')
+      .in('rol', ['administracion', 'gerente_comercial'])
+
+    for (const orden of deudasAntiguas ?? []) {
+      const cli = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
+      const clienteNombre = (cli as any)?.empresa || (cli as any)?.nombre || 'cliente'
+      const numero = orden.numero ? `#${String(orden.numero).padStart(5, '0')}` : `#${orden.id.slice(0, 6)}`
+      const moneda = (orden as any).moneda === 'USD' ? 'U$S' : '$'
+      const monto = `${moneda} ${Number((orden as any).monto_total ?? 0).toLocaleString('es-UY', { maximumFractionDigits: 0 })}`
+      const dias = Math.floor((Date.now() - new Date(cutoff30).getTime()) / 86400000) + 30
+
+      for (const adm of admins ?? []) {
+        await createNotif(
+          adm.id,
+          'deuda_antigua',
+          `Deuda sin cobrar: ${clienteNombre}`,
+          `La orden ${numero} de ${clienteNombre} por ${monto} lleva ${dias} días facturada sin cobrar.`,
+          `/dashboard/ventas/${orden.id}`,
+          orden.id,
+        )
+      }
+    }
+  }
+
+  // ── 8. Leads ganados sin orden asociada hace >3 días ─────────────────────
+  const cutoff3 = new Date(Date.now() - 3 * 86400000).toISOString()
+
+  const { data: leadsGanados } = await supabase
+    .from('leads')
+    .select('id, descripcion, vendedor_id, updated_at, clientes(nombre, empresa)')
+    .eq('estado', 'ganado')
+    .not('vendedor_id', 'is', null)
+    .lt('updated_at', cutoff3)
+
+  for (const lead of leadsGanados ?? []) {
+    // Check if there's already an order linked to this lead
+    const { data: ordenes } = await supabase
+      .from('ordenes_venta')
+      .select('id')
+      .eq('lead_id', lead.id)
+      .limit(1)
+
+    if ((ordenes?.length ?? 0) > 0) continue
+
+    const cli = Array.isArray(lead.clientes) ? lead.clientes[0] : lead.clientes
+    const clienteNombre = (cli as any)?.empresa || (cli as any)?.nombre || 'cliente'
+    const descripcion = lead.descripcion ? ` (${lead.descripcion})` : ''
+
+    await createNotif(
+      lead.vendedor_id!,
+      'lead_ganado_sin_orden',
+      `Lead ganado sin OIC: ${clienteNombre}`,
+      `El lead de ${clienteNombre}${descripcion} está marcado como ganado pero todavía no tiene una orden creada.`,
+      '/dashboard/leads',
+      lead.id,
+    )
+  }
+
   return NextResponse.json({ ok: true, created })
 }

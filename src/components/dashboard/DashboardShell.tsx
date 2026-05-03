@@ -691,11 +691,17 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                       </div>
                     ) : (
                       notificaciones.map(n => {
-                        const icon = n.tipo === 'lead_sin_gestion'
-                          ? <Clock size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />
-                          : n.tipo === 'campana_proxima'
-                            ? <Megaphone size={13} color="#3b82f6" style={{ flexShrink: 0, marginTop: 2 }} />
-                            : <AlertTriangle size={13} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+                        const iconMap: Record<string, React.ReactNode> = {
+                          lead_sin_gestion:       <Clock size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />,
+                          propuesta_sin_respuesta: <Clock size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />,
+                          campana_proxima:        <Megaphone size={13} color="#3b82f6" style={{ flexShrink: 0, marginTop: 2 }} />,
+                          campana_por_terminar:   <Calendar size={13} color="#8b5cf6" style={{ flexShrink: 0, marginTop: 2 }} />,
+                          campana_sin_registro:   <Camera size={13} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />,
+                          deuda_antigua:          <CreditCard size={13} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />,
+                          lead_ganado_sin_orden:  <Star size={13} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />,
+                          orden_pendiente:        <AlertTriangle size={13} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />,
+                        }
+                        const icon = iconMap[n.tipo] ?? <AlertTriangle size={13} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
                         return (
                           <div
                             key={n.id}
