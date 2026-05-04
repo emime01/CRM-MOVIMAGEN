@@ -97,8 +97,8 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: <Home size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones'] },
-  { href: '/dashboard/leads', label: 'Leads', icon: <Filter size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
-  { href: '/dashboard/cotizaciones', label: 'Cotizaciones', icon: <ClipboardList size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
+  { href: '/dashboard/leads', label: 'Leads', icon: <Filter size={16} />, roles: ['vendedor', 'gerente_comercial'] },
+  { href: '/dashboard/cotizaciones', label: 'Cotizaciones', icon: <ClipboardList size={16} />, roles: ['vendedor', 'asistente_ventas'] },
   { href: '/dashboard/disponibilidad', label: 'Disponibilidad', icon: <Calendar size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'administracion'] },
   { href: '/dashboard/agenda', label: 'Agenda', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/reportes', label: 'Reportes', icon: <BarChart2 size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },

@@ -42,6 +42,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  if (!['vendedor', 'asistente_ventas'].includes(session.user.rol))
+    return NextResponse.json({ error: 'Sin permisos para crear cotizaciones' }, { status: 403 })
 
   const body = await req.json()
   const supabase = createServerClient()

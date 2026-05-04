@@ -3,9 +3,12 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 
+const LEADS_ROLES = ['vendedor', 'gerente_comercial']
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  if (!LEADS_ROLES.includes(session.user.rol)) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   let body: {
     clienteId?: string
