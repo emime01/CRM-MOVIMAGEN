@@ -30,7 +30,8 @@ DECLARE
     'potenciales_cliente',
     'leads',
     'agencias',
-    'clientes'
+    'clientes',
+    'objetivos'
   ];
   t TEXT;
 BEGIN
