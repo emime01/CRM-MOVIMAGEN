@@ -4,8 +4,33 @@
 -- PRESERVA: catálogo de soportes, tipos_cliente, buses, canon, perfiles reales, config.
 
 -- ============================================================
--- Truncar tablas transaccionales si existen (con CASCADE)
--- Orden: primero hijos, después padres. Perfiles se borra al final.
+-- PASO 1: Truncar TODAS las tablas públicas que referencian
+--         perfiles (detectadas automáticamente via FK) + CASCADE
+-- ============================================================
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  -- Truncate every table in public schema that has a FK pointing to perfiles
+  FOR r IN
+    SELECT DISTINCT tc.table_name
+    FROM information_schema.referential_constraints rc
+    JOIN information_schema.table_constraints tc
+      ON tc.constraint_name = rc.constraint_name
+      AND tc.table_schema = 'public'
+    JOIN information_schema.table_constraints pc
+      ON pc.constraint_name = rc.unique_constraint_name
+      AND pc.table_name = 'perfiles'
+      AND pc.table_schema = 'public'
+  LOOP
+    EXECUTE format('TRUNCATE TABLE public.%I RESTART IDENTITY CASCADE', r.table_name);
+    RAISE NOTICE 'Truncated (perfiles ref): %', r.table_name;
+  END LOOP;
+END $$;
+
+-- ============================================================
+-- PASO 2: Truncar el resto de tablas transaccionales conocidas
+--         (que no referencian perfiles pero sí a otras tablas)
 -- ============================================================
 DO $$
 DECLARE
@@ -31,7 +56,8 @@ DECLARE
     'leads',
     'agencias',
     'clientes',
-    'objetivos'
+    'objetivos',
+    'regalos'
   ];
   t TEXT;
 BEGIN
@@ -40,7 +66,7 @@ BEGIN
       SELECT 1 FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name = t
     ) THEN
-      EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
+      EXECUTE format('TRUNCATE TABLE public.%I RESTART IDENTITY CASCADE', t);
       RAISE NOTICE 'Truncated: %', t;
     ELSE
       RAISE NOTICE 'Skipped (does not exist): %', t;
@@ -49,29 +75,20 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Limpiar perfiles de usuarios de prueba (@test.com)
--- Ya no quedan FK que los referencien.
+-- PASO 3: Ahora sí borrar perfiles de test (@test.com)
 -- ============================================================
 DELETE FROM perfiles WHERE user_id IN (
   SELECT id FROM auth.users WHERE email LIKE '%@test.com'
 );
 
 -- ============================================================
--- Resetear secuencia de numeración de cotizaciones (COT-0001)
+-- PASO 4: Resetear secuencia de numeración de cotizaciones
 -- ============================================================
 ALTER SEQUENCE IF EXISTS propuestas_numero_seq RESTART WITH 1;
 
 -- ============================================================
--- Verificar
+-- PASO 5: Verificar
 -- ============================================================
-SELECT tabla, filas FROM (
-  SELECT 'perfiles'           AS tabla, COUNT(*) AS filas FROM perfiles
-  UNION ALL SELECT 'clientes',           COUNT(*) FROM clientes            WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='clientes')
-  UNION ALL SELECT 'agencias',           COUNT(*) FROM agencias            WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='agencias')
-  UNION ALL SELECT 'leads',              COUNT(*) FROM leads               WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='leads')
-  UNION ALL SELECT 'propuestas',         COUNT(*) FROM propuestas          WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='propuestas')
-  UNION ALL SELECT 'ordenes_venta',      COUNT(*) FROM ordenes_venta       WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='ordenes_venta')
-  UNION ALL SELECT 'reservas',           COUNT(*) FROM reservas            WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='reservas')
-  UNION ALL SELECT 'comprobantes',       COUNT(*) FROM comprobantes        WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='comprobantes')
-  UNION ALL SELECT 'soportes (catálogo)',COUNT(*) FROM soportes
-) q;
+SELECT 'perfiles'            AS tabla, COUNT(*) AS filas FROM perfiles
+UNION ALL
+SELECT 'soportes (catálogo)', COUNT(*) FROM soportes;
