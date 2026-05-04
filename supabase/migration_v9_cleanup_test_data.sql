@@ -1,18 +1,10 @@
 -- Migration V9: Limpieza de datos de prueba para arranque productivo
 -- Borra todos los datos transaccionales (ventas, leads, reservas, comprobantes, etc.)
 -- y también clientes y agencias para arrancar de cero.
--- PRESERVA: catálogo de soportes, tipos_cliente, buses, canon, perfiles, config.
+-- PRESERVA: catálogo de soportes, tipos_cliente, buses, canon, perfiles reales, config.
 
 -- ============================================================
--- 1. Limpiar perfiles de usuarios de prueba (@test.com)
---    para que el seed-users de usuarios reales no choque.
--- ============================================================
-DELETE FROM perfiles WHERE user_id IN (
-  SELECT id FROM auth.users WHERE email LIKE '%@test.com'
-);
-
--- ============================================================
--- 2. Borrar registros (tabla puede no existir en algunas instancias)
+-- 1. Borrar registros (tabla puede no existir en algunas instancias)
 -- ============================================================
 DO $$
 BEGIN
@@ -22,10 +14,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- 3. Truncar todas las tablas transaccionales + clientes y agencias
---    Usamos un único TRUNCATE multi-tabla para que las FK no nos molesten.
---    RESTART IDENTITY resetea las identity columns. CASCADE arrastra
---    cualquier FK pendiente (notificaciones, evidencias_audit, etc).
+-- 2. Truncar todas las tablas transaccionales + clientes y agencias
+--    Hacemos esto ANTES de tocar perfiles para liberar las FK
+--    (ordenes_venta.vendedor_id → perfiles.id, etc.)
 -- ============================================================
 TRUNCATE TABLE
   notificaciones,
@@ -49,6 +40,14 @@ TRUNCATE TABLE
   agencias,
   clientes
 RESTART IDENTITY CASCADE;
+
+-- ============================================================
+-- 3. Ahora sí, limpiar perfiles de usuarios de prueba (@test.com)
+--    Ya no quedan FK que los referencien.
+-- ============================================================
+DELETE FROM perfiles WHERE user_id IN (
+  SELECT id FROM auth.users WHERE email LIKE '%@test.com'
+);
 
 -- ============================================================
 -- 4. Resetear secuencia de numeración de cotizaciones (COT-0001)
