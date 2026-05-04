@@ -44,19 +44,25 @@ export async function GET(req: NextRequest) {
     const existingAuthUser = existingByEmail.get(u.email)
 
     if (existingAuthUser) {
+      // Reset password + ensure email is confirmed for every existing user
+      const { error: pwError } = await supabase.auth.admin.updateUserById(existingAuthUser.id, {
+        password: DEFAULT_PASSWORD,
+        email_confirm: true,
+      })
+
       const { data: perfiles } = await supabase
         .from('perfiles')
         .select('id, rol, nombre')
         .eq('user_id', existingAuthUser.id)
 
+      let perfilStatus = ''
       if (perfiles && perfiles.length > 0) {
-        // Update perfil if rol/nombre differ
         const p = perfiles[0]
         if (p.rol !== u.rol || p.nombre !== u.nombre) {
           await supabase.from('perfiles').update({ rol: u.rol, nombre: u.nombre }).eq('id', p.id)
-          results.push({ email: u.email, status: 'perfil actualizado ✓' })
+          perfilStatus = 'perfil actualizado'
         } else {
-          results.push({ email: u.email, status: 'ya existe', detail: `perfil id: ${p.id}` })
+          perfilStatus = 'perfil ok'
         }
       } else {
         const { error: perfilError } = await supabase.from('perfiles').insert({
@@ -65,8 +71,13 @@ export async function GET(req: NextRequest) {
           rol: u.rol,
           porcentaje_comision: 6,
         })
-        results.push({ email: u.email, status: perfilError ? `error perfil: ${perfilError.message}` : 'perfil creado ✓' })
+        perfilStatus = perfilError ? `error perfil: ${perfilError.message}` : 'perfil creado'
       }
+
+      results.push({
+        email: u.email,
+        status: pwError ? `error contraseña: ${pwError.message}` : `contraseña reseteada ✓ — ${perfilStatus}`,
+      })
       continue
     }
 
