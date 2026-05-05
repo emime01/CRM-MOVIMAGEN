@@ -17,6 +17,7 @@ interface SoporteForm {
   precio_semanal: string
   tiene_iva: boolean
   es_digital: boolean
+  cap: string
 }
 
 interface ImportRow {
@@ -27,6 +28,7 @@ interface ImportRow {
   ubicacion?: string
   precio_semanal: number
   tiene_iva: boolean
+  cap: number
 }
 
 interface Props {
@@ -41,7 +43,7 @@ const TIPOS = ['estatico_shopping', 'banner_shopping', 'circuito', 'medianera', 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function emptyForm(): SoporteForm {
-  return { nombre: '', categoria: '', tipo: '', seccion: '', ubicacion: '', precio_base: '', precio_semanal: '', tiene_iva: false, es_digital: false }
+  return { nombre: '', categoria: '', tipo: '', seccion: '', ubicacion: '', precio_base: '', precio_semanal: '', tiene_iva: false, es_digital: false, cap: '1' }
 }
 
 function soporteToForm(s: SoporteRow): SoporteForm {
@@ -55,6 +57,7 @@ function soporteToForm(s: SoporteRow): SoporteForm {
     precio_semanal: s.precio_semanal != null ? String(s.precio_semanal) : '',
     tiene_iva: s.tiene_iva,
     es_digital: s.es_digital ?? false,
+    cap: String(s.cap ?? 1),
   }
 }
 
@@ -98,6 +101,7 @@ function SoporteModal({ soporte, onClose, onSaved }: {
       precio_semanal: form.precio_semanal !== '' ? Number(form.precio_semanal) : null,
       tiene_iva: form.tiene_iva,
       es_digital: form.es_digital,
+      cap: form.cap !== '' ? Math.max(1, parseInt(form.cap) || 1) : 1,
     }
 
     const res = await fetch(
@@ -178,6 +182,15 @@ function SoporteModal({ soporte, onClose, onSaved }: {
             </div>
           </div>
 
+          {/* Capacidad */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Capacidad (unidades)</label>
+            <input type="number" value={form.cap} onChange={e => set('cap', e.target.value)} placeholder="1" min={1} style={inp} />
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9a9895' }}>
+              Unidades disponibles simultáneamente. Usar 1 para soportes individuales (LED, cartel). Usar mayor para circuitos o buses donde múltiples clientes pueden coexistir.
+            </p>
+          </div>
+
           {/* IVA + Digital */}
           <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
@@ -225,6 +238,21 @@ function SoporteModal({ soporte, onClose, onSaved }: {
 
 // ─── Import Modal ─────────────────────────────────────────────────────────────
 
+async function downloadTemplate() {
+  const XLSX = await import('xlsx')
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['nombre', 'categoria', 'tipo', 'seccion', 'ubicacion', 'precio_semanal', 'tiene_iva', 'cap'],
+    ['LED Punta del Este', 'Digital', 'led', 'Punta del Este', 'Av. Gorlero 1234', 8500, 'si', 1],
+    ['Circuito Buses Centro', 'Bus', 'circuito', 'Centro', '', 3200, 'si', 20],
+    ['Medianera 18 de Julio', 'Exterior', 'medianera', 'Centro', '18 de Julio 1625', 12000, 'no', 1],
+    ['Banner Shopping', 'Shopping', 'banner_shopping', 'Montevideo Shopping', '', 4500, 'si', 4],
+  ])
+  ws['!cols'] = [{ wch: 30 }, { wch: 12 }, { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 16 }, { wch: 10 }, { wch: 6 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Soportes')
+  XLSX.writeFile(wb, 'plantilla_soportes.xlsx')
+}
+
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [rows, setRows] = useState<ImportRow[] | null>(null)
@@ -259,8 +287,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         const tipo = String(row['tipo'] ?? row['Tipo'] ?? row['TIPO'] ?? '').trim() || undefined
         const seccion = String(row['seccion'] ?? row['Seccion'] ?? row['Sección'] ?? row['SECCION'] ?? '').trim() || undefined
         const ubicacion = String(row['ubicacion'] ?? row['Ubicacion'] ?? row['Ubicación'] ?? row['UBICACION'] ?? '').trim() || undefined
+        const cap = Math.max(1, parseInt(String(row['cap'] ?? row['Cap'] ?? row['CAP'] ?? row['capacidad'] ?? row['Capacidad'] ?? '1')) || 1)
 
-        return { nombre, categoria, tipo, seccion, ubicacion, precio_semanal, tiene_iva }
+        return { nombre, categoria, tipo, seccion, ubicacion, precio_semanal, tiene_iva, cap }
       })
 
       setRows(parsed)
@@ -299,26 +328,33 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         </div>
 
         <div style={{ padding: '20px 20px 24px' }}>
-          <div style={{ padding: '12px 14px', background: '#f9f8f5', border: '1px solid #e5e3dc', borderRadius: 8, marginBottom: 20, fontSize: 12, color: '#4a4845', lineHeight: 1.7 }}>
+          <div style={{ padding: '12px 14px', background: '#f9f8f5', border: '1px solid #e5e3dc', borderRadius: 8, marginBottom: 16, fontSize: 12, color: '#4a4845', lineHeight: 1.7 }}>
             <strong>Columnas requeridas:</strong>{' '}
             {['nombre', 'precio_semanal', 'tiene_iva (si/no)'].map(c => (
               <code key={c} style={{ background: '#e5e3dc', padding: '1px 5px', borderRadius: 4, marginRight: 4 }}>{c}</code>
             ))}<br />
             <strong>Columnas opcionales:</strong>{' '}
-            {['categoria', 'tipo', 'seccion', 'ubicacion'].map(c => (
+            {['categoria', 'tipo', 'seccion', 'ubicacion', 'cap'].map(c => (
               <code key={c} style={{ background: '#e5e3dc', padding: '1px 5px', borderRadius: 4, marginRight: 4 }}>{c}</code>
             ))}<br />
-            La primera fila debe ser el encabezado. Se aceptan .xlsx, .xls y .csv.
+            <code style={{ background: '#e5e3dc', padding: '1px 5px', borderRadius: 4 }}>cap</code> = capacidad simultánea (default 1). La primera fila debe ser el encabezado. Se aceptan .xlsx, .xls y .csv.
           </div>
 
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+            <button onClick={downloadTemplate} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px',
+              border: '1px solid #e5e3dc', borderRadius: 8, background: '#fff',
+              cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: '#4a4845',
+            }}>
+              ⬇ Descargar plantilla
+            </button>
             <input type="file" accept=".xlsx,.xls,.csv" ref={fileRef} onChange={handleFile} style={{ display: 'none' }} />
             <button onClick={() => fileRef.current?.click()} style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px',
+              display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px',
               border: '1.5px dashed #c5c2bb', borderRadius: 8, background: '#fafaf8',
               cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: '#4a4845',
             }}>
-              <Upload size={16} /> Seleccionar archivo
+              <Upload size={15} /> Seleccionar archivo
             </button>
           </div>
 
@@ -337,7 +373,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                   <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
                     <thead>
                       <tr style={{ background: '#f9f8f5', borderBottom: '1px solid #e5e3dc' }}>
-                        {['Nombre', 'Categoría', 'Tipo', 'Precio semanal', 'IVA'].map(h => (
+                        {['Nombre', 'Categoría', 'Tipo', 'Precio semanal', 'IVA', 'Cap'].map(h => (
                           <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#9a9895', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -350,11 +386,12 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                           <td style={{ padding: '7px 12px', color: '#4a4845' }}>{r.tipo ?? '—'}</td>
                           <td style={{ padding: '7px 12px', color: '#4a4845' }}>${r.precio_semanal.toLocaleString('es-AR')}</td>
                           <td style={{ padding: '7px 12px', color: r.tiene_iva ? '#15803d' : '#9a9895' }}>{r.tiene_iva ? 'Sí' : 'No'}</td>
+                          <td style={{ padding: '7px 12px', color: '#4a4845' }}>{r.cap}</td>
                         </tr>
                       ))}
                       {rows.length > 10 && (
                         <tr>
-                          <td colSpan={5} style={{ padding: '8px 12px', textAlign: 'center', color: '#9a9895', fontSize: 11 }}>… y {rows.length - 10} más</td>
+                          <td colSpan={6} style={{ padding: '8px 12px', textAlign: 'center', color: '#9a9895', fontSize: 11 }}>… y {rows.length - 10} más</td>
                         </tr>
                       )}
                     </tbody>
@@ -511,6 +548,7 @@ export default function SoportesClient({ initialSoportes }: Props) {
                   <th style={th}>Sección</th>
                   <th style={th}>Precio semanal</th>
                   <th style={th}>IVA</th>
+                  <th style={{ ...th, textAlign: 'center' }}>Cap.</th>
                   <th style={th}>Estado</th>
                   <th style={{ ...th, textAlign: 'right' }}>Acciones</th>
                 </tr>
@@ -531,6 +569,7 @@ export default function SoportesClient({ initialSoportes }: Props) {
                         {s.tiene_iva ? 'Gravado' : 'Exento'}
                       </span>
                     </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: (s.cap ?? 1) > 1 ? '#eb691c' : '#9a9895' }}>{s.cap ?? 1}</td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: s.activo ? 'rgba(21,128,61,0.1)' : 'rgba(107,114,128,0.1)', color: s.activo ? '#15803d' : '#6b7280' }}>
                         {s.activo ? 'Activo' : 'Inactivo'}

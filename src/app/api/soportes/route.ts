@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     precio_base?: number
     precio_semanal?: number
     tiene_iva?: boolean
+    cap?: number
     items?: {
       nombre: string
       categoria?: string
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
       ubicacion?: string
       precio_semanal?: number
       tiene_iva: boolean
+      cap?: number
     }[]
   }
   try { body = await req.json() } catch {
@@ -72,6 +74,7 @@ export async function POST(req: NextRequest) {
       ubicacion: item.ubicacion || null,
       precio_semanal: item.precio_semanal ?? null,
       tiene_iva: item.tiene_iva,
+      cap: item.cap ?? 1,
       activo: true,
     }))
     const { error } = await supabase.from('soportes').insert(rows)
@@ -92,6 +95,7 @@ export async function POST(req: NextRequest) {
       precio_base: body.precio_base ?? null,
       precio_semanal: body.precio_semanal ?? null,
       tiene_iva: body.tiene_iva ?? false,
+      cap: body.cap ?? 1,
       activo: true,
     })
     .select('id')
