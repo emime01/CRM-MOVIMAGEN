@@ -3,27 +3,54 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 
-export interface SoporteConEstado {
+export interface SoporteOcupacion {
   id: string
   nombre: string
   tipo: string | null
+  tipo_cotizador: string | null
   seccion: string | null
   ubicacion: string | null
-  estado: 'libre' | 'reservado' | 'ocupado'
-  cliente: string | null
-  fechaDesde: string | null
-  fechaHasta: string | null
-  // shown when real differs from prevista
-  fechaDesdePrevista: string | null
-  fechaHastaPrevista: string | null
+  categoria: string | null
+  cap: number
+  reservado: number
+  pct: number
+  disponible: number
+  clientes: string[]
+  estado: 'libre' | 'parcial' | 'ocupado'
 }
 
-// Returns the effective date using real if set, fallback to prevista
-function efAlta(ord: { fecha_alta_real: string | null; fecha_alta_prevista: string | null }): string | null {
-  return ord.fecha_alta_real ?? ord.fecha_alta_prevista
+export interface DiaStats {
+  fecha: string
+  libres: number
+  total: number
 }
-function efBaja(ord: { fecha_baja_real: string | null; fecha_baja_prevista: string | null }): string | null {
-  return ord.fecha_baja_real ?? ord.fecha_baja_prevista
+
+function buildOcupacion(
+  soportes: any[],
+  reservadoMap: Map<string, number>,
+  clientesMap: Map<string, string[]>,
+): SoporteOcupacion[] {
+  return soportes.map((s: any) => {
+    const cap = s.cap ?? 1
+    const reservado = reservadoMap.get(s.id) ?? 0
+    const pct = Math.min(100, Math.round((reservado / cap) * 100))
+    const disponible = Math.max(0, cap - reservado)
+    const estado: SoporteOcupacion['estado'] =
+      reservado >= cap ? 'ocupado' : reservado > 0 ? 'parcial' : 'libre'
+    return {
+      id: s.id, nombre: s.nombre, tipo: s.tipo,
+      tipo_cotizador: s.tipo_cotizador ?? null,
+      seccion: s.seccion, ubicacion: s.ubicacion, categoria: s.categoria,
+      cap, reservado, pct, disponible,
+      clientes: clientesMap.get(s.id) ?? [],
+      estado,
+    }
+  })
+}
+
+function addCliente(map: Map<string, string[]>, soporteId: string, nombre: string) {
+  const existing = map.get(soporteId) ?? []
+  if (!existing.includes(nombre)) map.set(soporteId, [...existing, nombre])
 }
 
 export async function GET(req: NextRequest) {
@@ -31,94 +58,114 @@ export async function GET(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
+  const mes = searchParams.get('mes')
   const fecha = searchParams.get('fecha') ?? new Date().toISOString().split('T')[0]
 
   const supabase = createServerClient()
 
-  const [{ data: soportes }, { data: ordenes }, { data: reservas }] = await Promise.all([
-    supabase
-      .from('soportes')
-      .select('id, nombre, tipo, seccion, ubicacion')
-      .eq('activo', true)
-      .order('seccion')
-      .order('nombre'),
-    // Fetch all active-state orders without date filter — apply COALESCE in JS
-    supabase
-      .from('ordenes_venta')
-      .select('id, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id)')
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
-      .not('fecha_alta_prevista', 'is', null),
+  const { data: soportes } = await supabase
+    .from('soportes')
+    .select('id, nombre, tipo, tipo_cotizador, seccion, ubicacion, categoria, cap')
+    .eq('activo', true)
+    .order('categoria')
+    .order('nombre')
+
+  if (mes) {
+    const [y, m] = mes.split('-').map(Number)
+    const daysInMonth = new Date(y, m, 0).getDate()
+    const firstDay = `${mes}-01`
+    const lastDay = `${mes}-${String(daysInMonth).padStart(2, '0')}`
+
+    const [{ data: reservas }, { data: ordenes }] = await Promise.all([
+      supabase
+        .from('reservas')
+        .select('fecha_desde, fecha_hasta, reserva_items(soporte_id, cantidad)')
+        .in('estado', ['pendiente', 'aprobada', 'confirmada'])
+        .lte('fecha_desde', lastDay)
+        .gte('fecha_hasta', firstDay),
+      supabase
+        .from('ordenes_venta')
+        .select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, orden_items(soporte_id)')
+        .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+        .lte('fecha_alta_prevista', lastDay)
+        .gte('fecha_baja_prevista', firstDay),
+    ])
+
+    const capMap = new Map<string, number>((soportes ?? []).map((s: any) => [s.id, s.cap ?? 1]))
+    const total = (soportes ?? []).length
+
+    const dias: DiaStats[] = []
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${mes}-${String(d).padStart(2, '0')}`
+      const resMap = new Map<string, number>()
+
+      reservas?.forEach((r: any) => {
+        if (r.fecha_desde > dateStr || r.fecha_hasta < dateStr) return
+        ;(r.reserva_items ?? []).forEach((item: any) => {
+          if (item.soporte_id)
+            resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
+        })
+      })
+
+      ordenes?.forEach((ord: any) => {
+        const alta = ord.fecha_alta_real ?? ord.fecha_alta_prevista
+        const baja = ord.fecha_baja_real ?? ord.fecha_baja_prevista
+        if (!alta || !baja || alta > dateStr || baja < dateStr) return
+        ;(ord.orden_items ?? []).forEach((item: any) => {
+          if (item.soporte_id)
+            resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + 1)
+        })
+      })
+
+      let libres = 0
+      capMap.forEach((cap, id) => { if ((resMap.get(id) ?? 0) < cap) libres++ })
+      dias.push({ fecha: dateStr, libres, total })
+    }
+
+    return NextResponse.json({ dias })
+  }
+
+  // Single day mode
+  const [{ data: reservas }, { data: ordenes }] = await Promise.all([
     supabase
       .from('reservas')
-      .select('id, soporte_id, fecha_desde, fecha_hasta, estado, clientes(nombre, empresa)')
+      .select('clientes(nombre, empresa), reserva_items(soporte_id, cantidad)')
       .in('estado', ['pendiente', 'aprobada', 'confirmada'])
       .lte('fecha_desde', fecha)
       .gte('fecha_hasta', fecha),
+    supabase
+      .from('ordenes_venta')
+      .select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id)')
+      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+      .not('fecha_alta_prevista', 'is', null),
   ])
 
-  const ocupadoMap = new Map<string, { cliente: string | null; fechaDesde: string; fechaHasta: string; fechaDesdePrevista: string | null; fechaHastaPrevista: string | null }>()
-  const reservadoMap = new Map<string, { cliente: string | null; fechaDesde: string; fechaHasta: string }>()
-
-  ordenes?.forEach((ord: any) => {
-    const alta = efAlta(ord)
-    const baja = efBaja(ord)
-    // Order covers the queried date using effective (real) dates
-    if (!alta || !baja) return
-    if (alta > fecha || baja < fecha) return
-
-    const cli = Array.isArray(ord.clientes) ? ord.clientes[0] : ord.clientes
-    const clienteNombre = cli?.empresa ?? cli?.nombre ?? null
-    ;(ord.orden_items ?? []).forEach((item: any) => {
-      if (!item.soporte_id) return
-      if (!ocupadoMap.has(item.soporte_id)) {
-        ocupadoMap.set(item.soporte_id, {
-          cliente: clienteNombre,
-          fechaDesde: alta,
-          fechaHasta: baja,
-          // Only expose prevista when it differs from real
-          fechaDesdePrevista: ord.fecha_alta_real ? ord.fecha_alta_prevista : null,
-          fechaHastaPrevista: ord.fecha_baja_real ? ord.fecha_baja_prevista : null,
-        })
-      }
-    })
-  })
+  const reservadoMap = new Map<string, number>()
+  const clientesMap = new Map<string, string[]>()
 
   reservas?.forEach((r: any) => {
-    if (!r.soporte_id || ocupadoMap.has(r.soporte_id)) return
-    if (reservadoMap.has(r.soporte_id)) return
     const cli = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
-    reservadoMap.set(r.soporte_id, {
-      cliente: cli?.empresa ?? cli?.nombre ?? null,
-      fechaDesde: r.fecha_desde,
-      fechaHasta: r.fecha_hasta,
+    const nombre = cli?.empresa ?? cli?.nombre ?? null
+    ;(r.reserva_items ?? []).forEach((item: any) => {
+      if (!item.soporte_id) return
+      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
+      if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
     })
   })
 
-  const result: SoporteConEstado[] = (soportes ?? []).map((s: any) => {
-    if (ocupadoMap.has(s.id)) {
-      const info = ocupadoMap.get(s.id)!
-      return {
-        id: s.id, nombre: s.nombre, tipo: s.tipo, seccion: s.seccion, ubicacion: s.ubicacion,
-        estado: 'ocupado', cliente: info.cliente,
-        fechaDesde: info.fechaDesde, fechaHasta: info.fechaHasta,
-        fechaDesdePrevista: info.fechaDesdePrevista, fechaHastaPrevista: info.fechaHastaPrevista,
-      }
-    }
-    if (reservadoMap.has(s.id)) {
-      const info = reservadoMap.get(s.id)!
-      return {
-        id: s.id, nombre: s.nombre, tipo: s.tipo, seccion: s.seccion, ubicacion: s.ubicacion,
-        estado: 'reservado', cliente: info.cliente,
-        fechaDesde: info.fechaDesde, fechaHasta: info.fechaHasta,
-        fechaDesdePrevista: null, fechaHastaPrevista: null,
-      }
-    }
-    return {
-      id: s.id, nombre: s.nombre, tipo: s.tipo, seccion: s.seccion, ubicacion: s.ubicacion,
-      estado: 'libre', cliente: null, fechaDesde: null, fechaHasta: null,
-      fechaDesdePrevista: null, fechaHastaPrevista: null,
-    }
+  ordenes?.forEach((ord: any) => {
+    const alta = ord.fecha_alta_real ?? ord.fecha_alta_prevista
+    const baja = ord.fecha_baja_real ?? ord.fecha_baja_prevista
+    if (!alta || !baja || alta > fecha || baja < fecha) return
+    const cli = Array.isArray(ord.clientes) ? ord.clientes[0] : ord.clientes
+    const nombre = cli?.empresa ?? cli?.nombre ?? null
+    ;(ord.orden_items ?? []).forEach((item: any) => {
+      if (!item.soporte_id) return
+      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + 1)
+      if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
+    })
   })
 
+  const result = buildOcupacion(soportes ?? [], reservadoMap, clientesMap)
   return NextResponse.json({ soportes: result, fecha })
 }
