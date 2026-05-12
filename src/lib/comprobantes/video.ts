@@ -71,20 +71,31 @@ function escapeFontPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/:/g, '\\:')
 }
 
+function formatDDMMYYYY(d: string): string {
+  if (!d) return ''
+  if (/^\d{4}-\d{2}-\d{2}/.test(d)) {
+    const [y, m, day] = d.slice(0, 10).split('-')
+    return `${day}-${m}-${y}`
+  }
+  return d
+}
+
 async function buildOverlayFilter(soporteNombre: string, fechaDesde: string, fechaHasta: string): Promise<string> {
   const fontPath = await ensureFont()
-  const top = escapeDrawText(soporteNombre.toUpperCase())
-  const bottom = escapeDrawText(`${fechaDesde}  -  ${fechaHasta}`)
+  const nameText = escapeDrawText(soporteNombre.toUpperCase())
+  const dateText = escapeDrawText(`DESDE: ${formatDDMMYYYY(fechaDesde)}  HASTA: ${formatDDMMYYYY(fechaHasta)}`)
   const ff = escapeFontPath(fontPath)
 
-  const topLabel = `drawtext=fontfile='${ff}':text='${top}':fontsize=36:fontcolor=white:x=(w-text_w)/2:y=40:box=1:boxcolor=black@0.55:boxborderw=14`
-  const bottomLabel = `drawtext=fontfile='${ff}':text='${bottom}':fontsize=24:fontcolor=white:x=(w-text_w)/2:y=h-th-40:box=1:boxcolor=black@0.55:boxborderw=12`
+  const whiteBox = `drawbox=x=0:y=h-120:w=iw:h=120:color=white@1.0:t=fill`
+  const nameLabel = `drawtext=fontfile='${ff}':text='${nameText}':fontsize=38:fontcolor=0xEB691C:x=(w-text_w)/2:y=h-100`
+  const dateLabel = `drawtext=fontfile='${ff}':text='${dateText}':fontsize=26:fontcolor=0xEB691C:x=(w-text_w)/2:y=h-50`
 
   return [
     'scale=1280:720:force_original_aspect_ratio=decrease',
     'pad=1280:720:(ow-iw)/2:(oh-ih)/2:black',
-    topLabel,
-    bottomLabel,
+    whiteBox,
+    nameLabel,
+    dateLabel,
   ].join(',')
 }
 
