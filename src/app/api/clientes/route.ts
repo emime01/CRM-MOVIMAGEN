@@ -24,10 +24,23 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const supabase = createServerClient()
 
-  // Bulk import (from Excel image 1: AGENCIA, CONTACTO AGENCIA, CONTACTO CLIENTE, CLIENTE, EJEC VTAS, PORCENTAJE, C1, C2, C3)
+  // Bulk import (from Excel: AGENCIA, CONTACTO AGENCIA, CONTACTO CLIENTE, CLIENTE, EJEC VTAS, PORCENTAJE, C1, C2, C3)
   if (body.items && Array.isArray(body.items)) {
     const { data: perfiles } = await supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial'])
-    const perfilMap = new Map((perfiles ?? []).map((p: { id: string; nombre: string }) => [p.nombre.toLowerCase().trim(), p.id]))
+
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+    const perfilList = (perfiles ?? []) as { id: string; nombre: string }[]
+
+    const findVendedor = (ejecVtas: string): string | null => {
+      if (!ejecVtas) return null
+      const v = norm(ejecVtas)
+      // Exact match first
+      let m = perfilList.find(p => norm(p.nombre) === v)
+      if (m) return m.id
+      // Partial match: perfil name contained in excel value (e.g. "Fabián" in "Fabian Cairele")
+      m = perfilList.find(p => v.includes(norm(p.nombre)) || norm(p.nombre).includes(v))
+      return m?.id ?? null
+    }
 
     const results = []
     const year = new Date().getFullYear()
@@ -49,9 +62,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Resolve vendedor
-      const ejecVtas = (row.ejec_vtas ?? '').toLowerCase().trim()
-      const vendedorId = perfilMap.get(ejecVtas) ?? null
+      // Resolve vendedor (accent + partial-name tolerant)
+      const vendedorId = findVendedor(row.ejec_vtas ?? '')
 
       // Upsert cliente
       let clienteId: string | null = null
