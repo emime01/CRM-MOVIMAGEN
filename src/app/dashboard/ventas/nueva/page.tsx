@@ -4,6 +4,8 @@ import { createServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import NuevaOrdenForm from './NuevaOrdenForm'
 
+export const dynamic = 'force-dynamic'
+
 export default async function NuevaOrdenPage({ searchParams }: { searchParams: { lead?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
