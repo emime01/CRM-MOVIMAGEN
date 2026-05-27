@@ -1,10 +1,39 @@
 # CRM Movimagen — Servidor MCP (Fase 1, solo lectura)
 
-Permite consultar el CRM conversacionalmente desde Claude Desktop usando la
+Permite consultar el CRM conversacionalmente desde Claude usando la
 suscripción de cada usuario (no consume créditos de API de la empresa).
 
 Esta primera fase es **solo lectura** y está pensada para el perfil **asistente**
 (acceso amplio de consulta). No modifica datos.
+
+## ⭐ Opción recomendada: conector remoto (sin instalar nada)
+
+El servidor también corre **dentro del propio deploy de Vercel** en
+`https://crm-movimagen.vercel.app/api/mcp`. Cada persona lo agrega como
+conector — sin terminal, sin descargar el repo, sin editar archivos.
+
+### Configuración en Vercel (una sola vez, por el admin)
+
+1. En Vercel → proyecto → **Settings → Environment Variables**, agregá:
+   - `MCP_SECRET` = un texto secreto largo (ej: generá uno random)
+2. Redeploy.
+
+### Conectarlo en Claude (cada usuario)
+
+- **Claude web/desktop** → **Settings → Connectors → Add custom connector**
+- Pegar la URL con el secreto:
+  `https://crm-movimagen.vercel.app/api/mcp?key=EL_MCP_SECRET`
+- Guardar. Ya aparecen las herramientas del CRM en el chat.
+
+> El `?key=` protege el endpoint. Si no se setea `MCP_SECRET` en Vercel, el
+> endpoint queda abierto (no recomendado). Para identidad por usuario (que cada
+> uno vea solo lo suyo) hace falta OAuth — planificado para una fase posterior.
+
+---
+
+## Opción alternativa: servidor local (Claude Desktop, requiere terminal)
+
+Solo si preferís correrlo en tu máquina en vez de usar el conector remoto.
 
 ## Herramientas disponibles
 
