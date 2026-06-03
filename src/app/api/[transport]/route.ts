@@ -176,6 +176,184 @@ const handler = createMcpHandler(
         return text(`${data.length} reserva(s) en estado "${st}":\n\n${body}`)
       },
     )
+    // ─── ESCRITURA (Fase 2) ───────────────────────────────────────────────
+    // Resolver de vendedores tolerante a acentos / nombres parciales.
+    const findVendedor = async (nombre: string | undefined): Promise<{ id: string; nombre: string } | null> => {
+      if (!nombre) return null
+      const supabase = createServerClient()
+      const { data } = await supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial'])
+      const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+      const v = norm(nombre)
+      const list = (data ?? []) as { id: string; nombre: string }[]
+      return list.find((p) => norm(p.nombre) === v)
+        ?? list.find((p) => v.includes(norm(p.nombre)) || norm(p.nombre).includes(v))
+        ?? null
+    }
+
+    // 7. Crear cliente
+    server.tool(
+      'crear_cliente',
+      'Crea un cliente en el CRM. Confirmá con el usuario antes de ejecutar si los datos no son evidentes. Si la agencia no existe la crea automáticamente.',
+      {
+        nombre: z.string().describe('Nombre del cliente o razón social.'),
+        empresa: z.string().optional().describe('Nombre comercial / empresa (si difiere del nombre).'),
+        email: z.string().optional(),
+        telefono: z.string().optional(),
+        agencia_nombre: z.string().optional().describe('Nombre de la agencia (se crea si no existe).'),
+        vendedor_nombre: z.string().optional().describe('Nombre del vendedor a asignar (matchea por nombre parcial).'),
+        tipo_cliente: z.enum(['A', 'B', 'C']).optional().describe('Categoría comercial.'),
+      },
+      async (args) => {
+        const supabase = createServerClient()
+        let agenciaId: string | null = null
+        if (args.agencia_nombre) {
+          const { data: ex } = await supabase.from('agencias').select('id').ilike('nombre', args.agencia_nombre).maybeSingle()
+          if (ex) agenciaId = ex.id
+          else {
+            const { data: nu } = await supabase.from('agencias').insert({ nombre: args.agencia_nombre }).select('id').single()
+            agenciaId = nu?.id ?? null
+          }
+        }
+        const vendedor = await findVendedor(args.vendedor_nombre)
+        const { data: existing } = await supabase.from('clientes').select('id').ilike('nombre', args.nombre).maybeSingle()
+        if (existing) return text(`El cliente "${args.nombre}" ya existe (id ${existing.id}). No se creó uno nuevo.`)
+        const { data, error } = await supabase.from('clientes').insert({
+          nombre: args.nombre,
+          empresa: args.empresa ?? null,
+          email: args.email ?? null,
+          telefono: args.telefono ?? null,
+          tipo_cliente: args.tipo_cliente ?? null,
+          agencia_id: agenciaId,
+          vendedor_id: vendedor?.id ?? null,
+          activo: true,
+        }).select('id').single()
+        if (error) return text(`Error al crear cliente: ${error.message}`)
+        return text(`✓ Cliente creado: ${args.nombre}${args.empresa ? ' (' + args.empresa + ')' : ''}\nVendedor: ${vendedor?.nombre ?? 'sin asignar'}${agenciaId ? ' · Agencia: ' + (args.agencia_nombre ?? '') : ''}\nID: ${data?.id}`)
+      },
+    )
+
+    // 8. Cargar / actualizar objetivo de un cliente
+    server.tool(
+      'cargar_objetivo',
+      'Carga o actualiza el objetivo cuatrimestral (C1/C2/C3) y la ponderación de un cliente. Si el cliente no existe, devuelve error sin crearlo.',
+      {
+        cliente_nombre: z.string().describe('Nombre del cliente exacto o parcial.'),
+        año: z.number().int().optional().describe('Año del objetivo (default actual).'),
+        c1: z.number().optional().describe('Monto proyectado del cuatrimestre 1.'),
+        c2: z.number().optional().describe('Monto proyectado del cuatrimestre 2.'),
+        c3: z.number().optional().describe('Monto proyectado del cuatrimestre 3.'),
+        ponderacion: z.number().min(0).max(100).optional().describe('Probabilidad / peso del objetivo (0-100, default 100).'),
+      },
+      async (args) => {
+        const supabase = createServerClient()
+        const year = args.año ?? new Date().getFullYear()
+        const { data: cliente } = await supabase.from('clientes').select('id, nombre, vendedor_id').ilike('nombre', `%${args.cliente_nombre}%`).limit(2)
+        if (!cliente?.length) return text(`No encontré ningún cliente con "${args.cliente_nombre}". Probá crear_cliente primero.`)
+        if (cliente.length > 1) return text(`Hay ${cliente.length} clientes que matchean "${args.cliente_nombre}": ${cliente.map((c: any) => c.nombre).join(', ')}. Especificá más el nombre.`)
+        const c = cliente[0] as { id: string; nombre: string; vendedor_id: string | null }
+        const { data: prev } = await supabase.from('cliente_objetivos').select('*').eq('cliente_id', c.id).eq('year', year).maybeSingle()
+        const payload = {
+          cliente_id: c.id,
+          vendedor_id: c.vendedor_id,
+          year,
+          objetivo_c1: args.c1 ?? prev?.objetivo_c1 ?? 0,
+          objetivo_c2: args.c2 ?? prev?.objetivo_c2 ?? 0,
+          objetivo_c3: args.c3 ?? prev?.objetivo_c3 ?? 0,
+          ponderacion_pct: args.ponderacion ?? prev?.ponderacion_pct ?? 100,
+          updated_at: new Date().toISOString(),
+        }
+        const { error } = await supabase.from('cliente_objetivos').upsert(payload, { onConflict: 'cliente_id,year' })
+        if (error) return text(`Error: ${error.message}`)
+        const total = Number(payload.objetivo_c1) + Number(payload.objetivo_c2) + Number(payload.objetivo_c3)
+        const ponderado = total * Number(payload.ponderacion_pct) / 100
+        return text(`✓ Objetivo ${year} guardado para ${c.nombre}\nC1 ${fmtMoney(payload.objetivo_c1)} · C2 ${fmtMoney(payload.objetivo_c2)} · C3 ${fmtMoney(payload.objetivo_c3)}\nPonderación ${payload.ponderacion_pct}% → total ponderado ${fmtMoney(ponderado)}`)
+      },
+    )
+
+    // 9 + 10. Aprobar / rechazar reserva
+    const cambiarEstadoReserva = async (estado: 'aprobada' | 'rechazada', args: { reserva_id?: string; cliente_nombre?: string }) => {
+      const supabase = createServerClient()
+      let reservaId: string | null = args.reserva_id ?? null
+      let info: any = null
+      if (!reservaId && args.cliente_nombre) {
+        const { data } = await supabase
+          .from('reservas')
+          .select('id, fecha_desde, fecha_hasta, clientes(nombre, empresa), reserva_items(soportes(nombre))')
+          .eq('estado', 'pendiente')
+          .ilike('clientes.nombre', `%${args.cliente_nombre}%`)
+          .limit(5)
+        const matches = (data ?? []).filter((r: any) => first<any>(r.clientes))
+        if (!matches.length) return text(`No hay reservas pendientes para "${args.cliente_nombre}".`)
+        if (matches.length > 1) {
+          const lines = matches.map((r: any) => {
+            const cli = first<any>(r.clientes); const sop = (r.reserva_items ?? []).map((i: any) => first<any>(i.soportes)?.nombre).filter(Boolean).join(', ')
+            return `   id ${r.id} → ${cli?.empresa ?? cli?.nombre} · ${sop} · ${fmtDate(r.fecha_desde)}-${fmtDate(r.fecha_hasta)}`
+          }).join('\n')
+          return text(`Hay ${matches.length} reservas pendientes que matchean. Pasá el reserva_id:\n${lines}`)
+        }
+        info = matches[0]
+        reservaId = info.id
+      }
+      if (!reservaId) return text('Falta reserva_id o cliente_nombre.')
+      const { error } = await supabase.from('reservas').update({ estado, updated_at: new Date().toISOString() }).eq('id', reservaId)
+      if (error) return text(`Error: ${error.message}`)
+      const cli = first<any>(info?.clientes)
+      return text(`✓ Reserva ${estado === 'aprobada' ? 'aprobada' : 'rechazada'}${cli ? ' — ' + (cli.empresa ?? cli.nombre) : ''} (id ${reservaId}).`)
+    }
+
+    server.tool(
+      'aprobar_reserva',
+      'Aprueba una reserva pendiente. Especificá reserva_id o cliente_nombre (si solo hay una pendiente para ese cliente).',
+      {
+        reserva_id: z.string().uuid().optional().describe('UUID de la reserva.'),
+        cliente_nombre: z.string().optional().describe('Nombre del cliente (parcial). Solo si hay una sola reserva pendiente.'),
+      },
+      (args) => cambiarEstadoReserva('aprobada', args),
+    )
+
+    server.tool(
+      'rechazar_reserva',
+      'Rechaza una reserva pendiente. Mismos parámetros que aprobar_reserva.',
+      {
+        reserva_id: z.string().uuid().optional(),
+        cliente_nombre: z.string().optional(),
+      },
+      (args) => cambiarEstadoReserva('rechazada', args),
+    )
+
+    // 11. Crear soporte
+    server.tool(
+      'crear_soporte',
+      'Agrega un soporte al catálogo. Confirmá con el usuario antes de ejecutar.',
+      {
+        nombre: z.string().describe('Nombre del soporte.'),
+        categoria: z.enum(['Bus', 'Digital', 'Shopping', 'Exterior', 'Otro']).optional(),
+        tipo: z.string().optional().describe('Tipo (led, circuito, estatico_bus, etc.).'),
+        seccion: z.string().optional(),
+        ubicacion: z.string().optional(),
+        precio_semanal: z.number().optional(),
+        tiene_iva: z.boolean().optional(),
+        cap: z.number().int().min(1).optional().describe('Capacidad (default 1).'),
+      },
+      async (args) => {
+        const supabase = createServerClient()
+        const { data: existing } = await supabase.from('soportes').select('id').ilike('nombre', args.nombre).maybeSingle()
+        if (existing) return text(`Ya existe un soporte con nombre "${args.nombre}". No se creó duplicado.`)
+        const { data, error } = await supabase.from('soportes').insert({
+          nombre: args.nombre,
+          categoria: args.categoria ?? null,
+          tipo: args.tipo ?? null,
+          seccion: args.seccion ?? null,
+          ubicacion: args.ubicacion ?? null,
+          precio_semanal: args.precio_semanal ?? null,
+          tiene_iva: args.tiene_iva ?? false,
+          cap: args.cap ?? 1,
+          activo: true,
+        }).select('id').single()
+        if (error) return text(`Error al crear soporte: ${error.message}`)
+        return text(`✓ Soporte creado: ${args.nombre}${args.categoria ? ' [' + args.categoria + ']' : ''}\nPrecio semanal: ${args.precio_semanal != null ? fmtMoney(args.precio_semanal) : 'sin definir'} · Capacidad: ${args.cap ?? 1}\nID: ${data?.id}`)
+      },
+    )
   },
   { serverInfo: { name: 'crm-movimagen', version: '1.0.0' } },
   { basePath: '/api', disableSse: true, maxDuration: 60 },
