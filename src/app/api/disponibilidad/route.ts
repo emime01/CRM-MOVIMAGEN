@@ -25,6 +25,14 @@ export interface DiaStats {
   total: number
 }
 
+// Effective dates: prefer item.real → item.prevista → orden.real → orden.prevista
+function efAlta(item: any, ord: any): string | null {
+  return item.fecha_alta_real ?? item.fecha_alta_prevista ?? ord.fecha_alta_real ?? ord.fecha_alta_prevista ?? null
+}
+function efBaja(item: any, ord: any): string | null {
+  return item.fecha_baja_real ?? item.fecha_baja_prevista ?? ord.fecha_baja_real ?? ord.fecha_baja_prevista ?? null
+}
+
 function buildOcupacion(
   soportes: any[],
   reservadoMap: Map<string, number>,
@@ -52,6 +60,8 @@ function addCliente(map: Map<string, string[]>, soporteId: string, nombre: strin
   const existing = map.get(soporteId) ?? []
   if (!existing.includes(nombre)) map.set(soporteId, [...existing, nombre])
 }
+
+const ORDEN_ITEMS_SELECT = 'soporte_id, cantidad, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -85,10 +95,8 @@ export async function GET(req: NextRequest) {
         .gte('fecha_hasta', firstDay),
       supabase
         .from('ordenes_venta')
-        .select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, orden_items(soporte_id)')
-        .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
-        .lte('fecha_alta_prevista', lastDay)
-        .gte('fecha_baja_prevista', firstDay),
+        .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, orden_items(${ORDEN_ITEMS_SELECT})`)
+        .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
     ])
 
     const capMap = new Map<string, number>((soportes ?? []).map((s: any) => [s.id, s.cap ?? 1]))
@@ -108,12 +116,12 @@ export async function GET(req: NextRequest) {
       })
 
       ordenes?.forEach((ord: any) => {
-        const alta = ord.fecha_alta_real ?? ord.fecha_alta_prevista
-        const baja = ord.fecha_baja_real ?? ord.fecha_baja_prevista
-        if (!alta || !baja || alta > dateStr || baja < dateStr) return
         ;(ord.orden_items ?? []).forEach((item: any) => {
-          if (item.soporte_id)
-            resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + 1)
+          if (!item.soporte_id) return
+          const alta = efAlta(item, ord)
+          const baja = efBaja(item, ord)
+          if (!alta || !baja || alta > dateStr || baja < dateStr) return
+          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
         })
       })
 
@@ -135,9 +143,8 @@ export async function GET(req: NextRequest) {
       .gte('fecha_hasta', fecha),
     supabase
       .from('ordenes_venta')
-      .select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id)')
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
-      .not('fecha_alta_prevista', 'is', null),
+      .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(${ORDEN_ITEMS_SELECT})`)
+      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
   ])
 
   const reservadoMap = new Map<string, number>()
@@ -154,14 +161,14 @@ export async function GET(req: NextRequest) {
   })
 
   ordenes?.forEach((ord: any) => {
-    const alta = ord.fecha_alta_real ?? ord.fecha_alta_prevista
-    const baja = ord.fecha_baja_real ?? ord.fecha_baja_prevista
-    if (!alta || !baja || alta > fecha || baja < fecha) return
     const cli = Array.isArray(ord.clientes) ? ord.clientes[0] : ord.clientes
     const nombre = cli?.empresa ?? cli?.nombre ?? null
     ;(ord.orden_items ?? []).forEach((item: any) => {
       if (!item.soporte_id) return
-      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + 1)
+      const alta = efAlta(item, ord)
+      const baja = efBaja(item, ord)
+      if (!alta || !baja || alta > fecha || baja < fecha) return
+      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
     })
   })

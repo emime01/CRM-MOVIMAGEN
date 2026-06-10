@@ -415,12 +415,24 @@ export default function CotizadorClient({
     return id ?? null
   }
 
-  async function aprobar() {
-    if (!confirm('¿Aprobar esta cotización y generar la OIC?')) return
+  async function marcarAceptada() {
+    if (!confirm('¿El cliente aceptó esta cotización? Se bloquearán los soportes con una reserva pendiente.')) return
     const id = await save()
     if (!id) return
     const res = await fetch(`/api/propuestas/${id}/aprobar`, { method: 'POST' })
     const data = await res.json()
+    if (!res.ok) { alert(data.error ?? 'Error al marcar aceptada'); return }
+    alert(`✓ Cotización aceptada. ${data.items_reservados ?? 0} soporte(s) reservados.`)
+    router.refresh()
+  }
+
+  async function crearOrden() {
+    const pid = savedId ?? propuestaId
+    if (!pid) return
+    if (!confirm('¿Crear la orden de venta a partir de esta cotización? Se va a precargar con todos los datos.')) return
+    const res = await fetch(`/api/propuestas/${pid}/crear-orden`, { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) { alert(data.error ?? 'Error al crear la orden'); return }
     if (data.orden_id) router.push(`/dashboard/ventas/${data.orden_id}`)
   }
 
@@ -538,10 +550,17 @@ export default function CotizadorClient({
           </button>
         )}
 
-        {canApprove && (estado === 'enviada' || estado === 'borrador') && (
-          <button onClick={aprobar} disabled={saving || plan.length === 0}
+        {(estado === 'enviada' || estado === 'borrador') && (
+          <button onClick={marcarAceptada} disabled={saving || plan.length === 0}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            <CheckCircle size={14} /> Aprobar → OIC
+            <CheckCircle size={14} /> Cliente aceptó
+          </button>
+        )}
+
+        {estado === 'aceptada' && !isNew && (
+          <button onClick={crearOrden} disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            <CheckCircle size={14} /> Crear orden de venta
           </button>
         )}
 
