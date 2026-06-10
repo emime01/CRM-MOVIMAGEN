@@ -52,10 +52,26 @@ export async function POST(req: NextRequest) {
   const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
   const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
 
+  // Auto-create lead if missing and we have a cliente
+  let leadId: string | null = body.lead_id ?? null
+  if (!leadId && body.cliente_id) {
+    const { data: newLead } = await supabase
+      .from('leads')
+      .insert({
+        cliente_id:   body.cliente_id,
+        vendedor_id:  session.user.id,
+        descripcion:  `Cotización ${numero}`,
+        estado:       'en_seguimiento',
+      })
+      .select('id')
+      .single()
+    leadId = newLead?.id ?? null
+  }
+
   const { data, error } = await supabase
     .from('propuestas')
     .insert({
-      lead_id:        body.lead_id ?? null,
+      lead_id:        leadId,
       cliente_id:     body.cliente_id ?? null,
       vendedor_id:    session.user.id,
       numero,

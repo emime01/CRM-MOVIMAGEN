@@ -34,18 +34,20 @@ const handler = createMcpHandler(
         const f = fecha ?? today()
         const [{ data: soportes }, { data: ordenes }, { data: reservas }] = await Promise.all([
           supabase.from('soportes').select('id, nombre, categoria, tipo, seccion, ubicacion').eq('activo', true).order('categoria').order('nombre'),
-          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id)').in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']).not('fecha_alta_prevista', 'is', null),
+          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)').in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
           supabase.from('reservas').select('clientes(nombre, empresa), reserva_items(soporte_id)').in('estado', ['pendiente', 'aprobada', 'confirmada']).lte('fecha_desde', f).gte('fecha_hasta', f),
         ])
         const ocupado = new Map<string, string | null>()
         const reservado = new Map<string, string | null>()
         ;(ordenes ?? []).forEach((o: any) => {
-          const alta = o.fecha_alta_real ?? o.fecha_alta_prevista
-          const baja = o.fecha_baja_real ?? o.fecha_baja_prevista
-          if (!alta || !baja || alta > f || baja < f) return
           const cli = first<any>(o.clientes)
           const nombre = cli?.empresa ?? cli?.nombre ?? null
-          ;(o.orden_items ?? []).forEach((it: any) => { if (it.soporte_id && !ocupado.has(it.soporte_id)) ocupado.set(it.soporte_id, nombre) })
+          ;(o.orden_items ?? []).forEach((it: any) => {
+            const alta = it.fecha_alta_real ?? it.fecha_alta_prevista ?? o.fecha_alta_real ?? o.fecha_alta_prevista
+            const baja = it.fecha_baja_real ?? it.fecha_baja_prevista ?? o.fecha_baja_real ?? o.fecha_baja_prevista
+            if (!alta || !baja || alta > f || baja < f) return
+            if (it.soporte_id && !ocupado.has(it.soporte_id)) ocupado.set(it.soporte_id, nombre)
+          })
         })
         ;(reservas ?? []).forEach((r: any) => {
           const cli = first<any>(r.clientes)
