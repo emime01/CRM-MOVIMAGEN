@@ -86,5 +86,28 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
 
   const { error } = await supabase.from('tasks').insert(toCreate)
   if (error) return { created: 0, error: error.message }
+
+  // Notificar a cada persona de los roles involucrados
+  const porRol = new Map<string, number>()
+  toCreate.forEach(t => porRol.set(t.asignado_a_rol, (porRol.get(t.asignado_a_rol) ?? 0) + 1))
+
+  const roles = Array.from(porRol.keys())
+  const { data: destinatarios } = await supabase
+    .from('perfiles')
+    .select('id, rol')
+    .in('rol', roles)
+
+  if (destinatarios?.length) {
+    const notifs = destinatarios.map((p: { id: string; rol: string }) => ({
+      user_id:   p.id,
+      tipo:      'tasks_nuevas',
+      titulo:    'Nuevas tareas de producción',
+      mensaje:   `OIC #${ordenNumero} · ${clienteNombre} — ${porRol.get(p.rol)} tarea(s) para tu área`,
+      link:      '/dashboard/tasks',
+      entity_id: ordenId,
+    }))
+    await supabase.from('notificaciones').insert(notifs)
+  }
+
   return { created: toCreate.length }
 }
