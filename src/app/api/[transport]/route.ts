@@ -1,4 +1,4 @@
-import { createMcpHandler } from 'mcp-handler'
+import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase-server'
 
@@ -16,6 +16,32 @@ const fmtDate = (d: string | null | undefined) => {
 const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null)
 const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] })
 const today = () => new Date().toISOString().split('T')[0]
+
+// ─── Identidad por usuario ────────────────────────────────────────────────────
+// El conector se autentica con ?key=<token>. Si el token coincide con
+// MCP_SECRET opera en modo compartido (equivalente a asistente). Si es un
+// mcp_token personal (generado en Mi Perfil), las tools se scopean al rol.
+
+interface Identity {
+  perfilId: string | null
+  rol: string
+  nombre: string
+}
+
+function ident(extra: any): Identity {
+  const e = extra?.authInfo?.extra ?? {}
+  return {
+    perfilId: (e.perfilId as string | null) ?? null,
+    rol: (e.rol as string) ?? 'asistente_ventas',
+    nombre: (e.nombre as string) ?? 'Token compartido',
+  }
+}
+
+const esVendedor = (id: Identity) => id.rol === 'vendedor'
+const puedeGestionarReservas = (id: Identity) =>
+  ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'].includes(id.rol)
+const puedeEditarCatalogo = (id: Identity) =>
+  ['asistente_ventas', 'administracion'].includes(id.rol)
 
 // ─── MCP handler with read-only CRM tools ──────────────────────────────────────
 
@@ -96,10 +122,12 @@ const handler = createMcpHandler(
         estado: z.enum(['borrador', 'enviada', 'aceptada', 'rechazada']).optional().describe('Filtra por estado.'),
         limite: z.number().int().min(1).max(50).optional().describe('Máximo de resultados (default 20).'),
       },
-      async ({ estado, limite }) => {
+      async ({ estado, limite }, extra) => {
+        const me = ident(extra)
         const supabase = createServerClient()
         let q = supabase.from('propuestas').select('numero, nombre, estado, moneda, monto_total, fecha_inicio, fecha_fin, clientes(nombre, empresa), perfiles(nombre)').order('created_at', { ascending: false }).limit(limite ?? 20)
         if (estado) q = q.eq('estado', estado)
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
         const { data } = await q
         if (!data?.length) return text('No hay cotizaciones que coincidan.')
         const body = data.map((p: any) => {
@@ -118,10 +146,13 @@ const handler = createMcpHandler(
         año: z.number().int().optional().describe('Año (default: actual).'),
         vendedor: z.string().optional().describe('Filtra por nombre del vendedor.'),
       },
-      async ({ año, vendedor }) => {
+      async ({ año, vendedor }, extra) => {
+        const me = ident(extra)
         const supabase = createServerClient()
         const year = año ?? new Date().getFullYear()
-        const { data } = await supabase.from('cliente_objetivos').select('ponderacion_pct, objetivo_c1, objetivo_c2, objetivo_c3, clientes(nombre), perfiles(nombre)').eq('year', year)
+        let q = supabase.from('cliente_objetivos').select('ponderacion_pct, objetivo_c1, objetivo_c2, objetivo_c3, clientes(nombre), perfiles(nombre)').eq('year', year)
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
+        const { data } = await q
         if (!data?.length) return text(`No hay objetivos cargados para ${year}.`)
         const porVendedor = new Map<string, any[]>()
         for (const o of data as any[]) {
@@ -165,10 +196,13 @@ const handler = createMcpHandler(
       'listar_reservas',
       'Lista reservas con cliente, período y estado. Por defecto las pendientes de aprobación.',
       { estado: z.enum(['pendiente', 'aprobada', 'rechazada', 'confirmada']).optional().describe('Filtra por estado (default pendiente).') },
-      async ({ estado }) => {
+      async ({ estado }, extra) => {
+        const me = ident(extra)
         const supabase = createServerClient()
         const st = estado ?? 'pendiente'
-        const { data } = await supabase.from('reservas').select('fecha_desde, fecha_hasta, estado, clientes(nombre, empresa), perfiles(nombre), reserva_items(soportes(nombre))').eq('estado', st).order('created_at', { ascending: false }).limit(30)
+        let q = supabase.from('reservas').select('fecha_desde, fecha_hasta, estado, clientes(nombre, empresa), perfiles(nombre), reserva_items(soportes(nombre))').eq('estado', st).order('created_at', { ascending: false }).limit(30)
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
+        const { data } = await q
         if (!data?.length) return text(`No hay reservas en estado "${st}".`)
         const body = data.map((r: any) => {
           const cli = first<any>(r.clientes); const v = first<any>(r.perfiles)
@@ -205,7 +239,9 @@ const handler = createMcpHandler(
         vendedor_nombre: z.string().optional().describe('Nombre del vendedor a asignar (matchea por nombre parcial).'),
         tipo_cliente: z.enum(['A', 'B', 'C']).optional().describe('Categoría comercial.'),
       },
-      async (args) => {
+      async (args, extra) => {
+        const me = ident(extra)
+        if (['arte', 'operaciones'].includes(me.rol)) return text('Tu rol no permite crear clientes.')
         const supabase = createServerClient()
         let agenciaId: string | null = null
         if (args.agencia_nombre) {
@@ -216,7 +252,10 @@ const handler = createMcpHandler(
             agenciaId = nu?.id ?? null
           }
         }
-        const vendedor = await findVendedor(args.vendedor_nombre)
+        // Un vendedor siempre se asigna a sí mismo
+        const vendedor = esVendedor(me) && me.perfilId
+          ? { id: me.perfilId, nombre: me.nombre }
+          : await findVendedor(args.vendedor_nombre)
         const { data: existing } = await supabase.from('clientes').select('id').ilike('nombre', args.nombre).maybeSingle()
         if (existing) return text(`El cliente "${args.nombre}" ya existe (id ${existing.id}). No se creó uno nuevo.`)
         const { data, error } = await supabase.from('clientes').insert({
@@ -246,13 +285,18 @@ const handler = createMcpHandler(
         c3: z.number().optional().describe('Monto proyectado del cuatrimestre 3.'),
         ponderacion: z.number().min(0).max(100).optional().describe('Probabilidad / peso del objetivo (0-100, default 100).'),
       },
-      async (args) => {
+      async (args, extra) => {
+        const me = ident(extra)
+        if (['arte', 'operaciones'].includes(me.rol)) return text('Tu rol no permite cargar objetivos.')
         const supabase = createServerClient()
         const year = args.año ?? new Date().getFullYear()
         const { data: cliente } = await supabase.from('clientes').select('id, nombre, vendedor_id').ilike('nombre', `%${args.cliente_nombre}%`).limit(2)
         if (!cliente?.length) return text(`No encontré ningún cliente con "${args.cliente_nombre}". Probá crear_cliente primero.`)
         if (cliente.length > 1) return text(`Hay ${cliente.length} clientes que matchean "${args.cliente_nombre}": ${cliente.map((c: any) => c.nombre).join(', ')}. Especificá más el nombre.`)
         const c = cliente[0] as { id: string; nombre: string; vendedor_id: string | null }
+        if (esVendedor(me) && c.vendedor_id && c.vendedor_id !== me.perfilId) {
+          return text(`${c.nombre} está asignado a otro vendedor; solo podés cargar objetivos de tus clientes.`)
+        }
         const { data: prev } = await supabase.from('cliente_objetivos').select('*').eq('cliente_id', c.id).eq('year', year).maybeSingle()
         const payload = {
           cliente_id: c.id,
@@ -310,7 +354,11 @@ const handler = createMcpHandler(
         reserva_id: z.string().uuid().optional().describe('UUID de la reserva.'),
         cliente_nombre: z.string().optional().describe('Nombre del cliente (parcial). Solo si hay una sola reserva pendiente.'),
       },
-      (args) => cambiarEstadoReserva('aprobada', args),
+      (args, extra) => {
+        const me = ident(extra)
+        if (!puedeGestionarReservas(me)) return Promise.resolve(text('Tu rol no permite aprobar reservas.'))
+        return cambiarEstadoReserva('aprobada', args)
+      },
     )
 
     server.tool(
@@ -320,7 +368,11 @@ const handler = createMcpHandler(
         reserva_id: z.string().uuid().optional(),
         cliente_nombre: z.string().optional(),
       },
-      (args) => cambiarEstadoReserva('rechazada', args),
+      (args, extra) => {
+        const me = ident(extra)
+        if (!puedeGestionarReservas(me)) return Promise.resolve(text('Tu rol no permite rechazar reservas.'))
+        return cambiarEstadoReserva('rechazada', args)
+      },
     )
 
     // 11. Listar tareas (arte / operaciones)
@@ -332,11 +384,14 @@ const handler = createMcpHandler(
         estado: z.enum(['pendiente', 'en_progreso', 'completada']).optional().describe('Default pendiente.'),
         limite: z.number().int().min(1).max(50).optional(),
       },
-      async ({ rol, estado, limite }) => {
+      async ({ rol, estado, limite }, extra) => {
+        const me = ident(extra)
         const supabase = createServerClient()
         let q = supabase.from('tasks').select('id, tipo, asignado_a_rol, estado, descripcion, fecha_limite, ordenes_venta(numero, clientes(nombre, empresa))').order('fecha_limite', { ascending: true, nullsFirst: false }).limit(limite ?? 20)
         q = q.eq('estado', estado ?? 'pendiente')
-        if (rol) q = q.eq('asignado_a_rol', rol)
+        // arte y operaciones solo ven las de su rol, ignore el filtro pedido
+        const rolEfectivo = ['arte', 'operaciones'].includes(me.rol) ? me.rol : rol
+        if (rolEfectivo) q = q.eq('asignado_a_rol', rolEfectivo)
         const { data, error } = await q
         if (error) return text(`Error: ${error.message}`)
         if (!data?.length) return text('Sin tareas en ese filtro.')
@@ -354,9 +409,18 @@ const handler = createMcpHandler(
       'completar_tarea',
       'Marca una tarea como completada. Necesita el task_id (obtenido de listar_tareas).',
       { task_id: z.string().uuid() },
-      async ({ task_id }) => {
+      async ({ task_id }, extra) => {
+        const me = ident(extra)
+        if (me.rol === 'vendedor') return text('Tu rol no permite completar tareas de producción.')
         const supabase = createServerClient()
-        const { error } = await supabase.from('tasks').update({ estado: 'completada', completed_at: new Date().toISOString() }).eq('id', task_id)
+        const { data: task } = await supabase.from('tasks').select('asignado_a_rol').eq('id', task_id).maybeSingle()
+        if (!task) return text('No existe esa tarea.')
+        if (['arte', 'operaciones'].includes(me.rol) && task.asignado_a_rol !== me.rol) {
+          return text('Esa tarea pertenece a otra área.')
+        }
+        const updates: Record<string, unknown> = { estado: 'completada', completed_at: new Date().toISOString() }
+        if (me.perfilId) updates.asignado_a = me.perfilId
+        const { error } = await supabase.from('tasks').update(updates).eq('id', task_id)
         if (error) return text(`Error: ${error.message}`)
         return text(`✓ Tarea ${task_id} marcada como completada.`)
       },
@@ -376,7 +440,9 @@ const handler = createMcpHandler(
         tiene_iva: z.boolean().optional(),
         cap: z.number().int().min(1).optional().describe('Capacidad (default 1).'),
       },
-      async (args) => {
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!puedeEditarCatalogo(me)) return text('Solo asistente de ventas y administración pueden modificar el catálogo de soportes.')
         const supabase = createServerClient()
         const { data: existing } = await supabase.from('soportes').select('id').ilike('nombre', args.nombre).maybeSingle()
         if (existing) return text(`Ya existe un soporte con nombre "${args.nombre}". No se creó duplicado.`)
@@ -400,20 +466,36 @@ const handler = createMcpHandler(
   { basePath: '/api', disableSse: true, maxDuration: 60 },
 )
 
-// ─── Token gate ────────────────────────────────────────────────────────────────
-// Simple shared-secret auth: the connector URL must include ?key=MCP_SECRET.
-// Per-user OAuth identity is planned for a later phase.
+// ─── Autenticación ─────────────────────────────────────────────────────────────
+// Dos modos de token en ?key= (o header x-mcp-key / bearer):
+//   - MCP_SECRET   → modo compartido (acceso equivalente a asistente_ventas)
+//   - mcp_token    → identidad personal generada en Mi Perfil; scopea por rol
 
-async function gated(req: Request): Promise<Response> {
-  const secret = process.env.MCP_SECRET
-  if (secret) {
-    const url = new URL(req.url)
-    const key = url.searchParams.get('key') ?? req.headers.get('x-mcp-key')
-    if (key !== secret) {
-      return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401, headers: { 'content-type': 'application/json' } })
+async function verifyToken(req: Request, bearerToken?: string) {
+  const url = new URL(req.url)
+  const key = bearerToken ?? url.searchParams.get('key') ?? req.headers.get('x-mcp-key') ?? ''
+  if (!key) return undefined
+
+  if (process.env.MCP_SECRET && key === process.env.MCP_SECRET) {
+    return {
+      token: key,
+      clientId: 'shared',
+      scopes: ['shared'],
+      extra: { perfilId: null, rol: 'asistente_ventas', nombre: 'Token compartido' },
     }
   }
-  return handler(req)
+
+  const supabase = createServerClient()
+  const { data } = await supabase.from('perfiles').select('id, rol, nombre').eq('mcp_token', key).maybeSingle()
+  if (!data) return undefined
+  return {
+    token: key,
+    clientId: data.id,
+    scopes: [data.rol],
+    extra: { perfilId: data.id, rol: data.rol, nombre: data.nombre },
+  }
 }
 
-export { gated as GET, gated as POST, gated as DELETE }
+const authed = withMcpAuth(handler, verifyToken, { required: true })
+
+export { authed as GET, authed as POST, authed as DELETE }

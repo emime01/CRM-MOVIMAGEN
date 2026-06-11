@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { Mail, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react'
+import { Mail, CheckCircle, XCircle, AlertCircle, RefreshCw, Bot, Copy, KeyRound } from 'lucide-react'
 
 const ROL_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
@@ -25,6 +25,40 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
   const [gmailEmail, setGmailEmail] = useState(initialEmail)
   const [disconnecting, setDisconnecting] = useState(false)
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [mcpToken, setMcpToken] = useState<string | null>(null)
+  const [mcpLoading, setMcpLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/perfil/mcp-token')
+      .then(r => r.json())
+      .then(d => setMcpToken(d.token ?? null))
+      .finally(() => setMcpLoading(false))
+  }, [])
+
+  async function generarToken() {
+    if (mcpToken && !confirm('¿Regenerar el token? El conector anterior dejará de funcionar y habrá que actualizar la URL en Claude.')) return
+    setGenerating(true)
+    try {
+      const res = await fetch('/api/perfil/mcp-token', { method: 'POST' })
+      const d = await res.json()
+      if (res.ok) setMcpToken(d.token)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const connectorUrl = mcpToken
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/mcp?key=${mcpToken}`
+    : null
+
+  function copiarUrl() {
+    if (!connectorUrl) return
+    navigator.clipboard.writeText(connectorUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   useEffect(() => {
     const status = searchParams.get('gmail')
@@ -218,6 +252,85 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
               Conectar Gmail
             </a>
           </>
+        )}
+      </div>
+
+      {/* Claude / MCP connector card */}
+      <div style={{
+        background: '#fff',
+        border: '1px solid #e5e3dc',
+        borderRadius: 12,
+        padding: 24,
+        marginTop: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <Bot size={18} color="#eb691c" />
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#1a1915' }}>CRM conversacional (Claude)</span>
+        </div>
+
+        <p style={{ fontSize: 13, color: '#6b6965', lineHeight: 1.6, marginBottom: 16 }}>
+          Conectá tu cuenta de Claude al CRM para consultar disponibilidad, clientes,
+          cotizaciones y cargar datos conversando. Tu token personal identifica quién sos:
+          ves y modificás lo que tu rol permite.
+        </p>
+
+        {mcpLoading ? (
+          <p style={{ fontSize: 13, color: '#9a9895' }}>Cargando…</p>
+        ) : mcpToken && connectorUrl ? (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#6b6965', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>
+              Tu URL de conector
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <input
+                readOnly
+                value={connectorUrl}
+                onFocus={e => e.target.select()}
+                style={{
+                  flex: 1, padding: '9px 12px', border: '1px solid #e5e3dc', borderRadius: 8,
+                  fontSize: 12, fontFamily: 'monospace', color: '#1a1915', background: '#f9f9f7',
+                  outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+              <button onClick={copiarUrl} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px',
+                borderRadius: 8, border: 'none', background: copied ? '#15803d' : '#eb691c',
+                color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>
+                <Copy size={13} /> {copied ? 'Copiada' : 'Copiar'}
+              </button>
+            </div>
+
+            <div style={{ fontSize: 12, color: '#9a9895', lineHeight: 1.7, marginBottom: 16 }}>
+              <strong style={{ color: '#6b6965' }}>Cómo conectarla:</strong>
+              <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                <li>En Claude (web o app) abrí <strong>Settings → Connectors</strong></li>
+                <li>Elegí <strong>Add custom connector</strong></li>
+                <li>Pegá la URL de arriba y guardá</li>
+              </ol>
+              No compartas esta URL: equivale a tu acceso personal al CRM.
+            </div>
+
+            <button onClick={generarToken} disabled={generating} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+              borderRadius: 8, border: '1px solid #e5e3dc', background: '#fff',
+              color: '#6b6965', fontSize: 13, fontWeight: 600,
+              cursor: generating ? 'not-allowed' : 'pointer', opacity: generating ? 0.6 : 1,
+            }}>
+              <RefreshCw size={13} style={generating ? { animation: 'spin 1s linear infinite' } : undefined} />
+              Regenerar token
+            </button>
+          </>
+        ) : (
+          <button onClick={generarToken} disabled={generating} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px',
+            borderRadius: 8, border: 'none', background: '#eb691c', color: '#fff',
+            fontSize: 13, fontWeight: 700, cursor: generating ? 'not-allowed' : 'pointer',
+            opacity: generating ? 0.6 : 1,
+          }}>
+            <KeyRound size={15} />
+            {generating ? 'Generando…' : 'Generar mi token de conexión'}
+          </button>
         )}
       </div>
 
