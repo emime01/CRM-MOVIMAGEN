@@ -323,7 +323,46 @@ const handler = createMcpHandler(
       (args) => cambiarEstadoReserva('rechazada', args),
     )
 
-    // 11. Crear soporte
+    // 11. Listar tareas (arte / operaciones)
+    server.tool(
+      'listar_tareas',
+      'Lista las tareas pendientes generadas al aprobar OIC (muestra color, producir impresos, asignar buses, etc.). Útil para arte y operaciones.',
+      {
+        rol: z.enum(['arte', 'operaciones']).optional().describe('Filtra por rol asignado.'),
+        estado: z.enum(['pendiente', 'en_progreso', 'completada']).optional().describe('Default pendiente.'),
+        limite: z.number().int().min(1).max(50).optional(),
+      },
+      async ({ rol, estado, limite }) => {
+        const supabase = createServerClient()
+        let q = supabase.from('tasks').select('id, tipo, asignado_a_rol, estado, descripcion, fecha_limite, ordenes_venta(numero, clientes(nombre, empresa))').order('fecha_limite', { ascending: true, nullsFirst: false }).limit(limite ?? 20)
+        q = q.eq('estado', estado ?? 'pendiente')
+        if (rol) q = q.eq('asignado_a_rol', rol)
+        const { data, error } = await q
+        if (error) return text(`Error: ${error.message}`)
+        if (!data?.length) return text('Sin tareas en ese filtro.')
+        const body = data.map((t: any) => {
+          const ord = first<any>(t.ordenes_venta)
+          const cli = first<any>(ord?.clientes)
+          return `• [${t.asignado_a_rol}] ${t.tipo} — ${t.descripcion ?? ''}\n   OIC #${ord?.numero ?? '—'} · ${cli?.empresa ?? cli?.nombre ?? '—'} · vence ${fmtDate(t.fecha_limite)}\n   id ${t.id}`
+        }).join('\n\n')
+        return text(`${data.length} tarea(s):\n\n${body}`)
+      },
+    )
+
+    // 12. Completar tarea
+    server.tool(
+      'completar_tarea',
+      'Marca una tarea como completada. Necesita el task_id (obtenido de listar_tareas).',
+      { task_id: z.string().uuid() },
+      async ({ task_id }) => {
+        const supabase = createServerClient()
+        const { error } = await supabase.from('tasks').update({ estado: 'completada', completed_at: new Date().toISOString() }).eq('id', task_id)
+        if (error) return text(`Error: ${error.message}`)
+        return text(`✓ Tarea ${task_id} marcada como completada.`)
+      },
+    )
+
+    // 13. Crear soporte
     server.tool(
       'crear_soporte',
       'Agrega un soporte al catálogo. Confirmá con el usuario antes de ejecutar.',

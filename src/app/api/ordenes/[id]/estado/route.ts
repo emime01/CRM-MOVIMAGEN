@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { generarTasksDeOrden } from '@/lib/tasks/generar-desde-orden'
 
 const ESTADOS_VALIDOS = ['aprobada', 'rechazada', 'en_oic', 'facturada', 'cobrada', 'borrador', 'pendiente_aprobacion']
 
@@ -35,5 +36,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     comentario: body.comentario || null,
   })
 
-  return NextResponse.json({ ok: true })
+  // Al aprobar la OIC, generar tareas automáticas para arte / operaciones
+  let tasksCreated = 0
+  if (body.estado === 'aprobada') {
+    const r = await generarTasksDeOrden(supabase, params.id)
+    tasksCreated = r.created
+  }
+
+  return NextResponse.json({ ok: true, tasks_creadas: tasksCreated })
 }
