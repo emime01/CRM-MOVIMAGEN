@@ -70,7 +70,7 @@ function OccupancyBar({ pct }: { pct: number }) {
 
 // ─── Soporte Card ──────────────────────────────────────────────────────────────
 
-function SoporteCard({ s, onReservar }: { s: SoporteOcupacion; onReservar: () => void }) {
+function SoporteCard({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; onReservar: () => void; onShowDetail: () => void }) {
   const icon = getCatIcon(s)
   const colors = {
     ocupado:  { border: '#fecaca', top: '#dc2626', badge: { bg: 'rgba(220,38,38,0.1)',  color: '#dc2626', label: 'OCUPADO'  } },
@@ -79,12 +79,16 @@ function SoporteCard({ s, onReservar }: { s: SoporteOcupacion; onReservar: () =>
   }[s.estado]
 
   return (
-    <div style={{
-      background: s.estado === 'ocupado' ? 'rgba(254,202,202,0.06)' : '#fff',
-      borderRadius: 12, border: `1px solid ${colors.border}`, overflow: 'hidden',
-      display: 'flex', flexDirection: 'column', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-      opacity: s.estado === 'ocupado' ? 0.85 : 1,
-    }}>
+    <div
+      onClick={s.estado !== 'libre' ? onShowDetail : undefined}
+      style={{
+        background: s.estado === 'ocupado' ? 'rgba(254,202,202,0.06)' : '#fff',
+        borderRadius: 12, border: `1px solid ${colors.border}`, overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+        opacity: s.estado === 'ocupado' ? 0.85 : 1,
+        cursor: s.estado !== 'libre' ? 'pointer' : 'default',
+      }}>
+
       <div style={{ height: 3, background: colors.top }} />
       <div style={{ padding: '14px 14px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -124,7 +128,7 @@ function SoporteCard({ s, onReservar }: { s: SoporteOcupacion; onReservar: () =>
 
       {s.estado !== 'ocupado' && (
         <div style={{ padding: '0 14px 12px' }}>
-          <button onClick={onReservar} style={{ width: '100%', padding: '6px 0', border: '1px solid #eb691c', borderRadius: 7, background: 'rgba(235,105,28,0.06)', color: '#eb691c', fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer' }}>
+          <button onClick={(e) => { e.stopPropagation(); onReservar() }} style={{ width: '100%', padding: '6px 0', border: '1px solid #eb691c', borderRadius: 7, background: 'rgba(235,105,28,0.06)', color: '#eb691c', fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer' }}>
             Reservar
           </button>
         </div>
@@ -135,7 +139,7 @@ function SoporteCard({ s, onReservar }: { s: SoporteOcupacion; onReservar: () =>
 
 // ─── Soporte List Row ───────────────────────────────────────────────────────────
 
-function SoporteListRow({ s, onReservar }: { s: SoporteOcupacion; onReservar: () => void }) {
+function SoporteListRow({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; onReservar: () => void; onShowDetail: () => void }) {
   const icon = getCatIcon(s)
   const badgeCfg = {
     ocupado:  { bg: 'rgba(220,38,38,0.1)',  color: '#dc2626', label: 'OCUPADO'  },
@@ -144,7 +148,9 @@ function SoporteListRow({ s, onReservar }: { s: SoporteOcupacion; onReservar: ()
   }[s.estado]
 
   return (
-    <tr style={{ borderBottom: '1px solid #f0ede6', background: s.estado === 'ocupado' ? 'rgba(254,202,202,0.04)' : '#fff' }}>
+    <tr
+      onClick={s.estado !== 'libre' ? onShowDetail : undefined}
+      style={{ borderBottom: '1px solid #f0ede6', background: s.estado === 'ocupado' ? 'rgba(254,202,202,0.04)' : '#fff', cursor: s.estado !== 'libre' ? 'pointer' : 'default' }}>
       <td style={{ padding: '10px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 16 }}>{icon}</span>
@@ -172,7 +178,7 @@ function SoporteListRow({ s, onReservar }: { s: SoporteOcupacion; onReservar: ()
       </td>
       <td style={{ padding: '10px 14px' }}>
         {s.estado !== 'ocupado' && (
-          <button onClick={onReservar} style={{ padding: '5px 12px', border: '1px solid #eb691c', borderRadius: 6, background: 'transparent', color: '#eb691c', fontSize: 11, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <button onClick={(e) => { e.stopPropagation(); onReservar() }} style={{ padding: '5px 12px', border: '1px solid #eb691c', borderRadius: 6, background: 'transparent', color: '#eb691c', fontSize: 11, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             Reservar
           </button>
         )}
@@ -639,6 +645,208 @@ function ReservaModal({
   )
 }
 
+// ─── Detalle de campaña Modal ──────────────────────────────────────────────────
+
+interface Campaña {
+  orden_item_id: string
+  orden_id: string
+  orden_numero: number
+  orden_estado: string
+  cliente: string | null
+  vendedor: string | null
+  cantidad: number
+  fecha_alta_prevista: string | null
+  fecha_alta_real: string | null
+  fecha_baja_prevista: string | null
+  fecha_baja_real: string | null
+}
+interface ReservaActiva {
+  reserva_id: string
+  estado: string
+  cliente: string | null
+  vendedor: string | null
+  cantidad: number
+  fecha_desde: string
+  fecha_hasta: string
+}
+
+function DetalleCampañaModal({
+  soporteId,
+  soporteNombre,
+  fecha,
+  userRol,
+  onClose,
+  onChanged,
+}: {
+  soporteId: string
+  soporteNombre: string
+  fecha: string
+  userRol: string
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [loading, setLoading] = useState(true)
+  const [campañas, setCampañas] = useState<Campaña[]>([])
+  const [reservas, setReservas] = useState<ReservaActiva[]>([])
+  const [edits, setEdits] = useState<Record<string, { alta?: string; baja?: string }>>({})
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const canEditDates = ['operaciones', 'administracion'].includes(userRol)
+
+  async function load() {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`/api/disponibilidad/soporte/${soporteId}?fecha=${fecha}`)
+      if (res.ok) {
+        const data = await res.json()
+        setCampañas(data.campañas ?? [])
+        setReservas(data.reservas ?? [])
+      }
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [soporteId, fecha]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function getEdit(c: Campaña, key: 'alta' | 'baja'): string {
+    const e = edits[c.orden_item_id]
+    if (e && e[key] !== undefined) return e[key] as string
+    return (key === 'alta' ? c.fecha_alta_real : c.fecha_baja_real) ?? ''
+  }
+  function setEdit(itemId: string, key: 'alta' | 'baja', val: string) {
+    setEdits(prev => ({ ...prev, [itemId]: { ...prev[itemId], [key]: val } }))
+  }
+
+  async function guardar(c: Campaña) {
+    setSavingId(c.orden_item_id); setError(null)
+    const e = edits[c.orden_item_id] ?? {}
+    const body: Record<string, string | null> = {}
+    if (e.alta !== undefined) body.fecha_alta_real = e.alta || null
+    if (e.baja !== undefined) body.fecha_baja_real = e.baja || null
+    if (Object.keys(body).length === 0) { setSavingId(null); return }
+    const res = await fetch(`/api/orden-items/${c.orden_item_id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    setSavingId(null)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Error al guardar'); return }
+    setEdits(prev => { const { [c.orden_item_id]: _, ...rest } = prev; return rest })
+    await load()
+    onChanged()
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 720, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 14px', borderBottom: '1px solid #e5e3dc' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1a1915' }}>{soporteNombre}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9a9895' }}>Campañas activas al {formatDate(fecha)}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9895' }}><X size={18} /></button>
+        </div>
+
+        <div style={{ padding: '16px 20px 22px' }}>
+          {loading && <p style={{ fontSize: 13, color: '#9a9895', textAlign: 'center', padding: 20 }}>Cargando…</p>}
+
+          {!loading && campañas.length === 0 && reservas.length === 0 && (
+            <p style={{ fontSize: 13, color: '#9a9895', textAlign: 'center', padding: 20 }}>Sin campañas o reservas activas para esta fecha.</p>
+          )}
+
+          {campañas.length > 0 && (
+            <div style={{ marginBottom: reservas.length > 0 ? 18 : 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#9a9895', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 8 }}>
+                Órdenes de venta ({campañas.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {campañas.map(c => (
+                  <div key={c.orden_item_id} style={{ border: '1px solid #e5e3dc', borderRadius: 10, padding: '12px 14px', background: '#fff' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#1a1915', fontSize: 14 }}>{c.cliente ?? '—'}</div>
+                        <div style={{ fontSize: 11, color: '#9a9895', marginTop: 2 }}>OIC #{c.orden_numero} · {c.vendedor ?? '—'} · cant. {c.cantidad}</div>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: 'rgba(37,99,235,0.1)', color: '#2563eb', alignSelf: 'flex-start' }}>{c.orden_estado.toUpperCase()}</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: '#9a9895', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 4 }}>Alta</div>
+                        <div style={{ fontSize: 12, color: '#4a4845', marginBottom: 4 }}>Prevista: <strong>{formatDate(c.fecha_alta_prevista)}</strong></div>
+                        {canEditDates ? (
+                          <input type="date" value={getEdit(c, 'alta')} onChange={e => setEdit(c.orden_item_id, 'alta', e.target.value)}
+                            style={{ width: '100%', padding: '7px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 12, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }} />
+                        ) : (
+                          <div style={{ fontSize: 12, color: c.fecha_alta_real ? '#15803d' : '#9a9895' }}>Real: <strong>{c.fecha_alta_real ? formatDate(c.fecha_alta_real) : '—'}</strong></div>
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: '#9a9895', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 4 }}>Baja</div>
+                        <div style={{ fontSize: 12, color: '#4a4845', marginBottom: 4 }}>Prevista: <strong>{formatDate(c.fecha_baja_prevista)}</strong></div>
+                        {canEditDates ? (
+                          <input type="date" value={getEdit(c, 'baja')} onChange={e => setEdit(c.orden_item_id, 'baja', e.target.value)}
+                            style={{ width: '100%', padding: '7px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 12, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }} />
+                        ) : (
+                          <div style={{ fontSize: 12, color: c.fecha_baja_real ? '#15803d' : '#9a9895' }}>Real: <strong>{c.fecha_baja_real ? formatDate(c.fecha_baja_real) : '—'}</strong></div>
+                        )}
+                      </div>
+                    </div>
+
+                    {canEditDates && edits[c.orden_item_id] && (
+                      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+                        <button onClick={() => guardar(c)} disabled={savingId === c.orden_item_id}
+                          style={{ padding: '6px 14px', border: 'none', borderRadius: 7, background: '#eb691c', color: '#fff', fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: savingId === c.orden_item_id ? 'wait' : 'pointer' }}>
+                          {savingId === c.orden_item_id ? 'Guardando…' : 'Guardar fecha real'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {reservas.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#9a9895', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 8 }}>
+                Reservas ({reservas.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {reservas.map(r => (
+                  <div key={r.reserva_id} style={{ border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', background: '#fffdf5' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                      <div>
+                        <div style={{ fontWeight: 600, color: '#1a1915', fontSize: 13 }}>{r.cliente ?? '—'}</div>
+                        <div style={{ fontSize: 11, color: '#9a9895', marginTop: 2 }}>{r.vendedor ?? '—'} · cant. {r.cantidad} · {formatDate(r.fecha_desde)} → {formatDate(r.fecha_hasta)}</div>
+                      </div>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5,
+                        background: r.estado === 'pendiente'  ? 'rgba(217,119,6,0.12)' :
+                                    r.estado === 'aprobada'   ? 'rgba(21,128,61,0.1)'  :
+                                    r.estado === 'confirmada' ? 'rgba(37,99,235,0.1)'  : 'rgba(107,114,128,0.1)',
+                        color:      r.estado === 'pendiente'  ? '#b45309' :
+                                    r.estado === 'aprobada'   ? '#15803d' :
+                                    r.estado === 'confirmada' ? '#2563eb' : '#6b7280',
+                      }}>{r.estado.toUpperCase()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div style={{ marginTop: 14, padding: '8px 12px', background: '#fef0f0', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, color: '#dc2626' }}>{error}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
 type Tab = 'disponibilidad' | 'estadisticas' | 'reservas' | 'aprobaciones'
@@ -660,6 +868,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
   const [filtroEstado, setFiltroEstado] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [preselectedId, setPreselectedId] = useState<string | null>(null)
+  const [detalle, setDetalle] = useState<{ id: string; nombre: string } | null>(null)
 
   const isAdmin = ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'].includes(userRol)
 
@@ -745,6 +954,17 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
           preselectedId={preselectedId}
           onClose={() => setModalOpen(false)}
           onSaved={handleReservaSaved}
+        />
+      )}
+
+      {detalle && (
+        <DetalleCampañaModal
+          soporteId={detalle.id}
+          soporteNombre={detalle.nombre}
+          fecha={fecha}
+          userRol={userRol}
+          onClose={() => setDetalle(null)}
+          onChanged={() => { fetchDay(fecha); fetchMes(mesYear) }}
         />
       )}
 
@@ -841,7 +1061,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
             </div>
           ) : viewMode === 'tarjetas' ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-              {visible.map(s => <SoporteCard key={s.id} s={s} onReservar={() => openReservar(s.id)} />)}
+              {visible.map(s => <SoporteCard key={s.id} s={s} onReservar={() => openReservar(s.id)} onShowDetail={() => setDetalle({ id: s.id, nombre: s.nombre })} />)}
             </div>
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e5e3dc', borderRadius: 10, overflow: 'hidden' }}>
@@ -854,7 +1074,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map(s => <SoporteListRow key={s.id} s={s} onReservar={() => openReservar(s.id)} />)}
+                  {visible.map(s => <SoporteListRow key={s.id} s={s} onReservar={() => openReservar(s.id)} onShowDetail={() => setDetalle({ id: s.id, nombre: s.nombre })} />)}
                 </tbody>
               </table>
             </div>
