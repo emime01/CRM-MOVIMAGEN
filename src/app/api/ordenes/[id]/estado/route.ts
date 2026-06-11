@@ -19,6 +19,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
   }
 
+  // Aprobar / rechazar una OIC es decisión exclusiva del gerente comercial
+  if (['aprobada', 'rechazada'].includes(body.estado) && session.user.rol !== 'gerente_comercial') {
+    return NextResponse.json({ error: 'Solo el gerente comercial puede aprobar o rechazar órdenes' }, { status: 403 })
+  }
+
   const supabase = createServerClient()
 
   const { error } = await supabase
@@ -41,6 +46,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.estado === 'aprobada') {
     const r = await generarTasksDeOrden(supabase, params.id)
     tasksCreated = r.created
+  }
+
+  // Aviso inmediato al gerente cuando una OIC queda esperando su aprobación
+  if (body.estado === 'pendiente_aprobacion') {
+    const [{ data: orden }, { data: gerentes }] = await Promise.all([
+      supabase.from('ordenes_venta').select('numero, clientes(nombre, empresa)').eq('id', params.id).maybeSingle(),
+      supabase.from('perfiles').select('id').eq('rol', 'gerente_comercial'),
+    ])
+    if (orden && gerentes?.length) {
+      const cli: any = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
+      const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'cliente'
+      await supabase.from('notificaciones').insert(
+        gerentes.map((g: { id: string }) => ({
+          user_id:   g.id,
+          tipo:      'orden_pendiente',
+          titulo:    'OIC esperando tu aprobación',
+          mensaje:   `OIC #${orden.numero} · ${clienteNombre}`,
+          link:      `/dashboard/ventas/${params.id}`,
+          entity_id: params.id,
+        }))
+      )
+    }
   }
 
   return NextResponse.json({ ok: true, tasks_creadas: tasksCreated })

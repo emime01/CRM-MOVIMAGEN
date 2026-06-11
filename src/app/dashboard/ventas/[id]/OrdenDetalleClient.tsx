@@ -195,7 +195,8 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const [motivoRechazo, setMotivoRechazo] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const canApprove = (userRol === 'gerente_comercial' || userRol === 'administracion') && orden.estado === 'pendiente_aprobacion'
+  // La aprobación de OIC es exclusiva del gerente comercial
+  const canApprove = userRol === 'gerente_comercial' && orden.estado === 'pendiente_aprobacion'
   const canUploadDoc = true
   const canSendToApproval = orden.estado === 'borrador' && (userRol === 'vendedor' || userRol === 'gerente_comercial' || userRol === 'administracion') && (Array.isArray(orden.perfiles) ? orden.perfiles[0]?.id === userId : orden.perfiles?.id === userId || userRol === 'gerente_comercial' || userRol === 'administracion')
 
