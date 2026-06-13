@@ -426,7 +426,178 @@ const handler = createMcpHandler(
       },
     )
 
-    // 13. Crear soporte
+    // ─── COTIZADOR (los precios SIEMPRE los calcula el servidor) ───────────
+    const itemSchema = z.object({
+      soporte_nombre: z.string().describe('Nombre del soporte tal como figura en el catálogo (acepta parcial).'),
+      semanas: z.number().int().min(1).describe('Semanas de pauta.'),
+      cantidad: z.number().int().min(1).optional().describe('Cantidad de unidades (default 1).'),
+      salidas: z.number().int().min(1).optional().describe('Salidas por hora — solo LED (default 30) y circuitos (default 10).'),
+    })
+
+    type ItemInput = z.infer<typeof itemSchema>
+
+    const armarPlan = async (itemsInput: ItemInput[]) => {
+      const supabase = createServerClient()
+      const { calcularItem, salidasDefault } = await import('@/lib/cotizador/calcular')
+      const plan: { soporte: any; semanas: number; cantidad: number; salidas: number | null; calc: ReturnType<typeof calcularItem> }[] = []
+      const errores: string[] = []
+
+      for (const it of itemsInput) {
+        const { data: matches } = await supabase
+          .from('soportes')
+          .select('id, nombre, ubicacion, categoria, tipo_cotizador, precio_semanal, tiene_iva, costo_produccion, impuestos_municipales, impactos_mensuales, semanas_minimas')
+          .ilike('nombre', `%${it.soporte_nombre}%`)
+          .eq('activo', true)
+          .limit(5)
+        if (!matches?.length) { errores.push(`No encontré el soporte "${it.soporte_nombre}".`); continue }
+        const exacto = matches.find((m: any) => m.nombre.toLowerCase() === it.soporte_nombre.toLowerCase())
+        if (!exacto && matches.length > 1) {
+          errores.push(`"${it.soporte_nombre}" matchea varios soportes: ${matches.map((m: any) => m.nombre).join(', ')}. Especificá el nombre.`)
+          continue
+        }
+        const s = (exacto ?? matches[0]) as any
+        const salidas = it.salidas ?? salidasDefault(s)
+        const cantidad = it.cantidad ?? 1
+        const calc = calcularItem({ soporte: s, semanas: it.semanas, cantidad, salidas })
+        plan.push({ soporte: s, semanas: it.semanas, cantidad, salidas, calc })
+      }
+      return { plan, errores }
+    }
+
+    const formatPlan = (plan: Awaited<ReturnType<typeof armarPlan>>['plan'], moneda: string) => {
+      const sym = moneda === 'USD' ? 'U$S' : '$'
+      const f = (n: number) => sym + Math.round(n).toLocaleString('es-UY')
+      const lines = plan.map(({ soporte, cantidad, salidas, calc }) =>
+        `• ${soporte.nombre}${soporte.ubicacion ? ' · ' + soporte.ubicacion : ''}\n` +
+        `   ${cantidad} unidad(es) × ${calc.sem} semana(s)${salidas ? ` · ${salidas} salidas/h` : ''}\n` +
+        `   Arrendamiento ${f(calc.arr)}${calc.ivaArr ? ` + IVA ${f(calc.ivaArr)}` : ' (exento)'}` +
+        `${calc.prod ? ` · Producción ${f(calc.prod)} + IVA ${f(calc.ivaProd)}` : ''}` +
+        `${calc.mun ? ` · Municipales ${f(calc.mun)}` : ''}\n` +
+        `   Subtotal ${f(calc.tot)}${calc.imp ? ` · ${calc.imp.toLocaleString('es-UY')} impactos · CPM ${f(calc.cpm)}` : ''}`,
+      )
+      const tot = plan.reduce((s, p) => s + p.calc.tot, 0)
+      const imp = plan.reduce((s, p) => s + p.calc.imp, 0)
+      return `${lines.join('\n\n')}\n\nTOTAL: ${f(tot)}${imp ? ` · ${imp.toLocaleString('es-UY')} impactos` : ''}`
+    }
+
+    // 13. Simular cotización (no guarda nada)
+    server.tool(
+      'simular_cotizacion',
+      'Calcula el precio de una pauta con las fórmulas oficiales del planificador (arrendamiento, IVA, producción, municipales, impactos, CPM) SIN guardar nada. Usala para mostrar números antes de crear la cotización.',
+      {
+        items: z.array(itemSchema).min(1),
+        moneda: z.enum(['UYU', 'USD']).optional().describe('Default UYU.'),
+      },
+      async ({ items, moneda }) => {
+        const { plan, errores } = await armarPlan(items)
+        if (errores.length) return text(`No pude armar la simulación:\n${errores.map(e => '• ' + e).join('\n')}`)
+        return text(`Simulación (no guardada):\n\n${formatPlan(plan, moneda ?? 'UYU')}\n\nPara guardarla usá crear_cotizacion con los mismos items.`)
+      },
+    )
+
+    // 14. Crear cotización (borrador — los precios los calcula el servidor)
+    server.tool(
+      'crear_cotizacion',
+      'Crea una cotización en estado BORRADOR con precios calculados por el servidor (el modelo no puede alterar precios). El vendedor la revisa y envía desde la web. Si el cliente no tiene lead, se crea uno automáticamente. Confirmá los items con el usuario antes de ejecutar (ideal: simular_cotizacion primero).',
+      {
+        cliente_nombre: z.string().describe('Cliente existente (exacto o parcial). Si no existe, crearlo antes con crear_cliente.'),
+        items: z.array(itemSchema).min(1),
+        fecha_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Inicio de pauta YYYY-MM-DD.'),
+        fecha_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Fin de pauta YYYY-MM-DD.'),
+        nombre: z.string().optional().describe('Nombre / título de la campaña.'),
+        marca: z.string().optional(),
+        moneda: z.enum(['UYU', 'USD']).optional().describe('Default UYU.'),
+        vendedor_nombre: z.string().optional().describe('Solo necesario con el token compartido; con token personal se usa tu identidad.'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!['vendedor', 'asistente_ventas'].includes(me.rol)) {
+          return text('Solo vendedores y asistente de ventas pueden crear cotizaciones (igual que en la web).')
+        }
+        const supabase = createServerClient()
+
+        // Vendedor responsable
+        let vendedorId = me.perfilId
+        if (!vendedorId) {
+          const v = await findVendedor(args.vendedor_nombre)
+          if (!v) return text('Con el token compartido tenés que indicar vendedor_nombre para asignar la cotización.')
+          vendedorId = v.id
+        }
+
+        // Cliente (con desambiguación)
+        const { data: clientes } = await supabase.from('clientes').select('id, nombre').ilike('nombre', `%${args.cliente_nombre}%`).eq('activo', true).limit(2)
+        if (!clientes?.length) return text(`No encontré el cliente "${args.cliente_nombre}". Crealo primero con crear_cliente.`)
+        if (clientes.length > 1) return text(`Hay varios clientes que matchean "${args.cliente_nombre}": ${clientes.map((c: any) => c.nombre).join(', ')}. Especificá más.`)
+        const cliente = clientes[0] as { id: string; nombre: string }
+
+        // Plan con precios server-side
+        const { plan, errores } = await armarPlan(args.items)
+        if (errores.length) return text(`No pude armar la cotización:\n${errores.map(e => '• ' + e).join('\n')}`)
+
+        const { IVA_RATE } = await import('@/lib/cotizador/calcular')
+        const tot = plan.reduce((s, p) => s + p.calc.tot, 0)
+        const imp = plan.reduce((s, p) => s + p.calc.imp, 0)
+        const arr = plan.reduce((s, p) => s + p.calc.arr, 0)
+        const prod = plan.reduce((s, p) => s + p.calc.prod, 0)
+
+        // Numeración + lead automático (mismo flujo que la web)
+        const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
+        const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
+
+        const { data: newLead } = await supabase
+          .from('leads')
+          .insert({ cliente_id: cliente.id, vendedor_id: vendedorId, descripcion: `Cotización ${numero}`, estado: 'en_seguimiento' })
+          .select('id')
+          .single()
+
+        const { data: propuesta, error } = await supabase
+          .from('propuestas')
+          .insert({
+            lead_id:        newLead?.id ?? null,
+            cliente_id:     cliente.id,
+            vendedor_id:    vendedorId,
+            numero,
+            nombre:         args.nombre ?? null,
+            marca:          args.marca ?? null,
+            estado:         'borrador',
+            fecha_inicio:   args.fecha_inicio ?? null,
+            fecha_fin:      args.fecha_fin ?? null,
+            moneda:         args.moneda ?? 'UYU',
+            monto_neto:     arr + prod - (prod * IVA_RATE / (1 + IVA_RATE)),
+            monto_total:    tot,
+            monto_impactos: imp,
+          })
+          .select('id, numero')
+          .single()
+        if (error || !propuesta) return text(`Error al crear la cotización: ${error?.message ?? 'desconocido'}`)
+
+        const rows = plan.map(({ soporte, cantidad, salidas, semanas, calc }) => ({
+          propuesta_id:      propuesta.id,
+          soporte_id:        soporte.id,
+          nombre_soporte:    soporte.nombre,
+          ubicacion:         soporte.ubicacion,
+          categoria_soporte: soporte.categoria,
+          tipo_cotizador:    soporte.tipo_cotizador,
+          cantidad,
+          cantidad_soportes: cantidad,
+          salidas_elegidas:  salidas,
+          semanas,
+          precio_unitario:   soporte.precio_semanal ?? 0,
+          subtotal:          calc.tot,
+          impactos_calc:     calc.imp,
+        }))
+        const { error: itemsErr } = await supabase.from('propuesta_items').insert(rows)
+        if (itemsErr) return text(`Cotización ${numero} creada pero falló la carga de items: ${itemsErr.message}. Revisala en la web.`)
+
+        return text(
+          `✓ Cotización ${numero} creada en BORRADOR para ${cliente.nombre}\n\n` +
+          formatPlan(plan, args.moneda ?? 'UYU') +
+          `\n\nRevisala, ajustala y envíala desde la web:\nhttps://crm-movimagen.vercel.app/dashboard/cotizaciones/${propuesta.id}`,
+        )
+      },
+    )
+
+    // 15. Crear soporte
     server.tool(
       'crear_soporte',
       'Agrega un soporte al catálogo. Confirmá con el usuario antes de ejecutar.',
