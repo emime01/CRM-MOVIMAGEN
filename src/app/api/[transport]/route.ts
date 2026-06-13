@@ -597,7 +597,211 @@ const handler = createMcpHandler(
       },
     )
 
-    // 15. Crear soporte
+    // 15. Marcar cotización aceptada (cliente dijo que sí → reserva soportes)
+    server.tool(
+      'marcar_cotizacion_aceptada',
+      'Marca una cotización como ACEPTADA por el cliente y bloquea los soportes con una reserva pendiente. Es el paso clave del pipeline: usala apenas el cliente confirme. La orden de venta se crea después desde la web.',
+      {
+        numero: z.string().optional().describe('Número de cotización, ej COT-0007.'),
+        cliente_nombre: z.string().optional().describe('Alternativa: cliente con una sola cotización enviada/borrador.'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(me.rol)) {
+          return text('Tu rol no permite marcar cotizaciones como aceptadas.')
+        }
+        const supabase = createServerClient()
+        let q = supabase.from('propuestas').select('id, numero, estado, clientes(nombre, empresa)').in('estado', ['borrador', 'enviada']).limit(5)
+        if (args.numero) q = q.ilike('numero', args.numero.trim())
+        else if (args.cliente_nombre) q = q.ilike('clientes.nombre', `%${args.cliente_nombre}%`)
+        else return text('Indicá numero (COT-XXXX) o cliente_nombre.')
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
+        const { data: matches } = await q
+        const validas = (matches ?? []).filter((p: any) => !args.cliente_nombre || first<any>(p.clientes))
+        if (!validas.length) return text('No encontré una cotización abierta que coincida (y que sea tuya, si sos vendedor).')
+        if (validas.length > 1) {
+          return text(`Hay ${validas.length} cotizaciones abiertas que matchean:\n${validas.map((p: any) => `   ${p.numero} · ${first<any>(p.clientes)?.nombre ?? '—'} [${p.estado}]`).join('\n')}\nEspecificá el número.`)
+        }
+        const { aceptarCotizacion } = await import('@/lib/cotizaciones/aceptar')
+        const r = await aceptarCotizacion(supabase, (validas[0] as any).id)
+        if (!r.ok) return text(`No se pudo: ${r.error}`)
+        return text(`✓ ${r.numero ?? 'Cotización'} marcada como ACEPTADA. ${r.itemsReservados} soporte(s) bloqueados con reserva pendiente.\nPróximo paso: crear la orden de venta desde la web (botón "Crear orden de venta" en la cotización).`)
+      },
+    )
+
+    // 16. Listar órdenes de venta
+    server.tool(
+      'listar_ordenes',
+      'Lista órdenes de venta (OIC) con estado, cliente, vendedor y monto. Útil para ver qué hay pendiente de aprobación.',
+      {
+        estado: z.enum(['borrador', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'en_oic', 'facturada', 'cobrada']).optional(),
+        limite: z.number().int().min(1).max(50).optional(),
+      },
+      async ({ estado, limite }, extra) => {
+        const me = ident(extra)
+        const supabase = createServerClient()
+        let q = supabase.from('ordenes_venta').select('numero, estado, moneda, monto_total, fecha_alta_prevista, fecha_baja_prevista, clientes(nombre, empresa), perfiles!ordenes_venta_vendedor_id_fkey(nombre)').order('created_at', { ascending: false }).limit(limite ?? 20)
+        if (estado) q = q.eq('estado', estado)
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
+        const { data } = await q
+        if (!data?.length) return text('No hay órdenes que coincidan.')
+        const body = data.map((o: any) => {
+          const cli = first<any>(o.clientes); const v = first<any>(o.perfiles)
+          return `• OIC #${o.numero} [${(o.estado ?? '').toUpperCase()}]\n   ${cli?.empresa ?? cli?.nombre ?? '—'} · Vendedor: ${v?.nombre ?? '—'}\n   ${o.moneda ?? 'UYU'} ${fmtMoney(o.monto_total)} · ${fmtDate(o.fecha_alta_prevista)} → ${fmtDate(o.fecha_baja_prevista)}`
+        }).join('\n\n')
+        return text(`${data.length} orden(es):\n\n${body}`)
+      },
+    )
+
+    // 17 + 18. Aprobar / rechazar OIC (exclusivo del gerente comercial)
+    const cambiarEstadoOrden = async (me: Identity, numero: number, nuevoEstado: 'aprobada' | 'rechazada', motivo?: string) => {
+      if (me.rol !== 'gerente_comercial') return text('Solo el gerente comercial puede aprobar o rechazar órdenes.')
+      const supabase = createServerClient()
+      const { data: orden } = await supabase.from('ordenes_venta').select('id, estado, clientes(nombre, empresa)').eq('numero', numero).maybeSingle()
+      if (!orden) return text(`No existe la OIC #${numero}.`)
+      if (orden.estado !== 'pendiente_aprobacion') return text(`La OIC #${numero} está en estado "${orden.estado}", no en pendiente_aprobacion.`)
+
+      const { error } = await supabase.from('ordenes_venta').update({ estado: nuevoEstado }).eq('id', orden.id)
+      if (error) return text(`Error: ${error.message}`)
+      await supabase.from('orden_historial').insert({
+        orden_id: orden.id,
+        perfil_id: me.perfilId,
+        estado_nuevo: nuevoEstado,
+        comentario: motivo ?? `${nuevoEstado === 'aprobada' ? 'Aprobada' : 'Rechazada'} vía Claude`,
+      })
+
+      let extraMsg = ''
+      if (nuevoEstado === 'aprobada') {
+        const { generarTasksDeOrden } = await import('@/lib/tasks/generar-desde-orden')
+        const r = await generarTasksDeOrden(supabase, orden.id)
+        extraMsg = r.created ? `\n${r.created} tarea(s) generadas para arte/operaciones (ya notificados).` : ''
+      }
+      const cli = first<any>(orden.clientes)
+      return text(`✓ OIC #${numero} (${cli?.empresa ?? cli?.nombre ?? '—'}) ${nuevoEstado === 'aprobada' ? 'APROBADA' : 'RECHAZADA'}.${extraMsg}`)
+    }
+
+    server.tool(
+      'aprobar_oic',
+      'Aprueba una orden de venta pendiente. Solo el gerente comercial. Al aprobar se generan las tareas automáticas de arte y operaciones.',
+      { numero: z.number().int().describe('Número de la OIC.') },
+      ({ numero }, extra) => cambiarEstadoOrden(ident(extra), numero, 'aprobada'),
+    )
+
+    server.tool(
+      'rechazar_oic',
+      'Rechaza una orden de venta pendiente. Solo el gerente comercial.',
+      {
+        numero: z.number().int(),
+        motivo: z.string().optional().describe('Motivo del rechazo (queda en el historial).'),
+      },
+      ({ numero, motivo }, extra) => cambiarEstadoOrden(ident(extra), numero, 'rechazada', motivo),
+    )
+
+    // 19. Cargar fecha real de campaña (operaciones)
+    server.tool(
+      'cargar_fecha_real',
+      'Registra cuándo arrancó o terminó REALMENTE la pauta de un soporte dentro de una OIC. Mantiene la disponibilidad actualizada cuando hay atrasos de impresión/instalación. Solo operaciones y administración.',
+      {
+        oic_numero: z.number().int().describe('Número de la OIC.'),
+        soporte_nombre: z.string().describe('Soporte del ítem a actualizar (acepta parcial).'),
+        fecha_alta_real: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Cuándo arrancó de verdad.'),
+        fecha_baja_real: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Cuándo terminó de verdad.'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!['operaciones', 'administracion'].includes(me.rol)) return text('Solo operaciones y administración pueden cargar fechas reales.')
+        if (!args.fecha_alta_real && !args.fecha_baja_real) return text('Indicá fecha_alta_real y/o fecha_baja_real.')
+        const supabase = createServerClient()
+        const { data: orden } = await supabase.from('ordenes_venta').select('id').eq('numero', args.oic_numero).maybeSingle()
+        if (!orden) return text(`No existe la OIC #${args.oic_numero}.`)
+        const { data: items } = await supabase.from('orden_items').select('id, soportes(nombre)').eq('orden_id', orden.id)
+        const matches = (items ?? []).filter((it: any) => first<any>(it.soportes)?.nombre?.toLowerCase().includes(args.soporte_nombre.toLowerCase()))
+        if (!matches.length) return text(`La OIC #${args.oic_numero} no tiene ningún ítem con soporte "${args.soporte_nombre}".`)
+        if (matches.length > 1) return text(`Hay varios ítems que matchean: ${matches.map((m: any) => first<any>(m.soportes)?.nombre).join(', ')}. Especificá el nombre completo.`)
+        const updates: Record<string, string> = {}
+        if (args.fecha_alta_real) updates.fecha_alta_real = args.fecha_alta_real
+        if (args.fecha_baja_real) updates.fecha_baja_real = args.fecha_baja_real
+        if (updates.fecha_alta_real && updates.fecha_baja_real && updates.fecha_alta_real > updates.fecha_baja_real) {
+          return text('La fecha de baja no puede ser anterior a la de alta.')
+        }
+        const { error } = await supabase.from('orden_items').update(updates).eq('id', (matches[0] as any).id)
+        if (error) return text(`Error: ${error.message}`)
+        const partes = []
+        if (args.fecha_alta_real) partes.push(`alta real ${fmtDate(args.fecha_alta_real)}`)
+        if (args.fecha_baja_real) partes.push(`baja real ${fmtDate(args.fecha_baja_real)}`)
+        return text(`✓ ${first<any>((matches[0] as any).soportes)?.nombre} (OIC #${args.oic_numero}): ${partes.join(' · ')}. Disponibilidad actualizada.`)
+      },
+    )
+
+    // 20. Crear lead
+    server.tool(
+      'crear_lead',
+      'Crea un lead (oportunidad comercial) para un cliente existente. Solo vendedores y gerente.',
+      {
+        cliente_nombre: z.string().describe('Cliente existente (si no existe, usar crear_cliente primero).'),
+        descripcion: z.string().describe('De qué se trata la oportunidad.'),
+        monto_potencial: z.number().optional(),
+        cuatrimestre: z.string().optional().describe('Ej: Q2-2026.'),
+        proxima_gestion: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Fecha del próximo contacto.'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!['vendedor', 'gerente_comercial'].includes(me.rol)) return text('Solo vendedores y gerente pueden crear leads (igual que en la web).')
+        const supabase = createServerClient()
+        const { data: clientes } = await supabase.from('clientes').select('id, nombre, vendedor_id').ilike('nombre', `%${args.cliente_nombre}%`).eq('activo', true).limit(2)
+        if (!clientes?.length) return text(`No encontré el cliente "${args.cliente_nombre}".`)
+        if (clientes.length > 1) return text(`Varios clientes matchean: ${clientes.map((c: any) => c.nombre).join(', ')}. Especificá más.`)
+        const cliente = clientes[0] as any
+        const vendedorId = me.perfilId ?? cliente.vendedor_id
+        const { data, error } = await supabase.from('leads').insert({
+          cliente_id:      cliente.id,
+          vendedor_id:     vendedorId,
+          descripcion:     args.descripcion,
+          monto_potencial: args.monto_potencial ?? null,
+          cuatrimestre:    args.cuatrimestre ?? null,
+          proxima_gestion: args.proxima_gestion ?? null,
+          estado:          'nuevo',
+        }).select('id').single()
+        if (error) return text(`Error: ${error.message}`)
+        return text(`✓ Lead creado para ${cliente.nombre}: "${args.descripcion}"${args.monto_potencial ? ` · potencial ${fmtMoney(args.monto_potencial)}` : ''}${args.proxima_gestion ? ` · próxima gestión ${fmtDate(args.proxima_gestion)}` : ''}\nID: ${data?.id}`)
+      },
+    )
+
+    // 21. Agregar gestión a un lead
+    server.tool(
+      'agregar_gestion_lead',
+      'Registra una gestión sobre un lead existente: qué pasó y cuándo es el próximo contacto. Opcionalmente cambia el estado del lead.',
+      {
+        cliente_nombre: z.string().describe('Cliente del lead.'),
+        nota: z.string().describe('Qué pasó en la gestión (reunión, llamada, respuesta del cliente…).'),
+        proxima_gestion: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Fecha del próximo contacto.'),
+        estado: z.enum(['nuevo', 'en_conversacion', 'propuesta_enviada', 'negociacion', 'ganado', 'perdido']).optional(),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!['vendedor', 'gerente_comercial'].includes(me.rol)) return text('Solo vendedores y gerente gestionan leads.')
+        const supabase = createServerClient()
+        let q = supabase.from('leads').select('id, descripcion, notas, estado, clientes(nombre)').not('estado', 'in', '(ganado,perdido)').ilike('clientes.nombre', `%${args.cliente_nombre}%`).limit(5)
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
+        const { data } = await q
+        const matches = (data ?? []).filter((l: any) => first<any>(l.clientes))
+        if (!matches.length) return text(`No encontré leads activos para "${args.cliente_nombre}"${esVendedor(me) ? ' asignados a vos' : ''}.`)
+        if (matches.length > 1) {
+          return text(`Hay ${matches.length} leads activos para ese cliente:\n${matches.map((l: any) => `   • "${l.descripcion ?? 'sin descripción'}" [${l.estado}]`).join('\n')}\nAclarame a cuál te referís por su descripción.`)
+        }
+        const lead = matches[0] as any
+        const stamp = new Date().toISOString().slice(0, 10)
+        const notas = `${lead.notas ? lead.notas + '\n' : ''}[${stamp}] ${args.nota}`
+        const updates: Record<string, unknown> = { notas, updated_at: new Date().toISOString() }
+        if (args.proxima_gestion) updates.proxima_gestion = args.proxima_gestion
+        if (args.estado) updates.estado = args.estado
+        const { error } = await supabase.from('leads').update(updates).eq('id', lead.id)
+        if (error) return text(`Error: ${error.message}`)
+        return text(`✓ Gestión registrada en el lead de ${first<any>(lead.clientes)?.nombre}${args.estado ? ` · estado → ${args.estado}` : ''}${args.proxima_gestion ? ` · próxima gestión ${fmtDate(args.proxima_gestion)}` : ''}`)
+      },
+    )
+
+    // 22. Crear soporte
     server.tool(
       'crear_soporte',
       'Agrega un soporte al catálogo. Confirmá con el usuario antes de ejecutar.',
