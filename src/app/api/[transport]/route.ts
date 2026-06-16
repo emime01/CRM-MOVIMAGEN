@@ -801,7 +801,76 @@ const handler = createMcpHandler(
       },
     )
 
-    // 22. Crear soporte
+    // 22 + 23. Cambios de material durante la campaña
+    const puedeCambiarMaterial = (id: Identity) => ['operaciones', 'administracion', 'asistente_ventas'].includes(id.rol)
+
+    server.tool(
+      'registrar_cambio_material_digital',
+      'Registra que el cliente envió un material nuevo para un soporte digital (LED, banner shopping, circuito). NO genera OIC: reemplaza el material in-place. Crea automáticamente las tareas de arte (validar) y operaciones (regrabar comprobante). Solo operaciones, asistente y administración.',
+      {
+        oic_numero: z.number().int(),
+        soporte_nombre: z.string().describe('Soporte del ítem que cambia (acepta parcial).'),
+        fecha_desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Desde cuándo corre el material nuevo.'),
+        url_material: z.string().optional().describe('Link al archivo (Drive, Dropbox, etc.).'),
+        descripcion: z.string().optional().describe('Notas: resolución, duración, contexto.'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!puedeCambiarMaterial(me)) return text('Tu rol no permite cargar cambios de material.')
+        const supabase = createServerClient()
+        const { data: orden } = await supabase.from('ordenes_venta').select('id').eq('numero', args.oic_numero).maybeSingle()
+        if (!orden) return text(`No existe la OIC #${args.oic_numero}.`)
+        const { data: items } = await supabase.from('orden_items').select('id, soportes(nombre, tipo_cotizador)').eq('orden_id', orden.id)
+        const matches = (items ?? []).filter((it: any) => first<any>(it.soportes)?.nombre?.toLowerCase().includes(args.soporte_nombre.toLowerCase()))
+        if (!matches.length) return text(`La OIC #${args.oic_numero} no tiene ningún ítem con soporte "${args.soporte_nombre}".`)
+        if (matches.length > 1) return text(`Varios ítems matchean: ${matches.map((m: any) => first<any>(m.soportes)?.nombre).join(', ')}. Especificá el nombre.`)
+        const item = matches[0] as any
+        const { registrarCambioDigital } = await import('@/lib/cambios-material/lib')
+        const r = await registrarCambioDigital(supabase, {
+          ordenItemId:   item.id,
+          fechaDesde:    args.fecha_desde,
+          urlMaterial:   args.url_material,
+          descripcion:   args.descripcion,
+          perfilId:      me.perfilId,
+        })
+        if (!r.ok) return text(`No se pudo: ${r.error}`)
+        return text(`✓ Cambio de material registrado en OIC #${args.oic_numero} (${first<any>(item.soportes)?.nombre}). Vigente desde ${fmtDate(args.fecha_desde)}.\n${r.tasksCreadas ?? 0} tarea(s) generadas para arte y operaciones.`)
+      },
+    )
+
+    server.tool(
+      'crear_reimpresion',
+      'Crea una OIC HIJA de reimpresión sobre una OIC existente — para cuando el cliente cambia el material de un soporte IMPRESO (bus, estático shopping, medianera). La nueva OIC arranca en borrador, copia los ítems impresos pero sin arrendamiento (solo cobra el costo de producción/instalación). Hay que aprobarla después igual que cualquier OIC.',
+      {
+        oic_numero: z.number().int().describe('OIC original a reimprimir.'),
+        soporte_nombre: z.string().optional().describe('Opcional: limita la reimpresión a un soporte específico (si la OIC tiene varios impresos).'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!puedeCambiarMaterial(me)) return text('Tu rol no permite generar reimpresiones.')
+        const supabase = createServerClient()
+        const { data: madre } = await supabase.from('ordenes_venta').select('id, orden_items(soporte_id, soportes(nombre, tipo_cotizador))').eq('numero', args.oic_numero).maybeSingle()
+        if (!madre) return text(`No existe la OIC #${args.oic_numero}.`)
+
+        let soporteIds: string[] | undefined
+        if (args.soporte_nombre) {
+          const matches = (madre.orden_items ?? []).filter((it: any) => first<any>(it.soportes)?.nombre?.toLowerCase().includes(args.soporte_nombre!.toLowerCase()))
+          if (!matches.length) return text(`No encontré "${args.soporte_nombre}" en la OIC #${args.oic_numero}.`)
+          soporteIds = matches.map((m: any) => m.soporte_id).filter(Boolean)
+        }
+
+        const { crearOicCambioImpreso } = await import('@/lib/cambios-material/lib')
+        const r = await crearOicCambioImpreso(supabase, {
+          oicOrigenId:        (madre as any).id,
+          soporteIds,
+          creadoPorPerfilId:  me.perfilId,
+        })
+        if (!r.ok) return text(`No se pudo: ${r.error}`)
+        return text(`✓ OIC #${r.numero} creada como reimpresión de OIC #${args.oic_numero}, con ${r.itemsCopiados} ítem(s) en BORRADOR.\nRevisala y mandala a aprobar:\nhttps://crm-movimagen.vercel.app/dashboard/ventas/${r.ordenId}`)
+      },
+    )
+
+    // 24. Crear soporte
     server.tool(
       'crear_soporte',
       'Agrega un soporte al catálogo. Confirmá con el usuario antes de ejecutar.',
