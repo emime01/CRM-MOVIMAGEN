@@ -167,6 +167,17 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
                       <span style={{ marginLeft: 8, color: '#9ca3af' }}>· {p.perfiles.nombre}</span>
                     )}
                   </div>
+                  <div style={{ marginTop: 5 }}>
+                    {p.leads?.descripcion ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#f0fdf4', color: '#15803d', fontWeight: 600 }}>
+                        🎯 {p.leads.descripcion}
+                      </span>
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#b45309', fontWeight: 600, border: '1px dashed #fcd34d' }}>
+                        ⚠ Sin lead asignado
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   {p.monto_total != null && (
