@@ -270,6 +270,7 @@ export interface LeadRow {
   proxima_gestion: string | null
   nota_gestion: string | null
   created_at: string
+  updated_at?: string | null
   clientes: JoinedRow<{ nombre: string | null; empresa: string | null }>
   agencias: JoinedRow<{ nombre: string }>
   perfiles: JoinedRow<{ nombre: string }>
@@ -1185,7 +1186,18 @@ export default function LeadsClient({ leads, isGerente, userId, userRol, cliente
   const [activeTab, setActiveTab] = useState<'leads' | 'mis_clientes' | 'calendario'>('leads')
   const [cuatrimestre, setCuatrimestre] = useState('')
   const [vendedorFilter, setVendedorFilter] = useState('')
+  const [yearFilter, setYearFilter] = useState<number | 'all'>(new Date().getFullYear())
   const [modal, setModal] = useState<ModalState>({ open: false, lead: null })
+
+  // Years available across leads (for the selector)
+  const availableYears = useMemo(() => {
+    const ys = new Set<number>()
+    for (const l of leads) {
+      if (l.created_at) ys.add(new Date(l.created_at).getFullYear())
+    }
+    ys.add(new Date().getFullYear())
+    return Array.from(ys).sort((a, b) => b - a)
+  }, [leads])
 
   function openCreate() {
     setModal({ open: true, lead: null })
@@ -1208,8 +1220,16 @@ export default function LeadsClient({ leads, isGerente, userId, userRol, cliente
     let result = leads
     if (cuatrimestre) result = result.filter(l => l.cuatrimestre === cuatrimestre)
     if (vendedorFilter) result = result.filter(l => l.vendedor_id === vendedorFilter)
+    if (yearFilter !== 'all') {
+      // Leads abiertos siempre se ven; ganados/perdidos solo del año seleccionado
+      result = result.filter(l => {
+        if (l.estado !== 'ganado' && l.estado !== 'perdido') return true
+        const fechaRef = l.updated_at ?? l.created_at
+        return fechaRef ? new Date(fechaRef).getFullYear() === yearFilter : true
+      })
+    }
     return result
-  }, [leads, cuatrimestre, vendedorFilter])
+  }, [leads, cuatrimestre, vendedorFilter, yearFilter])
 
   const totalFiltered = filtered.length
   const noLeads = leads.length === 0
@@ -1296,6 +1316,26 @@ export default function LeadsClient({ leads, isGerente, userId, userRol, cliente
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Year filter: por default año actual; ganados/perdidos viejos se ocultan */}
+          <select
+            value={String(yearFilter)}
+            onChange={e => setYearFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+            title="Año (los leads abiertos siempre se ven; ganados/perdidos solo del año elegido)"
+            style={{
+              padding: '8px 12px', border: '1px solid #e5e3dc', borderRadius: 8,
+              fontSize: 13, fontFamily: 'Montserrat, sans-serif', color: '#1a1915',
+              background: '#ffffff', cursor: 'pointer', outline: 'none',
+              appearance: 'none', paddingRight: 28,
+              backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239a9895' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center',
+            }}
+          >
+            {availableYears.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+            <option value="all">Todos los años</option>
+          </select>
+
           {/* Quarter filter */}
           <select
             value={cuatrimestre}
