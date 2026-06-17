@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { TrendingUp, DollarSign, Target, Award, CheckCircle, XCircle } from 'lucide-react'
 import ApprovalButtons from '@/components/dashboard/ApprovalButtons'
+import SemaforoGestiones from '@/components/dashboard/SemaforoGestiones'
 
 type EstadoOrden =
   | 'borrador'
@@ -338,6 +339,13 @@ export default async function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Semáforo de gestiones */}
+      {['vendedor', 'asistente_ventas', 'gerente_comercial'].includes(rol) && (
+        <div style={{ marginTop: 24 }}>
+          <SemaforoGestiones />
+        </div>
+      )}
 
       {/* Manager sections */}
       {rol === 'gerente_comercial' && (
