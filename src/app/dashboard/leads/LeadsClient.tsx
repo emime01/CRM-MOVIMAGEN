@@ -815,13 +815,19 @@ function LeadCard({
         )}
       </div>
 
-      {/* Próxima gestión chip */}
-      {lead.proxima_gestion && (
-        <div style={{ marginTop: 6, fontSize: 11, color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          {new Date(lead.proxima_gestion + 'T12:00:00').toLocaleDateString('es-UY', { day: 'numeric', month: 'short' })}
-        </div>
-      )}
+      {/* Próxima gestión chip con semáforo */}
+      {lead.proxima_gestion && (() => {
+        const hoy = new Date().toISOString().slice(0, 10)
+        const dias = Math.floor((Date.parse(lead.proxima_gestion + 'T00:00:00') - Date.parse(hoy + 'T00:00:00')) / 86400000)
+        const sem = dias < 0 ? { dot: '#dc2626', txt: '#dc2626' } : dias === 0 ? { dot: '#d97706', txt: '#b45309' } : { dot: '#16a34a', txt: '#15803d' }
+        return (
+          <div style={{ marginTop: 6, fontSize: 11, color: sem.txt, display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: sem.dot, flexShrink: 0 }} />
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            {new Date(lead.proxima_gestion + 'T12:00:00').toLocaleDateString('es-UY', { day: 'numeric', month: 'short' })}
+          </div>
+        )
+      })()}
 
       {/* Gerente: vendor name */}
       {isGerente && (

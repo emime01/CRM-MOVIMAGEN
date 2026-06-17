@@ -498,7 +498,7 @@ const handler = createMcpHandler(
     // 14. Crear cotización (borrador — los precios los calcula el servidor)
     server.tool(
       'crear_cotizacion',
-      'Crea una cotización en estado BORRADOR con precios calculados por el servidor (el modelo no puede alterar precios). El vendedor la revisa y envía desde la web. Si el cliente no tiene lead, se crea uno automáticamente. Confirmá los items con el usuario antes de ejecutar (ideal: simular_cotizacion primero).',
+      'Crea una cotización en estado BORRADOR con precios calculados por el servidor. Cada cotización SIEMPRE queda asociada a un lead (un lead puede tener varias cotizaciones como opciones para el cliente). Si el cliente tiene leads activos, se asocia al que indiques; si no, se crea uno automático. El vendedor la revisa y envía desde la web.',
       {
         cliente_nombre: z.string().describe('Cliente existente (exacto o parcial). Si no existe, crearlo antes con crear_cliente.'),
         items: z.array(itemSchema).min(1),
@@ -507,6 +507,8 @@ const handler = createMcpHandler(
         nombre: z.string().optional().describe('Nombre / título de la campaña.'),
         marca: z.string().optional(),
         moneda: z.enum(['UYU', 'USD']).optional().describe('Default UYU.'),
+        lead_descripcion: z.string().optional().describe('Si el cliente tiene varios leads activos, descripción del lead a usar (parcial). Si no se especifica y hay más de uno abierto, se pide aclarar.'),
+        crear_lead_nuevo: z.boolean().optional().describe('Forzar la creación de un lead nuevo aunque el cliente tenga otros abiertos (para una alternativa nueva).'),
         vendedor_nombre: z.string().optional().describe('Solo necesario con el token compartido; con token personal se usa tu identidad.'),
       },
       async (args, extra) => {
@@ -540,20 +542,41 @@ const handler = createMcpHandler(
         const arr = plan.reduce((s, p) => s + p.calc.arr, 0)
         const prod = plan.reduce((s, p) => s + p.calc.prod, 0)
 
-        // Numeración + lead automático (mismo flujo que la web)
+        // Numeración
         const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
         const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
 
-        const { data: newLead } = await supabase
-          .from('leads')
-          .insert({ cliente_id: cliente.id, vendedor_id: vendedorId, descripcion: `Cotización ${numero}`, estado: 'en_seguimiento' })
-          .select('id')
-          .single()
+        // Lead: existente del cliente o uno nuevo
+        let leadId: string | null = null
+        if (!args.crear_lead_nuevo) {
+          let leadQ = supabase
+            .from('leads')
+            .select('id, descripcion')
+            .eq('cliente_id', cliente.id)
+            .not('estado', 'in', '(ganado,perdido)')
+            .limit(5)
+          if (esVendedor(me) && me.perfilId) leadQ = leadQ.eq('vendedor_id', me.perfilId)
+          if (args.lead_descripcion) leadQ = leadQ.ilike('descripcion', `%${args.lead_descripcion}%`)
+          const { data: leadsAbiertos } = await leadQ
+          if (leadsAbiertos && leadsAbiertos.length === 1) {
+            leadId = leadsAbiertos[0].id
+          } else if (leadsAbiertos && leadsAbiertos.length > 1) {
+            return text(`${cliente.nombre} tiene ${leadsAbiertos.length} leads abiertos:\n${leadsAbiertos.map((l: any) => `   • "${l.descripcion ?? 'sin descripción'}"`).join('\n')}\nIndicá lead_descripcion para asociar a uno, o crear_lead_nuevo: true para una opción nueva.`)
+          }
+        }
+        if (!leadId) {
+          const { data: newLead } = await supabase
+            .from('leads')
+            .insert({ cliente_id: cliente.id, vendedor_id: vendedorId, descripcion: args.nombre ?? `Cotización ${numero}`, estado: 'en_seguimiento' })
+            .select('id')
+            .single()
+          leadId = newLead?.id ?? null
+        }
 
         const { data: propuesta, error } = await supabase
           .from('propuestas')
           .insert({
-            lead_id:        newLead?.id ?? null,
+            lead_id:        leadId,
             cliente_id:     cliente.id,
             vendedor_id:    vendedorId,
             numero,
@@ -834,6 +857,75 @@ const handler = createMcpHandler(
         }).select('id').single()
         if (error) return text(`Error al crear soporte: ${error.message}`)
         return text(`✓ Soporte creado: ${args.nombre}${args.categoria ? ' [' + args.categoria + ']' : ''}\nPrecio semanal: ${args.precio_semanal != null ? fmtMoney(args.precio_semanal) : 'sin definir'} · Capacidad: ${args.cap ?? 1}\nID: ${data?.id}`)
+      },
+    )
+
+    // 23. Marcar cotización ganadora de un lead
+    server.tool(
+      'marcar_cotizacion_ganadora',
+      'Marca una cotización como GANADORA del lead asociado. El lead pasa a estado "ganado". Las otras cotizaciones del lead quedan guardadas en su estado actual (no se borran ni cambian) — son info de las opciones que se le ofrecieron al cliente.',
+      { numero: z.string().describe('Número de cotización (ej COT-0007).') },
+      async ({ numero }, extra) => {
+        const me = ident(extra)
+        if (!['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(me.rol)) {
+          return text('Tu rol no permite marcar cotizaciones ganadoras.')
+        }
+        const supabase = createServerClient()
+        let q = supabase.from('propuestas').select('id, lead_id, estado, vendedor_id, clientes(nombre, empresa), leads(id, estado)').ilike('numero', numero.trim())
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
+        const { data: propuesta } = await q.maybeSingle()
+        if (!propuesta) return text(`No encontré la cotización ${numero}${esVendedor(me) ? ' entre las tuyas' : ''}.`)
+        if (!propuesta.lead_id) return text(`${numero} no tiene lead asociado.`)
+        const { error } = await supabase
+          .from('leads')
+          .update({ estado: 'ganado', propuesta_ganadora_id: propuesta.id, updated_at: new Date().toISOString() })
+          .eq('id', propuesta.lead_id)
+        if (error) return text(`Error: ${error.message}`)
+        const cli = first<any>(propuesta.clientes)
+        return text(`✓ ${numero} marcada como GANADORA${cli ? ' — ' + (cli.empresa ?? cli.nombre) : ''}. El lead pasa a "ganado".`)
+      },
+    )
+
+    // 24. Próximas gestiones (semáforo)
+    server.tool(
+      'proximas_gestiones',
+      'Devuelve el semáforo de gestiones próximas: leads con seguimiento programado clasificados en rojo (atrasada), amarillo (hoy) y verde (futura). Vendedor ve solo las suyas; gerente y admin ven todo.',
+      { ventana_dias: z.number().int().min(1).max(60).optional().describe('Ventana hacia adelante. Default 14.') },
+      async ({ ventana_dias }, extra) => {
+        const me = ident(extra)
+        const supabase = createServerClient()
+        const ventana = ventana_dias ?? 14
+        const hoy = new Date().toISOString().slice(0, 10)
+        const limite = new Date(Date.now() + ventana * 86400000).toISOString().slice(0, 10)
+        let q = supabase
+          .from('leads')
+          .select('id, descripcion, proxima_gestion, nota_gestion, monto_potencial, perfiles(nombre), clientes(nombre, empresa)')
+          .not('proxima_gestion', 'is', null)
+          .in('estado', ['nuevo', 'en_conversacion', 'propuesta_enviada', 'negociacion', 'en_seguimiento'])
+          .lte('proxima_gestion', limite)
+          .order('proxima_gestion', { ascending: true })
+          .limit(50)
+        if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
+        const { data } = await q
+        if (!data?.length) return text('Sin gestiones próximas en esa ventana.')
+
+        const buckets: Record<'rojo' | 'amarillo' | 'verde', string[]> = { rojo: [], amarillo: [], verde: [] }
+        for (const l of data as any[]) {
+          const cli = first<any>(l.clientes); const v = first<any>(l.perfiles)
+          const fecha = l.proxima_gestion as string
+          const sem: 'rojo' | 'amarillo' | 'verde' = fecha < hoy ? 'rojo' : fecha === hoy ? 'amarillo' : 'verde'
+          const dias = Math.floor((Date.parse(fecha + 'T00:00:00') - Date.parse(hoy + 'T00:00:00')) / 86400000)
+          const cuando = sem === 'rojo' ? `atrasada ${-dias}d` : sem === 'amarillo' ? 'hoy' : `en ${dias}d`
+          buckets[sem].push(
+            `   • ${fmtDate(fecha)} (${cuando}) · ${cli?.empresa ?? cli?.nombre ?? '—'}${!esVendedor(me) && v ? ` · ${v.nombre}` : ''}` +
+            (l.nota_gestion ? `\n      ${l.nota_gestion}` : ''),
+          )
+        }
+        const out: string[] = []
+        if (buckets.rojo.length)     out.push(`🔴 ATRASADAS (${buckets.rojo.length})\n${buckets.rojo.join('\n')}`)
+        if (buckets.amarillo.length) out.push(`🟡 HOY (${buckets.amarillo.length})\n${buckets.amarillo.join('\n')}`)
+        if (buckets.verde.length)    out.push(`🟢 PRÓXIMAS (${buckets.verde.length})\n${buckets.verde.join('\n')}`)
+        return text(out.join('\n\n'))
       },
     )
   },
