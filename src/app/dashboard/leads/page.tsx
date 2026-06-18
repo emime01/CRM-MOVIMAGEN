@@ -18,7 +18,7 @@ export default async function LeadsPage() {
   let leadsQuery = supabase
     .from('leads')
     .select(
-      'id, cliente_id, vendedor_id, descripcion, monto_potencial, cuatrimestre, estado, notas, proxima_gestion, nota_gestion, created_at, clientes(nombre, empresa), agencias(nombre), perfiles!leads_vendedor_id_fkey(nombre)'
+      'id, cliente_id, vendedor_id, descripcion, monto_potencial, cuatrimestre, estado, notas, proxima_gestion, nota_gestion, created_at, updated_at, clientes(nombre, empresa), agencias(nombre), perfiles!leads_vendedor_id_fkey(nombre)'
     )
     .order('created_at', { ascending: false })
 

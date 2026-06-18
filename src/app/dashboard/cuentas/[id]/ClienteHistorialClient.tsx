@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Plus, X } from 'lucide-react'
 
 const fmt = (n: number | null) =>
   n == null ? '—' : '$' + Number(n).toLocaleString('es-UY', { maximumFractionDigits: 0 })
@@ -80,8 +81,33 @@ function Badge({ estado, map }: { estado: string; map: Record<string, { color: s
 export default function ClienteHistorialClient({ cliente, leads, ordenes, objetivo }: {
   cliente: Cliente; leads: Lead[]; ordenes: Orden[]; objetivo: Objetivo | null
 }) {
+  const router = useRouter()
   const [tab, setTab] = useState<'leads' | 'ventas'>('leads')
   const [cuatrimestre, setCuatrimestre] = useState('')
+  const [showNuevaOportunidad, setShowNuevaOportunidad] = useState(false)
+  const [nueva, setNueva] = useState({ descripcion: '', monto_potencial: '', cuatrimestre: '' })
+  const [creando, setCreando] = useState(false)
+  const [errMsg, setErrMsg] = useState<string | null>(null)
+
+  async function crearOportunidad() {
+    if (!nueva.descripcion.trim()) { setErrMsg('Describí brevemente la oportunidad'); return }
+    setCreando(true); setErrMsg(null)
+    const res = await fetch('/api/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clienteId: cliente.id,
+        descripcion: nueva.descripcion.trim(),
+        montoPotencial: nueva.monto_potencial ? Number(nueva.monto_potencial) : undefined,
+        cuatrimestre: nueva.cuatrimestre || undefined,
+        estado: 'nuevo',
+      }),
+    })
+    setCreando(false)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setErrMsg(d.error ?? 'Error al crear'); return }
+    const d = await res.json()
+    if (d.id) router.push(`/dashboard/leads/${d.id}`)
+  }
 
   const filteredLeads = useMemo(() =>
     cuatrimestre ? leads.filter(l => l.cuatrimestre === cuatrimestre) : leads,
@@ -129,6 +155,16 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
               {cliente.rut && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>RUT: {cliente.rut}</span>}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Vendedor: <strong>{vendedor}</strong></div>
+            <button
+              onClick={() => setShowNuevaOportunidad(true)}
+              style={{
+                marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 7, border: 'none',
+                background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              <Plus size={13} /> Nueva oportunidad
+            </button>
           </div>
           {/* KPIs */}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -239,6 +275,62 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Modal Nueva oportunidad */}
+      {showNuevaOportunidad && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowNuevaOportunidad(false) }}
+        >
+          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 12px', borderBottom: '1px solid #e5e3dc' }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#1a1915' }}>Nueva oportunidad para {cliente.nombre}</h3>
+              <button onClick={() => setShowNuevaOportunidad(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9895', padding: 4 }}><X size={16} /></button>
+            </div>
+            <div style={{ padding: '14px 18px 18px' }}>
+              {errMsg && (
+                <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 7, fontSize: 12, color: '#dc2626' }}>{errMsg}</div>
+              )}
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 4 }}>Descripción</label>
+                <input
+                  value={nueva.descripcion}
+                  onChange={e => setNueva(s => ({ ...s, descripcion: e.target.value }))}
+                  placeholder="Ej: Campaña verano 2026"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 4 }}>Monto potencial</label>
+                  <input
+                    type="number"
+                    value={nueva.monto_potencial}
+                    onChange={e => setNueva(s => ({ ...s, monto_potencial: e.target.value }))}
+                    placeholder="Opcional"
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 4 }}>Cuatrimestre</label>
+                  <input
+                    value={nueva.cuatrimestre}
+                    onChange={e => setNueva(s => ({ ...s, cuatrimestre: e.target.value }))}
+                    placeholder="Q2-2026"
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box', outline: 'none' }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setShowNuevaOportunidad(false)} style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e5e3dc', background: '#fff', fontSize: 12, fontWeight: 600, color: '#4a4845', cursor: 'pointer' }}>Cancelar</button>
+                <button onClick={crearOportunidad} disabled={creando || !nueva.descripcion.trim()} style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: creando ? 'wait' : 'pointer' }}>
+                  {creando ? 'Creando…' : 'Crear y abrir'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
