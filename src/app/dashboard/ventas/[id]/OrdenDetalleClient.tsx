@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen } from 'lucide-react'
+import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
 
 type JoinedNombre = { id?: string; nombre: string; empresa?: string | null } | { id?: string; nombre: string; empresa?: string | null }[] | null
 
@@ -571,6 +572,11 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
                 )}
               </div>
             )}
+          </div>
+
+          {/* Comentarios — hilo de coordinación entre vendedor, arte y operaciones */}
+          <div style={{ marginBottom: 16 }}>
+            <ComentariosOrden ordenId={orden.id} currentUserId={userId} />
           </div>
 
           {/* Historial */}
