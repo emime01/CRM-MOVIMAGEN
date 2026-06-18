@@ -498,7 +498,7 @@ const handler = createMcpHandler(
     // 14. Crear cotización (borrador — los precios los calcula el servidor)
     server.tool(
       'crear_cotizacion',
-      'Crea una cotización en estado BORRADOR con precios calculados por el servidor. Cada cotización SIEMPRE queda asociada a un lead (un lead puede tener varias cotizaciones como opciones para el cliente). Si el cliente tiene leads activos, se asocia al que indiques; si no, se crea uno automático. El vendedor la revisa y envía desde la web.',
+      'Crea una cotización en estado BORRADOR con precios calculados por el servidor. La cotización queda SIN lead (sin generar basura). Para asociarla a un lead usá asignar_lead_a_cotizacion después — típicamente cuando el cliente confirma interés.',
       {
         cliente_nombre: z.string().describe('Cliente existente (exacto o parcial). Si no existe, crearlo antes con crear_cliente.'),
         items: z.array(itemSchema).min(1),
@@ -507,8 +507,6 @@ const handler = createMcpHandler(
         nombre: z.string().optional().describe('Nombre / título de la campaña.'),
         marca: z.string().optional(),
         moneda: z.enum(['UYU', 'USD']).optional().describe('Default UYU.'),
-        lead_descripcion: z.string().optional().describe('Si el cliente tiene varios leads activos, descripción del lead a usar (parcial). Si no se especifica y hay más de uno abierto, se pide aclarar.'),
-        crear_lead_nuevo: z.boolean().optional().describe('Forzar la creación de un lead nuevo aunque el cliente tenga otros abiertos (para una alternativa nueva).'),
         vendedor_nombre: z.string().optional().describe('Solo necesario con el token compartido; con token personal se usa tu identidad.'),
       },
       async (args, extra) => {
@@ -546,37 +544,10 @@ const handler = createMcpHandler(
         const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
         const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
 
-        // Lead: existente del cliente o uno nuevo
-        let leadId: string | null = null
-        if (!args.crear_lead_nuevo) {
-          let leadQ = supabase
-            .from('leads')
-            .select('id, descripcion')
-            .eq('cliente_id', cliente.id)
-            .not('estado', 'in', '(ganado,perdido)')
-            .limit(5)
-          if (esVendedor(me) && me.perfilId) leadQ = leadQ.eq('vendedor_id', me.perfilId)
-          if (args.lead_descripcion) leadQ = leadQ.ilike('descripcion', `%${args.lead_descripcion}%`)
-          const { data: leadsAbiertos } = await leadQ
-          if (leadsAbiertos && leadsAbiertos.length === 1) {
-            leadId = leadsAbiertos[0].id
-          } else if (leadsAbiertos && leadsAbiertos.length > 1) {
-            return text(`${cliente.nombre} tiene ${leadsAbiertos.length} leads abiertos:\n${leadsAbiertos.map((l: any) => `   • "${l.descripcion ?? 'sin descripción'}"`).join('\n')}\nIndicá lead_descripcion para asociar a uno, o crear_lead_nuevo: true para una opción nueva.`)
-          }
-        }
-        if (!leadId) {
-          const { data: newLead } = await supabase
-            .from('leads')
-            .insert({ cliente_id: cliente.id, vendedor_id: vendedorId, descripcion: args.nombre ?? `Cotización ${numero}`, estado: 'en_seguimiento' })
-            .select('id')
-            .single()
-          leadId = newLead?.id ?? null
-        }
-
         const { data: propuesta, error } = await supabase
           .from('propuestas')
           .insert({
-            lead_id:        leadId,
+            lead_id:        null,
             cliente_id:     cliente.id,
             vendedor_id:    vendedorId,
             numero,
@@ -613,10 +584,86 @@ const handler = createMcpHandler(
         if (itemsErr) return text(`Cotización ${numero} creada pero falló la carga de items: ${itemsErr.message}. Revisala en la web.`)
 
         return text(
-          `✓ Cotización ${numero} creada en BORRADOR para ${cliente.nombre}\n\n` +
+          `✓ Cotización ${numero} creada en BORRADOR para ${cliente.nombre} (sin lead asignado)\n\n` +
           formatPlan(plan, args.moneda ?? 'UYU') +
-          `\n\nRevisala, ajustala y envíala desde la web:\nhttps://crm-movimagen.vercel.app/dashboard/cotizaciones/${propuesta.id}`,
+          `\n\nRevisala desde la web: https://crm-movimagen.vercel.app/dashboard/cotizaciones/${propuesta.id}` +
+          `\nCuando el cliente confirme interés, asociala a un lead con asignar_lead_a_cotizacion.`,
         )
+      },
+    )
+
+    // 14b. Asignar una cotización a un lead (existente o creando uno)
+    server.tool(
+      'asignar_lead_a_cotizacion',
+      'Asocia una cotización a un lead. Si lead_descripcion matchea un lead activo del cliente, lo usa; si no, crea uno nuevo con esa descripción. Usá quitar=true para desasociar.',
+      {
+        numero: z.string().describe('Número de cotización (ej COT-0007).'),
+        lead_descripcion: z.string().optional().describe('Lead existente (parcial) o descripción para crear uno nuevo.'),
+        monto_potencial: z.number().optional().describe('Si hay que crear lead, monto potencial.'),
+        cuatrimestre: z.string().optional().describe('Si hay que crear lead, cuatrimestre (ej Q2-2026).'),
+        quitar: z.boolean().optional().describe('Si es true, desasocia la cotización del lead actual.'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(me.rol)) {
+          return text('Tu rol no permite modificar cotizaciones.')
+        }
+        const supabase = createServerClient()
+        let pq = supabase.from('propuestas').select('id, cliente_id, vendedor_id, lead_id, clientes(nombre, empresa)').ilike('numero', args.numero.trim())
+        if (esVendedor(me) && me.perfilId) pq = pq.eq('vendedor_id', me.perfilId)
+        const { data: propuesta } = await pq.maybeSingle()
+        if (!propuesta) return text(`No encontré la cotización ${args.numero}${esVendedor(me) ? ' entre las tuyas' : ''}.`)
+        const cli = first<any>(propuesta.clientes)
+        const cliNombre = cli?.empresa ?? cli?.nombre ?? '—'
+
+        if (args.quitar) {
+          const { error } = await supabase.from('propuestas').update({ lead_id: null, updated_at: new Date().toISOString() }).eq('id', propuesta.id)
+          if (error) return text(`Error: ${error.message}`)
+          return text(`✓ ${args.numero} desasociada del lead.`)
+        }
+
+        if (!args.lead_descripcion) return text('Pasá lead_descripcion o quitar:true.')
+
+        // Buscar lead existente del cliente que matchee
+        let leadId: string | null = null
+        if (propuesta.cliente_id) {
+          let lq = supabase
+            .from('leads')
+            .select('id, descripcion')
+            .eq('cliente_id', propuesta.cliente_id)
+            .not('estado', 'in', '(perdido)')
+            .ilike('descripcion', `%${args.lead_descripcion}%`)
+            .limit(5)
+          if (esVendedor(me) && me.perfilId) lq = lq.eq('vendedor_id', me.perfilId)
+          const { data: matches } = await lq
+          if (matches?.length === 1) leadId = matches[0].id
+          else if (matches && matches.length > 1) {
+            return text(`Hay ${matches.length} leads que matchean "${args.lead_descripcion}":\n${matches.map((l: any) => `   • ${l.descripcion}`).join('\n')}\nSé más específico o creá uno nuevo con descripción diferente.`)
+          }
+        }
+
+        // Si no se encontró, crearlo
+        if (!leadId) {
+          if (!propuesta.cliente_id) return text(`La cotización ${args.numero} no tiene cliente; no puedo crear un lead.`)
+          const { data: nuevo, error: errCrear } = await supabase
+            .from('leads')
+            .insert({
+              cliente_id:      propuesta.cliente_id,
+              vendedor_id:     propuesta.vendedor_id ?? me.perfilId,
+              descripcion:     args.lead_descripcion,
+              monto_potencial: args.monto_potencial ?? null,
+              cuatrimestre:    args.cuatrimestre ?? null,
+              estado:          'en_seguimiento',
+            })
+            .select('id')
+            .single()
+          if (errCrear || !nuevo) return text(`Error al crear el lead: ${errCrear?.message ?? 'desconocido'}`)
+          leadId = nuevo.id
+        }
+
+        const { error } = await supabase.from('propuestas').update({ lead_id: leadId, updated_at: new Date().toISOString() }).eq('id', propuesta.id)
+        if (error) return text(`Error: ${error.message}`)
+        return text(`✓ ${args.numero} (${cliNombre}) asociada al lead "${args.lead_descripcion}".`)
       },
     )
 

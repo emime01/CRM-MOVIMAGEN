@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Search, Plus, Minus, Trash2, Download, Send, CheckCircle,
   ChevronRight, Save, ArrowLeft, Loader2, Info, BarChart3,
+  Target, AlertCircle, X,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -59,6 +60,7 @@ interface PropuestaHeader {
   moneda: string
   notas: string | null
   clientes: { nombre: string; empresa: string | null } | null
+  leads: { id: string; descripcion: string | null } | null
 }
 
 interface SavedItem {
@@ -203,6 +205,8 @@ export default function CotizadorClient({
   const [clienteQuery, setClienteQuery] = useState('')
   const [clienteSuggs, setClienteSuggs] = useState<Cliente[]>([])
   const [savedId, setSavedId] = useState<string | null>(propuestaId)
+  const [leadInfo, setLeadInfo] = useState<{ id: string; descripcion: string | null } | null>(null)
+  const [showLeadModal, setShowLeadModal] = useState(false)
   const uidRef = useState({ n: 1 })[0]
 
   // ── Init ────────────────────────────────────────────────────────────────────
@@ -222,6 +226,7 @@ export default function CotizadorClient({
       if (pData?.propuesta) {
         const p: PropuestaHeader = pData.propuesta
         setPropuesta(p)
+        setLeadInfo(p.leads ?? null)
         setNombre(p.nombre ?? '')
         setMarca(p.marca ?? '')
         setObservaciones(p.observaciones ?? p.notas ?? '')
@@ -536,6 +541,34 @@ export default function CotizadorClient({
           {estado === 'borrador' ? 'Borrador' : estado === 'enviada' ? 'Enviada' : estado === 'aceptada' ? 'Aceptada' : 'Rechazada'}
         </span>
 
+        {/* Chip del lead asociado */}
+        {!isNew && clienteId && (
+          leadInfo ? (
+            <button
+              onClick={() => setShowLeadModal(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px',
+                borderRadius: 12, border: '1px solid #bbf7d0', background: '#f0fdf4',
+                color: '#15803d', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              }}
+              title="Cambiar lead asignado"
+            >
+              <Target size={11} /> Lead: {leadInfo.descripcion ?? 'sin descripción'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowLeadModal(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px',
+                borderRadius: 12, border: '1px dashed #fcd34d', background: '#fffbeb',
+                color: '#b45309', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              <AlertCircle size={11} /> Asignar a lead
+            </button>
+          )
+        )}
+
         <div style={{ flex: 1 }} />
 
         <button onClick={exportPDF} disabled={plan.length === 0}
@@ -793,6 +826,180 @@ export default function CotizadorClient({
                 </div>
               )}
             </div>
+          )}
+        </div>
+      </div>
+
+      {showLeadModal && savedId && clienteId && (
+        <AsignarLeadModal
+          propuestaId={savedId}
+          clienteId={clienteId}
+          actualLeadId={leadInfo?.id ?? null}
+          onClose={() => setShowLeadModal(false)}
+          onSaved={(lead) => { setLeadInfo(lead); setLeadId(lead?.id ?? ''); setShowLeadModal(false) }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal: asignar / cambiar lead ────────────────────────────────────────────
+
+interface LeadOpcion {
+  id: string
+  descripcion: string | null
+  estado: string
+  monto_potencial: number | null
+  proxima_gestion: string | null
+}
+
+function AsignarLeadModal({
+  propuestaId, clienteId, actualLeadId, onClose, onSaved,
+}: {
+  propuestaId: string
+  clienteId: string
+  actualLeadId: string | null
+  onClose: () => void
+  onSaved: (lead: { id: string; descripcion: string | null } | null) => void
+}) {
+  const [leads, setLeads] = useState<LeadOpcion[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [modoCreacion, setModoCreacion] = useState(false)
+  const [nuevo, setNuevo] = useState({ descripcion: '', monto_potencial: '', cuatrimestre: '' })
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/clientes/${clienteId}/leads?activos=1`)
+      .then(r => r.json())
+      .then(d => setLeads(d.leads ?? []))
+      .finally(() => setLoading(false))
+  }, [clienteId])
+
+  async function asignarExistente(leadId: string | null) {
+    setSaving(true); setError(null)
+    const res = await fetch(`/api/propuestas/${propuestaId}/lead`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead_id: leadId }),
+    })
+    setSaving(false)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Error'); return }
+    if (!leadId) onSaved(null)
+    else {
+      const elegido = leads.find(l => l.id === leadId)
+      onSaved({ id: leadId, descripcion: elegido?.descripcion ?? null })
+    }
+  }
+
+  async function crearYAsignar() {
+    if (!nuevo.descripcion.trim()) { setError('Describí brevemente el lead'); return }
+    setSaving(true); setError(null)
+    const res = await fetch(`/api/propuestas/${propuestaId}/lead`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        crear_nuevo: {
+          descripcion: nuevo.descripcion.trim(),
+          monto_potencial: nuevo.monto_potencial ? Number(nuevo.monto_potencial) : undefined,
+          cuatrimestre: nuevo.cuatrimestre || undefined,
+        },
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Error'); return }
+    const data = await res.json()
+    onSaved({ id: data.lead_id, descripcion: nuevo.descripcion.trim() })
+  }
+
+  const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box', outline: 'none' }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 12px', borderBottom: '1px solid #e5e3dc' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#1a1915' }}>
+            {modoCreacion ? 'Crear nuevo lead' : 'Asignar a un lead'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9895', padding: 4 }}><X size={16} /></button>
+        </div>
+
+        <div style={{ padding: '14px 18px 18px' }}>
+          {error && (
+            <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 7, fontSize: 12, color: '#dc2626' }}>{error}</div>
+          )}
+
+          {modoCreacion ? (
+            <>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 4 }}>Descripción</label>
+                <input value={nuevo.descripcion} onChange={e => setNuevo(s => ({ ...s, descripcion: e.target.value }))} placeholder="Ej: Campaña navideña digital" style={inp} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 4 }}>Monto potencial</label>
+                  <input type="number" value={nuevo.monto_potencial} onChange={e => setNuevo(s => ({ ...s, monto_potencial: e.target.value }))} placeholder="Opcional" style={inp} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 4 }}>Cuatrimestre</label>
+                  <input value={nuevo.cuatrimestre} onChange={e => setNuevo(s => ({ ...s, cuatrimestre: e.target.value }))} placeholder="Q2-2026" style={inp} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setModoCreacion(false)} style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e5e3dc', background: '#fff', fontSize: 12, fontWeight: 600, color: '#4a4845', cursor: 'pointer' }}>← Volver</button>
+                <button onClick={crearYAsignar} disabled={saving || !nuevo.descripcion.trim()} style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: saving ? 'wait' : 'pointer' }}>
+                  {saving ? 'Guardando…' : 'Crear y asignar'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {loading ? (
+                <div style={{ fontSize: 13, color: '#9a9895', textAlign: 'center', padding: 14 }}>Cargando leads…</div>
+              ) : leads.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#6b6965', textAlign: 'center', padding: 14 }}>
+                  Este cliente no tiene leads activos.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+                  {leads.map(l => (
+                    <button
+                      key={l.id}
+                      onClick={() => asignarExistente(l.id)}
+                      disabled={saving || l.id === actualLeadId}
+                      style={{
+                        textAlign: 'left', padding: '10px 12px', borderRadius: 8,
+                        border: `1px solid ${l.id === actualLeadId ? '#bbf7d0' : '#e5e3dc'}`,
+                        background: l.id === actualLeadId ? '#f0fdf4' : '#fff',
+                        cursor: l.id === actualLeadId ? 'default' : 'pointer',
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1915', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span>{l.descripcion ?? 'Sin descripción'}</span>
+                        {l.id === actualLeadId && <span style={{ fontSize: 10, fontWeight: 700, color: '#15803d' }}>ACTUAL</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#9a9895', marginTop: 3 }}>
+                        {l.estado} {l.proxima_gestion ? ` · gestión ${l.proxima_gestion.slice(0, 10)}` : ''} {l.monto_potencial ? ` · ${l.monto_potencial.toLocaleString('es-UY')}` : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => setModoCreacion(true)} style={{ flex: 1, minWidth: 140, padding: '8px 14px', borderRadius: 7, border: '1px dashed #fcd34d', background: '#fffbeb', color: '#b45309', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  + Crear lead nuevo
+                </button>
+                {actualLeadId && (
+                  <button onClick={() => asignarExistente(null)} disabled={saving} style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    Quitar lead
+                  </button>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
