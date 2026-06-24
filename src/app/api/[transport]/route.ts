@@ -982,15 +982,34 @@ const handler = createMcpHandler(
 
 // ─── Autenticación ─────────────────────────────────────────────────────────────
 // Dos modos de token en ?key= (o header x-mcp-key / bearer):
-//   - MCP_SECRET   → modo compartido (acceso equivalente a asistente_ventas)
-//   - mcp_token    → identidad personal generada en Mi Perfil; scopea por rol
+//   - MCP_SECRET   → modo compartido (acceso equivalente a asistente_ventas).
+//     Comparación constant-time para evitar timing oracles.
+//   - mcp_token    → identidad personal generada en Mi Perfil. La DB guarda
+//     sha256(token) y nunca el plain; comparamos hashes.
+
+import { createHash, timingSafeEqual } from 'node:crypto'
+
+function safeEq(a: string, b: string): boolean {
+  // timingSafeEqual requiere longitudes iguales; si difieren igual queremos
+  // gastar el mismo tiempo, así que comparamos con un buffer del mismo largo.
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ab.length !== bb.length) {
+    // Hacer un compare dummy para que el tiempo no diferencie longitudes
+    const pad = Buffer.alloc(ab.length, 0)
+    try { timingSafeEqual(ab, pad) } catch { /* ignore */ }
+    return false
+  }
+  return timingSafeEqual(ab, bb)
+}
 
 async function verifyToken(req: Request, bearerToken?: string) {
   const url = new URL(req.url)
   const key = bearerToken ?? url.searchParams.get('key') ?? req.headers.get('x-mcp-key') ?? ''
   if (!key) return undefined
 
-  if (process.env.MCP_SECRET && key === process.env.MCP_SECRET) {
+  const sharedSecret = process.env.MCP_SECRET
+  if (sharedSecret && safeEq(key, sharedSecret)) {
     return {
       token: key,
       clientId: 'shared',
@@ -999,8 +1018,9 @@ async function verifyToken(req: Request, bearerToken?: string) {
     }
   }
 
+  const hash = createHash('sha256').update(key).digest('hex')
   const supabase = createServerClient()
-  const { data } = await supabase.from('perfiles').select('id, rol, nombre').eq('mcp_token', key).maybeSingle()
+  const { data } = await supabase.from('perfiles').select('id, rol, nombre').eq('mcp_token_hash', hash).maybeSingle()
   if (!data) return undefined
   return {
     token: key,

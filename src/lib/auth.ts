@@ -13,8 +13,11 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
 
-        // Use anon key for user sign-in (signInWithPassword requires anon key)
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!
+        // Use anon key for user sign-in. NO fallback a service_role: si la
+        // anon key falta el login debe fallar fuerte, nunca correr con
+        // privilegios de service que bypassan RLS.
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        if (!anonKey) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY no configurada')
         const supabaseAuth = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           anonKey,
