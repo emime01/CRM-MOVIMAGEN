@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { escapePostgrestPattern } from '@/lib/api/safe-patch'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +19,12 @@ export async function GET(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const q = (searchParams.get('q') ?? '').trim()
+  const rawQ = (searchParams.get('q') ?? '').trim()
+  if (rawQ.length < 2) return NextResponse.json({ clientes: [], leads: [], cotizaciones: [], ordenes: [] })
+
+  // Sanitiza para evitar que `,` `(` `)` rompan el parser de PostgREST en .or(),
+  // y que `%` `_` se interpreten como wildcards en ilike.
+  const q = escapePostgrestPattern(rawQ)
   if (q.length < 2) return NextResponse.json({ clientes: [], leads: [], cotizaciones: [], ordenes: [] })
 
   const supabase = createServerClient()
@@ -26,9 +32,9 @@ export async function GET(req: NextRequest) {
   const ilike = `%${q}%`
 
   // Cotizaciones: si el query parece COT-XXX, prioriza match por número
-  const cotPattern = /^cot[-_]?\d+$/i.test(q) ? `${q.replace(/[_]/g, '-').toUpperCase()}%` : `%${q}%`
+  const cotPattern = /^cot[-_]?\d+$/i.test(rawQ) ? `${rawQ.replace(/[_]/g, '-').toUpperCase()}%` : `%${q}%`
   // OICs: si parece número solo
-  const ordenNumero = /^\d+$/.test(q) ? Number(q) : null
+  const ordenNumero = /^\d+$/.test(rawQ) ? Number(rawQ) : null
 
   let qClientes = supabase
     .from('clientes')

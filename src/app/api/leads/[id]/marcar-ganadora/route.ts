@@ -25,6 +25,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!body.propuesta_id) return NextResponse.json({ error: 'Falta propuesta_id' }, { status: 400 })
 
   const supabase = createServerClient()
+
+  // Ownership: el vendedor solo puede marcar ganadoras en SUS leads.
+  if (session.user.rol === 'vendedor') {
+    const { data: lead } = await supabase.from('leads').select('vendedor_id').eq('id', params.id).maybeSingle()
+    if (!lead) return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
+    if (lead.vendedor_id !== session.user.id) {
+      return NextResponse.json({ error: 'Sin permisos sobre este lead' }, { status: 403 })
+    }
+  }
   const { data: propuesta } = await supabase
     .from('propuestas')
     .select('id, lead_id')

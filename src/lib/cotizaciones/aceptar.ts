@@ -20,14 +20,26 @@ export async function aceptarCotizacion(supabase: SupabaseClient, propuestaId: s
 
   if (!propuesta) return { ok: false, error: 'Cotización no encontrada' }
   if (propuesta.estado === 'aceptada') return { ok: false, error: 'Ya estaba aceptada' }
+  if (!['borrador', 'enviada'].includes(propuesta.estado)) {
+    return { ok: false, error: `La cotización está en estado "${propuesta.estado}", no puede pasar a aceptada` }
+  }
   if (!propuesta.fecha_inicio || !propuesta.fecha_fin) {
     return { ok: false, error: 'La cotización necesita fecha de inicio y fin para reservar los soportes' }
   }
 
-  await supabase
+  // CAS: el WHERE estado != 'aceptada' nos protege de race conditions.
+  // Si dos requests entran en paralelo, solo uno aplica el update (rowCount=1);
+  // el segundo recibe rowCount=0 y abortamos sin crear reservas duplicadas.
+  const { data: actualizadas, error: updErr } = await supabase
     .from('propuestas')
     .update({ estado: 'aceptada', updated_at: new Date().toISOString() })
     .eq('id', propuestaId)
+    .neq('estado', 'aceptada')
+    .select('id')
+  if (updErr) return { ok: false, error: updErr.message }
+  if (!actualizadas || actualizadas.length === 0) {
+    return { ok: false, error: 'Otra sesión ya marcó esta cotización como aceptada' }
+  }
 
   const itemsConSoporte = (propuesta.propuesta_items ?? []).filter((it: any) => it.soporte_id)
   let reservaId: string | null = null

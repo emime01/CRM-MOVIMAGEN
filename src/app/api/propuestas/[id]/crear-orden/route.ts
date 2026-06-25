@@ -44,6 +44,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'La cotización debe estar aceptada por el cliente primero' }, { status: 400 })
   }
 
+  // Ownership: un vendedor solo crea OICs sobre sus propias cotizaciones.
+  if (session.user.rol === 'vendedor' && propuesta.vendedor_id !== session.user.id) {
+    return NextResponse.json({ error: 'Sin permisos sobre esta cotización' }, { status: 403 })
+  }
+
   // Evitar duplicar OIC si ya existe una desde esta cotización
   const { data: existing } = await supabase
     .from('ordenes_venta')
@@ -54,14 +59,17 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Ya hay una orden creada desde esta cotización', orden_id: existing.id }, { status: 409 })
   }
 
-  // Siguiente número de orden
-  const { data: ordenSeq } = await supabase
-    .from('ordenes_venta')
-    .select('numero')
-    .order('numero', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const siguienteNumero = ((ordenSeq?.numero ?? 0) as number) + 1
+  // Siguiente número de orden vía secuencia Postgres (atómico, sin race).
+  // Si la secuencia todavía no existe (migración v17 no aplicada), fallback
+  // al patrón max+1 — pero con riesgo de race.
+  let siguienteNumero: number
+  const { data: seqRow, error: seqErr } = await supabase.rpc('nextval', { seq: 'ordenes_venta_numero_seq' }).single<number>()
+  if (!seqErr && typeof seqRow === 'number') {
+    siguienteNumero = seqRow
+  } else {
+    const { data: ordenSeq } = await supabase.from('ordenes_venta').select('numero').order('numero', { ascending: false }).limit(1).maybeSingle()
+    siguienteNumero = ((ordenSeq?.numero ?? 0) as number) + 1
+  }
 
   const { data: orden, error: ordenErr } = await supabase
     .from('ordenes_venta')
@@ -69,7 +77,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       propuesta_id:         propuesta.id,
       lead_id:              propuesta.lead_id ?? null,
       cliente_id:           propuesta.cliente_id,
-      vendedor_id:          session.user.id,
+      vendedor_id:          propuesta.vendedor_id ?? session.user.id,
       numero:               siguienteNumero,
       estado:               'borrador',
       moneda:               propuesta.moneda ?? 'UYU',

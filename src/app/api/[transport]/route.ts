@@ -59,12 +59,21 @@ const handler = createMcpHandler(
         const supabase = createServerClient()
         const f = fecha ?? today()
         const [{ data: soportes }, { data: ordenes }, { data: reservas }] = await Promise.all([
-          supabase.from('soportes').select('id, nombre, categoria, tipo, seccion, ubicacion').eq('activo', true).order('categoria').order('nombre'),
-          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)').in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
-          supabase.from('reservas').select('clientes(nombre, empresa), reserva_items(soporte_id)').in('estado', ['pendiente', 'aprobada', 'confirmada']).lte('fecha_desde', f).gte('fecha_hasta', f),
+          supabase.from('soportes').select('id, nombre, categoria, tipo, seccion, ubicacion, cap').eq('activo', true).order('categoria').order('nombre'),
+          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id, cantidad, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)').in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
+          supabase.from('reservas').select('clientes(nombre, empresa), reserva_items(soporte_id, cantidad)').in('estado', ['pendiente', 'aprobada', 'confirmada']).lte('fecha_desde', f).gte('fecha_hasta', f),
         ])
-        const ocupado = new Map<string, string | null>()
-        const reservado = new Map<string, string | null>()
+        // Acumular cantidades por soporte (mismo cálculo que el endpoint web).
+        // El bug previo era contar booleanos en vez de sumar cantidad: un soporte con
+        // cap=5 reservado en cantidad=1 aparecía como OCUPADO en MCP y como PARCIAL en web.
+        const ocupadoQty = new Map<string, number>()
+        const reservadoQty = new Map<string, number>()
+        const clientesPorSoporte = new Map<string, string[]>()
+        const addCli = (id: string, nombre: string | null) => {
+          if (!nombre) return
+          const arr = clientesPorSoporte.get(id) ?? []
+          if (!arr.includes(nombre)) clientesPorSoporte.set(id, [...arr, nombre])
+        }
         ;(ordenes ?? []).forEach((o: any) => {
           const cli = first<any>(o.clientes)
           const nombre = cli?.empresa ?? cli?.nombre ?? null
@@ -72,23 +81,47 @@ const handler = createMcpHandler(
             const alta = it.fecha_alta_real ?? it.fecha_alta_prevista ?? o.fecha_alta_real ?? o.fecha_alta_prevista
             const baja = it.fecha_baja_real ?? it.fecha_baja_prevista ?? o.fecha_baja_real ?? o.fecha_baja_prevista
             if (!alta || !baja || alta > f || baja < f) return
-            if (it.soporte_id && !ocupado.has(it.soporte_id)) ocupado.set(it.soporte_id, nombre)
+            if (!it.soporte_id) return
+            ocupadoQty.set(it.soporte_id, (ocupadoQty.get(it.soporte_id) ?? 0) + (it.cantidad ?? 1))
+            addCli(it.soporte_id, nombre)
           })
         })
         ;(reservas ?? []).forEach((r: any) => {
           const cli = first<any>(r.clientes)
           const nombre = cli?.empresa ?? cli?.nombre ?? null
-          ;(r.reserva_items ?? []).forEach((it: any) => { if (it.soporte_id && !ocupado.has(it.soporte_id) && !reservado.has(it.soporte_id)) reservado.set(it.soporte_id, nombre) })
+          ;(r.reserva_items ?? []).forEach((it: any) => {
+            if (!it.soporte_id) return
+            reservadoQty.set(it.soporte_id, (reservadoQty.get(it.soporte_id) ?? 0) + (it.cantidad ?? 1))
+            addCli(it.soporte_id, nombre)
+          })
         })
         let rows = (soportes ?? []).map((s: any) => {
-          const estado = ocupado.has(s.id) ? 'OCUPADO' : reservado.has(s.id) ? 'RESERVADO' : 'LIBRE'
-          const cliente = ocupado.get(s.id) ?? reservado.get(s.id) ?? null
-          return { nombre: s.nombre, categoria: s.categoria ?? '—', ubicacion: s.ubicacion ?? s.seccion ?? '', estado, cliente }
+          const cap = s.cap ?? 1
+          const ocup = ocupadoQty.get(s.id) ?? 0
+          const res = reservadoQty.get(s.id) ?? 0
+          const total = ocup + res
+          const estado = total >= cap ? 'OCUPADO' : total > 0 ? 'PARCIAL' : 'LIBRE'
+          const disponible = Math.max(0, cap - total)
+          const cliente = (clientesPorSoporte.get(s.id) ?? []).join(', ') || null
+          return {
+            nombre: s.nombre,
+            categoria: s.categoria ?? '—',
+            ubicacion: s.ubicacion ?? s.seccion ?? '',
+            estado,
+            cap,
+            ocupados: total,
+            disponibles: disponible,
+            cliente,
+          }
         })
-        if (solo_libres) rows = rows.filter((r) => r.estado === 'LIBRE')
+        if (solo_libres) rows = rows.filter((r) => r.disponibles > 0)
         const libres = rows.filter((r) => r.estado === 'LIBRE').length
-        const body = rows.map((r) => `• ${r.nombre} [${r.categoria}]${r.ubicacion ? ' · ' + r.ubicacion : ''} → ${r.estado}${r.cliente ? ' (' + r.cliente + ')' : ''}`).join('\n')
-        return text(`Disponibilidad al ${fmtDate(f)} — ${rows.length} soportes (${libres} libres)\n\n${body || 'Sin soportes.'}`)
+        const parciales = rows.filter((r) => r.estado === 'PARCIAL').length
+        const body = rows.map((r) => {
+          const stock = r.cap > 1 ? ` (${r.disponibles}/${r.cap})` : ''
+          return `• ${r.nombre} [${r.categoria}]${r.ubicacion ? ' · ' + r.ubicacion : ''} → ${r.estado}${stock}${r.cliente ? ' (' + r.cliente + ')' : ''}`
+        }).join('\n')
+        return text(`Disponibilidad al ${fmtDate(f)} — ${rows.length} soportes (${libres} libres, ${parciales} parciales)\n\n${body || 'Sin soportes.'}`)
       },
     )
 
