@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
+import { timingSafeEqual } from 'node:crypto'
 
 export const dynamic = 'force-dynamic'
 
+function safeEq(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ab.length !== bb.length) return false
+  return timingSafeEqual(ab, bb)
+}
+
 // POST /api/cron/notificaciones
-// Called daily at 8am by Vercel Cron. Protected by CRON_SECRET.
+// Called daily at 8am by Vercel Cron. CRON_SECRET es OBLIGATORIO: si la env
+// var no está seteada el endpoint queda cerrado (devuelve 503) para que un
+// olvido de configuración no exponga el endpoint públicamente.
 export async function POST(req: NextRequest) {
-  const auth = req.headers.get('authorization') ?? ''
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && auth !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'CRON_SECRET no configurado' }, { status: 503 })
+  }
+  const auth = req.headers.get('authorization') ?? ''
+  const expected = `Bearer ${cronSecret}`
+  if (!safeEq(auth, expected)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

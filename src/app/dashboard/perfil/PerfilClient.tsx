@@ -25,7 +25,11 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
   const [gmailEmail, setGmailEmail] = useState(initialEmail)
   const [disconnecting, setDisconnecting] = useState(false)
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // El token plain solo aparece UNA VEZ tras generarlo. Despues solo sabemos
+  // si el usuario ya tiene un token configurado (hasToken) pero no podemos
+  // mostrarlo de nuevo (la DB guarda solo el hash).
   const [mcpToken, setMcpToken] = useState<string | null>(null)
+  const [hasToken, setHasToken] = useState(false)
   const [mcpLoading, setMcpLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -33,22 +37,24 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
   useEffect(() => {
     fetch('/api/perfil/mcp-token')
       .then(r => r.json())
-      .then(d => setMcpToken(d.token ?? null))
+      .then(d => setHasToken(!!d.has_token))
       .finally(() => setMcpLoading(false))
   }, [])
 
   async function generarToken() {
-    if (mcpToken && !confirm('¿Regenerar el token? El conector anterior dejará de funcionar y habrá que actualizar la URL en Claude.')) return
+    if (hasToken && !confirm('¿Regenerar el token? El conector anterior dejará de funcionar y habrá que actualizar la URL en Claude.')) return
     setGenerating(true)
     try {
       const res = await fetch('/api/perfil/mcp-token', { method: 'POST' })
       const d = await res.json()
-      if (res.ok) setMcpToken(d.token)
+      if (res.ok) { setMcpToken(d.token); setHasToken(true) }
     } finally {
       setGenerating(false)
     }
   }
 
+  // Solo construimos la URL si tenemos el token plain (recién generado en
+  // esta sesión). Si el usuario refresca, va a tener que regenerarlo.
   const connectorUrl = mcpToken
     ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/mcp?key=${mcpToken}`
     : null
@@ -274,6 +280,12 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
           ves y modificás lo que tu rol permite.
         </p>
 
+        {hasToken && !mcpToken && !mcpLoading && (
+          <div style={{ marginBottom: 14, padding: '10px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#92400e' }}>
+            Ya tenés un token configurado, pero por seguridad la URL no se puede mostrar de nuevo. Si la perdiste, regenerá uno nuevo (el anterior dejará de funcionar).
+          </div>
+        )}
+
         {mcpLoading ? (
           <p style={{ fontSize: 13, color: '#9a9895' }}>Cargando…</p>
         ) : mcpToken && connectorUrl ? (
@@ -329,7 +341,7 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
             opacity: generating ? 0.6 : 1,
           }}>
             <KeyRound size={15} />
-            {generating ? 'Generando…' : 'Generar mi token de conexión'}
+            {generating ? 'Generando…' : hasToken ? 'Regenerar token' : 'Generar mi token de conexión'}
           </button>
         )}
       </div>
