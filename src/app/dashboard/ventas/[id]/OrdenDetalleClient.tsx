@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen } from 'lucide-react'
+import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen, Receipt, DollarSign } from 'lucide-react'
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
 
 type JoinedNombre = { id?: string; nombre: string; empresa?: string | null } | { id?: string; nombre: string; empresa?: string | null }[] | null
@@ -195,11 +195,20 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const [showReject, setShowReject] = useState(false)
   const [motivoRechazo, setMotivoRechazo] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [showFacturar, setShowFacturar] = useState(false)
+  const [facturaNumero, setFacturaNumero] = useState('')
+  const [fechaFacturacion, setFechaFacturacion] = useState(() => new Date().toISOString().slice(0, 10))
+  const [showCobrar, setShowCobrar] = useState(false)
+  const [fechaCobro, setFechaCobro] = useState(() => new Date().toISOString().slice(0, 10))
+  const [metodoPago, setMetodoPago] = useState('')
 
   // La aprobación de OIC es exclusiva del gerente comercial
   const canApprove = userRol === 'gerente_comercial' && orden.estado === 'pendiente_aprobacion'
   const canUploadDoc = true
   const canSendToApproval = orden.estado === 'borrador' && (userRol === 'vendedor' || userRol === 'gerente_comercial' || userRol === 'administracion') && (Array.isArray(orden.perfiles) ? orden.perfiles[0]?.id === userId : orden.perfiles?.id === userId || userRol === 'gerente_comercial' || userRol === 'administracion')
+  // Facturación y cobro son exclusivas de administracion
+  const canFacturar = userRol === 'administracion' && ['aprobada', 'en_oic'].includes(orden.estado)
+  const canCobrar = userRol === 'administracion' && orden.estado === 'facturada'
 
   const badge = ESTADO_BADGE[orden.estado] ?? { bg: '#f1f1ef', color: '#6e6a62', label: orden.estado }
   const numero = orden.numero ? `#${String(orden.numero).padStart(5, '0')}` : `#${orden.id.slice(0, 6)}`
@@ -207,18 +216,13 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   async function handleChangeEstado(nuevoEstado: string, comentario?: string, extra: Record<string, unknown> = {}) {
     setActionLoading(true)
     try {
+      // El endpoint /estado ya setea aprobado_at/por, fecha_facturacion, fecha_cobro, etc.
+      // No hace falta un segundo PATCH (que además sería bloqueado por el allowlist).
       await fetch(`/api/ordenes/${orden.id}/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: nuevoEstado, comentario }),
+        body: JSON.stringify({ estado: nuevoEstado, comentario, ...extra }),
       })
-      if (Object.keys(extra).length > 0) {
-        await fetch(`/api/ordenes/${orden.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(extra),
-        })
-      }
       router.refresh()
     } finally {
       setActionLoading(false)
@@ -226,18 +230,36 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   }
 
   async function handleAprobar() {
-    await handleChangeEstado('aprobada', 'Aprobada por gerente', { aprobado_por: userId, aprobado_at: new Date().toISOString() })
+    await handleChangeEstado('aprobada', 'Aprobada por gerente')
   }
 
   async function handleRechazar() {
     if (!motivoRechazo.trim()) return
-    await handleChangeEstado('rechazada', motivoRechazo, { motivo_rechazo: motivoRechazo })
+    await handleChangeEstado('rechazada', motivoRechazo)
     setShowReject(false)
     setMotivoRechazo('')
   }
 
   async function handleEnviarAprobacion() {
     await handleChangeEstado('pendiente_aprobacion', 'Enviada para aprobación')
+  }
+
+  async function handleFacturar() {
+    await handleChangeEstado('facturada', 'Factura emitida', {
+      fecha_facturacion: fechaFacturacion,
+      factura_numero: facturaNumero.trim() || undefined,
+    })
+    setShowFacturar(false)
+    setFacturaNumero('')
+  }
+
+  async function handleCobrar() {
+    await handleChangeEstado('cobrada', 'Pago registrado', {
+      fecha_cobro: fechaCobro,
+      metodo_pago: metodoPago.trim() || undefined,
+    })
+    setShowCobrar(false)
+    setMetodoPago('')
   }
 
   async function handleUploadDoc() {
@@ -339,8 +361,94 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               </button>
             </>
           )}
+          {canFacturar && (
+            <button
+              onClick={() => setShowFacturar(true)}
+              disabled={actionLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              <Receipt size={15} /> Marcar facturada
+            </button>
+          )}
+          {canCobrar && (
+            <button
+              onClick={() => setShowCobrar(true)}
+              disabled={actionLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#15803d', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              <DollarSign size={15} /> Registrar cobro
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Facturar modal */}
+      {showFacturar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setShowFacturar(false)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>Marcar OIC como facturada</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>Quedará pendiente de cobro hasta que registres el pago.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                N° de factura
+                <input
+                  value={facturaNumero}
+                  onChange={e => setFacturaNumero(e.target.value)}
+                  placeholder="Ej. A-12345"
+                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
+                />
+              </label>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Fecha de facturación
+                <input
+                  type="date"
+                  value={fechaFacturacion}
+                  onChange={e => setFechaFacturacion(e.target.value)}
+                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setShowFacturar(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleFacturar} disabled={actionLoading} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Confirmar facturación</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cobrar modal */}
+      {showCobrar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setShowCobrar(false)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>Registrar cobro</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>Al confirmar se genera automáticamente la comisión del vendedor.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Fecha de cobro
+                <input
+                  type="date"
+                  value={fechaCobro}
+                  onChange={e => setFechaCobro(e.target.value)}
+                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
+                />
+              </label>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Método de pago (opcional)
+                <input
+                  value={metodoPago}
+                  onChange={e => setMetodoPago(e.target.value)}
+                  placeholder="Transferencia, cheque, efectivo..."
+                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setShowCobrar(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleCobrar} disabled={actionLoading} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#15803d', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Confirmar cobro</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reject modal */}
       {showReject && (
