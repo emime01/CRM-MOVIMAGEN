@@ -20,7 +20,7 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
   const [{ data: orden }, { data: items }] = await Promise.all([
     supabase
       .from('ordenes_venta')
-      .select('numero, fecha_alta_prevista, fecha_baja_prevista, clientes(nombre, empresa)')
+      .select('numero, tipo, fecha_alta_prevista, fecha_baja_prevista, clientes(nombre, empresa)')
       .eq('id', ordenId)
       .single(),
     supabase
@@ -72,7 +72,8 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
     if (tipoCot === 'estatico_bus' || tipo?.toLowerCase().includes('bus')) hasBus = true
   }
 
-  if (hasBus) {
+  // En reimpresiones los buses ya estaban asignados en la madre — no se reasignan
+  if (hasBus && (orden as any).tipo !== 'cambio_material') {
     toCreate.push({
       tipo: 'ops_asignar_buses',
       asignado_a_rol: 'operaciones',

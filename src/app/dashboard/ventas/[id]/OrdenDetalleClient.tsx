@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen } from 'lucide-react'
+import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen, Replace, Printer } from 'lucide-react'
 
 type JoinedNombre = { id?: string; nombre: string; empresa?: string | null } | { id?: string; nombre: string; empresa?: string | null }[] | null
 
@@ -18,7 +18,16 @@ interface OrdenItem {
   nota: string | null
   requiere_grabado: boolean
   requiere_produccion: boolean
-  soportes: { id: string; nombre: string; tipo: string | null; categoria: string | null; ubicacion: string | null } | { id: string; nombre: string; tipo: string | null; categoria: string | null; ubicacion: string | null }[] | null
+  soportes: { id: string; nombre: string; tipo: string | null; tipo_cotizador: string | null; categoria: string | null; ubicacion: string | null } | { id: string; nombre: string; tipo: string | null; tipo_cotizador: string | null; categoria: string | null; ubicacion: string | null }[] | null
+}
+
+const DIGITAL_TIPOS = new Set(['led', 'banner_shopping', 'circuito'])
+const IMPRESO_TIPOS = new Set(['estatico_bus', 'estatico_shopping', 'medianera'])
+
+function tipoCotizadorDeItem(val: OrdenItem['soportes']): string | null {
+  if (!val) return null
+  const s = Array.isArray(val) ? val[0] : val
+  return s?.tipo_cotizador ?? null
 }
 
 function soporteInfo(val: OrdenItem['soportes']): { nombre: string; ubicacion: string | null } {
@@ -50,6 +59,8 @@ interface Orden {
   id: string
   numero: number | null
   estado: string
+  tipo?: string | null
+  oic_origen_id?: string | null
   moneda: string | null
   monto_total: number | null
   created_at: string
@@ -190,6 +201,28 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const [expandedHistorial, setExpandedHistorial] = useState(true)
   const [docFile, setDocFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [cambioDigitalItem, setCambioDigitalItem] = useState<OrdenItem | null>(null)
+  const [reimpresionLoading, setReimpresionLoading] = useState(false)
+
+  const canManageMateriales = ['operaciones', 'administracion', 'asistente_ventas'].includes(userRol)
+
+  async function handleReimpresion(itemSoporteId: string | null) {
+    if (!itemSoporteId) return
+    if (!confirm('¿Crear una OIC de reimpresión sobre este soporte? Se va a generar en borrador para que revises y mandes a aprobar (solo se cobra la producción).')) return
+    setReimpresionLoading(true)
+    try {
+      const res = await fetch(`/api/ordenes/${orden.id}/cambio-impreso`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ soporte_ids: [itemSoporteId] }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? 'Error'); return }
+      router.push(`/dashboard/ventas/${data.orden_id}`)
+    } finally {
+      setReimpresionLoading(false)
+    }
+  }
   const [documentos, setDocumentos] = useState(orden.orden_documentos ?? [])
   const [showReject, setShowReject] = useState(false)
   const [motivoRechazo, setMotivoRechazo] = useState('')
@@ -296,6 +329,23 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', maxWidth: 1100, margin: '0 auto' }}>
+
+      {cambioDigitalItem && (
+        <CambioDigitalModal
+          item={cambioDigitalItem}
+          onClose={() => setCambioDigitalItem(null)}
+          onSaved={() => { setCambioDigitalItem(null); router.refresh() }}
+        />
+      )}
+
+      {orden.tipo === 'cambio_material' && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderLeft: '4px solid #d97706', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e' }}>
+          <strong>Reimpresión</strong> — esta OIC es un cambio de material sobre la {orden.oic_origen_id ? (
+            <Link href={`/dashboard/ventas/${orden.oic_origen_id}`} style={{ color: '#92400e', fontWeight: 700 }}>OIC original</Link>
+          ) : 'OIC original'}. Solo se cobra la producción.
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -441,7 +491,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f7f6f3' }}>
-                    {['Soporte', 'Cant.', 'Semanas', 'P.Unit.', 'Desc.', 'Total', 'Nota'].map(h => (
+                    {['Soporte', 'Cant.', 'Semanas', 'P.Unit.', 'Desc.', 'Total', 'Nota', canManageMateriales ? 'Material' : ''].map(h => (
                       <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
                     ))}
                   </tr>
@@ -449,6 +499,11 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
                 <tbody>
                   {orden.orden_items.map((item, i) => {
                     const sInfo = soporteInfo(item.soportes)
+                    const tipoCot = tipoCotizadorDeItem(item.soportes)
+                    const sopId = Array.isArray(item.soportes) ? item.soportes[0]?.id ?? null : item.soportes?.id ?? null
+                    const esDigital = tipoCot ? DIGITAL_TIPOS.has(tipoCot) : false
+                    const esImpreso = tipoCot ? IMPRESO_TIPOS.has(tipoCot) : false
+                    const yaAprobada = ['aprobada', 'en_oic', 'facturada', 'cobrada'].includes(orden.estado)
                     return (
                     <tr key={item.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                       <td style={{ padding: '10px', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -461,6 +516,25 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
                       <td style={{ padding: '10px' }}>{item.descuento_pct}%</td>
                       <td style={{ padding: '10px', fontWeight: 600 }}>{formatMoney(itemTotal(item), orden.moneda ?? 'USD')}</td>
                       <td style={{ padding: '10px', fontSize: 12, color: 'var(--text-muted)' }}>{item.nota ?? '—'}</td>
+                      {canManageMateriales && (
+                        <td style={{ padding: '10px' }}>
+                          {!yaAprobada || orden.tipo === 'cambio_material' ? (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>
+                          ) : esDigital ? (
+                            <button onClick={() => setCambioDigitalItem(item)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: 11, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              <Replace size={12} /> Nuevo material
+                            </button>
+                          ) : esImpreso ? (
+                            <button onClick={() => handleReimpresion(sopId)} disabled={reimpresionLoading}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', fontSize: 11, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: reimpresionLoading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                              <Printer size={12} /> Reimpresión
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                     )
                   })}
@@ -661,6 +735,78 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
                 })}
               </div>
             )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CambioDigitalModal({ item, onClose, onSaved }: { item: OrdenItem; onClose: () => void; onSaved: () => void }) {
+  const [fechaDesde, setFechaDesde] = useState<string>(() => new Date().toISOString().slice(0, 10))
+  const [urlMaterial, setUrlMaterial] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const sInfo = soporteInfo(item.soportes)
+
+  async function handleSubmit() {
+    setSaving(true); setError(null)
+    try {
+      const res = await fetch(`/api/orden-items/${item.id}/materiales`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fecha_desde: fechaDesde,
+          url_material: urlMaterial || undefined,
+          descripcion: descripcion || undefined,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error ?? 'Error al guardar'); return }
+      onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }
+  const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'Montserrat, sans-serif', background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'var(--bg-card)', borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 14px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Nuevo material digital</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{sInfo.nombre}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
+        </div>
+        <div style={{ padding: '20px 20px 22px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18, lineHeight: 1.6 }}>
+            Registrá el archivo nuevo que mandó el cliente. Se generan dos tareas:
+            arte valida el material y operaciones vuelve a grabar el comprobante desde la fecha indicada.
+          </p>
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Desde *</label>
+            <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={inp} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>URL del material (Drive, Dropbox…)</label>
+            <input type="url" value={urlMaterial} onChange={e => setUrlMaterial(e.target.value)} placeholder="https://drive.google.com/…" style={inp} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Notas</label>
+            <textarea value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} placeholder="Resolución, duración, observaciones…" style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
+          </div>
+          {error && <div style={{ marginBottom: 14, padding: '8px 12px', background: '#fef0f0', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, color: '#dc2626' }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose} style={{ padding: '9px 18px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-card)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-secondary)' }}>Cancelar</button>
+            <button onClick={handleSubmit} disabled={saving} style={{ padding: '9px 20px', border: 'none', borderRadius: 8, background: saving ? '#c45a10' : 'var(--orange)', cursor: saving ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: '#fff', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Guardando…' : 'Registrar cambio'}
+            </button>
           </div>
         </div>
       </div>
