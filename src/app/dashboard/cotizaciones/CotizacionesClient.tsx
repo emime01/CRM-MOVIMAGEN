@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, FileText, Clock, CheckCircle, XCircle, Send, Trash2, ChevronRight } from 'lucide-react'
+import { Plus, FileText, Clock, CheckCircle, XCircle, Send, Trash2, ChevronRight, Copy } from 'lucide-react'
 
 interface Propuesta {
   id: string
@@ -53,6 +53,14 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
     if (!confirm('¿Eliminar esta cotización?')) return
     await fetch(`/api/propuestas/${id}`, { method: 'DELETE' })
     setPropuestas(ps => ps.filter(p => p.id !== id))
+  }
+
+  async function duplicarPropuesta(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    const res = await fetch(`/api/propuestas/${id}/duplicar`, { method: 'POST' })
+    const d = await res.json()
+    if (!res.ok) { alert(d.error ?? 'Error al duplicar'); return }
+    if (d.id) router.push(`/dashboard/cotizaciones/${d.id}`)
   }
 
   const fmt = (n: number | null, moneda: string) => {
@@ -193,6 +201,15 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={e => duplicarPropuesta(p.id, e)}
+                    title="Duplicar cotización"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4, borderRadius: 4 }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#eb691c')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#9ca3af')}
+                  >
+                    <Copy size={14} />
+                  </button>
                   {(p.vendedor_id === userId || isManager) && (
                     <button
                       onClick={e => deletePropuesta(p.id, e)}

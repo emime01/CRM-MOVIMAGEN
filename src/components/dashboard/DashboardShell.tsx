@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import GlobalSearch from '@/components/dashboard/GlobalSearch'
 import {
   Home, FileText, Filter, Calendar, BarChart2,
   Users, Target, Star, Wrench, Truck, Monitor,
@@ -482,6 +483,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           <h1 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1 }}>
             {pageTitle}
           </h1>
+
+          <GlobalSearch />
 
           {/* Bell notifications */}
           <div ref={bellRef} style={{ position: 'relative' }}>

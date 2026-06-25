@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Search, Plus, Minus, Trash2, Download, Send, CheckCircle,
   ChevronRight, Save, ArrowLeft, Loader2, Info, BarChart3,
-  Target, AlertCircle, X,
+  Target, AlertCircle, X, Copy,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -431,6 +431,16 @@ export default function CotizadorClient({
     router.refresh()
   }
 
+  async function duplicar() {
+    const pid = savedId ?? propuestaId
+    if (!pid) return
+    if (!confirm('¿Duplicar esta cotización? Se crea un borrador nuevo (COT-XXXX) con los mismos items y sin lead asignado.')) return
+    const res = await fetch(`/api/propuestas/${pid}/duplicar`, { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) { alert(data.error ?? 'Error al duplicar'); return }
+    if (data.id) router.push(`/dashboard/cotizaciones/${data.id}`)
+  }
+
   async function crearOrden() {
     const pid = savedId ?? propuestaId
     if (!pid) return
@@ -575,6 +585,13 @@ export default function CotizadorClient({
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: plan.length === 0 ? 'not-allowed' : 'pointer', opacity: plan.length === 0 ? 0.5 : 1 }}>
           <Download size={14} /> PDF
         </button>
+
+        {!isNew && (
+          <button onClick={duplicar}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer' }}>
+            <Copy size={14} /> Duplicar
+          </button>
+        )}
 
         {estado === 'borrador' && (
           <button onClick={() => save('enviada')} disabled={saving || plan.length === 0}
