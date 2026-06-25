@@ -10,6 +10,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const rol = session.user.rol
   const canApprove = ['asistente_ventas', 'gerente_comercial', 'administracion'].includes(rol)
   const canConfirm = ['operaciones', 'administracion'].includes(rol)
+  const isManager = ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'].includes(rol)
 
   let body: { estado: string; comentario?: string; busOverrides?: { itemId: string; busId: string }[] }
   try { body = await req.json() } catch {
@@ -30,6 +31,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const supabase = createServerClient()
+
+  // Ownership: vendedor solo puede modificar sus reservas.
+  // Para `vencida` / `pendiente` (sin chequeo de rol arriba) exigimos que sea suya o un manager.
+  if (!isManager) {
+    const { data: own } = await supabase
+      .from('reservas')
+      .select('vendedor_id')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (!own) return NextResponse.json({ error: 'Reserva no encontrada' }, { status: 404 })
+    if (own.vendedor_id !== session.user.id) {
+      return NextResponse.json({ error: 'Sin permisos sobre esta reserva' }, { status: 403 })
+    }
+  }
 
   const updates: Record<string, unknown> = {
     estado: body.estado,

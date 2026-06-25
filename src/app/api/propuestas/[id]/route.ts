@@ -59,24 +59,41 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
   if (!canEdit) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
+  // Solo aplicar campos presentes en el body — un cliente que manda payload parcial
+  // no debe limpiar columnas que omite.
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (body.nombre !== undefined)         updates.nombre = body.nombre
+  if (body.marca !== undefined)          updates.marca = body.marca || null
+  if (body.observaciones !== undefined)  updates.observaciones = body.observaciones || null
+  if (body.cliente_id !== undefined)     updates.cliente_id = body.cliente_id || null
+  if (body.lead_id !== undefined)        updates.lead_id = body.lead_id || null
+  if (body.fecha_inicio !== undefined)   updates.fecha_inicio = body.fecha_inicio || null
+  if (body.fecha_fin !== undefined)      updates.fecha_fin = body.fecha_fin || null
+  if (body.notas !== undefined)          updates.notas = body.notas || null
+  if (body.moneda !== undefined)         updates.moneda = body.moneda || 'UYU'
+  if (body.monto_neto !== undefined)     updates.monto_neto = body.monto_neto
+  if (body.monto_total !== undefined)    updates.monto_total = body.monto_total
+  if (body.monto_impactos !== undefined) updates.monto_impactos = body.monto_impactos
+
+  // Cambios de estado tienen sus propios endpoints (marcar-aceptada con CAS, etc).
+  // Solo permitimos volver a borrador o pasar a enviada desde este PATCH.
+  if (body.estado !== undefined) {
+    if (existing.estado === 'aceptada') {
+      return NextResponse.json({
+        error: 'No se puede modificar el estado de una cotización aceptada',
+      }, { status: 409 })
+    }
+    if (!['borrador', 'enviada', 'rechazada'].includes(body.estado)) {
+      return NextResponse.json({
+        error: 'Cambio de estado debe hacerse vía /marcar-aceptada',
+      }, { status: 400 })
+    }
+    updates.estado = body.estado
+  }
+
   const { error: updateErr } = await supabase
     .from('propuestas')
-    .update({
-      nombre:         body.nombre,
-      marca:          body.marca ?? null,
-      observaciones:  body.observaciones ?? null,
-      cliente_id:     body.cliente_id ?? null,
-      lead_id:        body.lead_id ?? null,
-      fecha_inicio:   body.fecha_inicio ?? null,
-      fecha_fin:      body.fecha_fin ?? null,
-      estado:         body.estado ?? existing.estado,
-      notas:          body.notas ?? null,
-      moneda:         body.moneda ?? 'UYU',
-      monto_neto:     body.monto_neto ?? null,
-      monto_total:    body.monto_total ?? null,
-      monto_impactos: body.monto_impactos ?? null,
-      updated_at:     new Date().toISOString(),
-    })
+    .update(updates)
     .eq('id', params.id)
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
