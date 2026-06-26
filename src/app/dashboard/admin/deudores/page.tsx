@@ -23,6 +23,7 @@ export default async function DeudoresPage() {
     .select('id, numero, monto_total, moneda, estado, created_at, fecha_alta_prevista, clientes(nombre, empresa), perfiles(nombre)')
     .eq('estado', 'facturada')
     .order('created_at', { ascending: true })
+    .limit(500)
 
   const rows = (facturadas ?? []).map(o => ({
     ...o,
