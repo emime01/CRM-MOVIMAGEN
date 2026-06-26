@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Search, Plus, Minus, Trash2, Download, Send, CheckCircle,
   ChevronRight, Save, ArrowLeft, Loader2, Info, BarChart3,
-  Target, AlertCircle, X, Copy,
+  Target, AlertCircle, X, Copy, LayoutTemplate,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -208,6 +208,7 @@ export default function CotizadorClient({
   const [leadInfo, setLeadInfo] = useState<{ id: string; descripcion: string | null } | null>(null)
   const [showLeadModal, setShowLeadModal] = useState(false)
   const [showClienteModal, setShowClienteModal] = useState(false)
+  const [showPlantillas, setShowPlantillas] = useState(false)
   const uidRef = useState({ n: 1 })[0]
 
   // ── Init ────────────────────────────────────────────────────────────────────
@@ -358,6 +359,41 @@ export default function CotizadorClient({
 
   function removeItem(uid: number) {
     setPlan(prev => prev.filter(it => it.uid !== uid))
+  }
+
+  // ── Plantillas ───────────────────────────────────────────────────────────────
+
+  // Ítems del plan actual en el formato que persiste la plantilla.
+  // Solo soportes que existen en el catálogo (los legacy no se reconstruyen).
+  function planParaPlantilla() {
+    return plan
+      .filter(it => !it.soporte.id.startsWith('legacy-'))
+      .map(it => ({
+        soporte_id:        it.soporte.id,
+        cantidad_soportes: it.cantidadSoportes,
+        semanas:           it.semanas,
+        salidas_elegidas:  it.salidasElegidas,
+      }))
+  }
+
+  // Reconstruye el plan a partir de los ítems de una plantilla, buscando cada
+  // soporte en el catálogo cargado. Devuelve cuántos se pudieron resolver.
+  function cargarPlantilla(items: Array<{ soporte_id: string; cantidad_soportes?: number; semanas?: number; salidas_elegidas?: number | null }>) {
+    const nuevos: PlanItem[] = []
+    let faltantes = 0
+    for (const it of items) {
+      const s = catalog.find(c => c.id === it.soporte_id)
+      if (!s) { faltantes++; continue }
+      nuevos.push({
+        uid: ++uidRef.n,
+        soporte: s,
+        semanas: it.semanas ?? Math.max(semanasGlobal, s.semanas_minimas || 1),
+        salidasElegidas: it.salidas_elegidas ?? (isLed(s) ? 30 : isCircuito(s) ? 10 : null),
+        cantidadSoportes: it.cantidad_soportes ?? s.cantidad_default ?? 1,
+      })
+    }
+    setPlan(nuevos)
+    return { cargados: nuevos.length, faltantes }
   }
 
   // ── Client search ──────────────────────────────────────────────────────────
@@ -581,6 +617,11 @@ export default function CotizadorClient({
         )}
 
         <div style={{ flex: 1 }} />
+
+        <button onClick={() => setShowPlantillas(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer' }}>
+          <LayoutTemplate size={14} /> Plantillas
+        </button>
 
         <button onClick={exportPDF} disabled={plan.length === 0}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: plan.length === 0 ? 'not-allowed' : 'pointer', opacity: plan.length === 0 ? 0.5 : 1 }}>
@@ -879,6 +920,143 @@ export default function CotizadorClient({
           }}
         />
       )}
+
+      {showPlantillas && (
+        <PlantillasModal
+          puedeGuardar={planParaPlantilla().length > 0}
+          buildItems={planParaPlantilla}
+          onClose={() => setShowPlantillas(false)}
+          onLoad={(items) => {
+            if (plan.length > 0 && !confirm('Cargar la plantilla reemplazará el plan actual. ¿Continuar?')) return
+            const { cargados, faltantes } = cargarPlantilla(items)
+            setShowPlantillas(false)
+            if (faltantes > 0) {
+              alert(`Se cargaron ${cargados} soporte(s). ${faltantes} ya no existen en el catálogo y se omitieron.`)
+            }
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal: plantillas de cotización ──────────────────────────────────────────
+
+interface Plantilla {
+  id: string
+  nombre: string
+  vendedor_id: string | null
+  items: Array<{ soporte_id: string; cantidad_soportes?: number; semanas?: number; salidas_elegidas?: number | null }>
+  perfiles?: { nombre: string } | { nombre: string }[] | null
+}
+
+function PlantillasModal({
+  puedeGuardar, buildItems, onClose, onLoad,
+}: {
+  puedeGuardar: boolean
+  buildItems: () => Plantilla['items']
+  onClose: () => void
+  onLoad: (items: Plantilla['items']) => void
+}) {
+  const [plantillas, setPlantillas] = useState<Plantilla[]>([])
+  const [loading, setLoading] = useState(true)
+  const [nombre, setNombre] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/plantillas')
+      .then(r => r.json())
+      .then(d => setPlantillas(d.plantillas ?? []))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function guardar() {
+    if (!nombre.trim()) { setError('Poné un nombre a la plantilla'); return }
+    const items = buildItems()
+    if (items.length === 0) { setError('El plan actual no tiene soportes para guardar'); return }
+    setSaving(true); setError(null)
+    const res = await fetch('/api/plantillas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: nombre.trim(), items }),
+    })
+    setSaving(false)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Error al guardar'); return }
+    const nueva = await res.json()
+    setPlantillas(prev => [nueva, ...prev])
+    setNombre('')
+  }
+
+  async function borrar(id: string) {
+    if (!confirm('¿Eliminar esta plantilla?')) return
+    const res = await fetch(`/api/plantillas/${id}`, { method: 'DELETE' })
+    if (res.ok) setPlantillas(prev => prev.filter(p => p.id !== id))
+    else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al eliminar') }
+  }
+
+  const inp: React.CSSProperties = { flex: 1, padding: '8px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box', outline: 'none' }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 12px', borderBottom: '1px solid #e5e3dc' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#1a1915' }}>Plantillas de cotización</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9895', padding: 4 }}><X size={16} /></button>
+        </div>
+
+        <div style={{ padding: '14px 18px 18px' }}>
+          {error && (
+            <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 7, fontSize: 12, color: '#dc2626' }}>{error}</div>
+          )}
+
+          {/* Guardar plan actual */}
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 6 }}>Guardar plan actual como plantilla</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Combo Bus + Shopping" style={inp} disabled={!puedeGuardar} />
+              <button onClick={guardar} disabled={saving || !puedeGuardar || !nombre.trim()}
+                style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: (saving || !puedeGuardar) ? 'not-allowed' : 'pointer', opacity: (puedeGuardar && nombre.trim()) ? 1 : 0.5, whiteSpace: 'nowrap' }}>
+                {saving ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+            {!puedeGuardar && <div style={{ fontSize: 11, color: '#9a9895', marginTop: 4 }}>Agregá al menos un soporte del catálogo para poder guardar.</div>}
+          </div>
+
+          <div style={{ height: 1, background: '#f0ede6', margin: '16px 0' }} />
+
+          {/* Cargar plantilla */}
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 8 }}>Cargar una plantilla</label>
+          {loading ? (
+            <p style={{ fontSize: 12, color: '#9a9895', textAlign: 'center', padding: 16 }}>Cargando…</p>
+          ) : plantillas.length === 0 ? (
+            <p style={{ fontSize: 12, color: '#9a9895', textAlign: 'center', padding: 16 }}>Todavía no hay plantillas guardadas.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {plantillas.map(p => {
+                const autor = Array.isArray(p.perfiles) ? p.perfiles[0]?.nombre : p.perfiles?.nombre
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e5e3dc', borderRadius: 8, padding: '8px 10px' }}>
+                    <button onClick={() => onLoad(p.items)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1915' }}>{p.nombre}</div>
+                      <div style={{ fontSize: 11, color: '#9a9895' }}>
+                        {p.items.length} soporte{p.items.length === 1 ? '' : 's'}
+                        {p.vendedor_id === null ? ' · global' : autor ? ` · ${autor}` : ''}
+                      </div>
+                    </button>
+                    <button onClick={() => borrar(p.id)} title="Eliminar plantilla" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', padding: 4 }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
