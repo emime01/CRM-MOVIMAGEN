@@ -5,6 +5,10 @@ import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
+// Buckets a los que este endpoint genérico puede escribir. Evita que el
+// cliente apunte a un bucket arbitrario.
+const ALLOWED_BUCKETS = ['ordenes-docs', 'arte', 'comprobantes', 'logos', 'registros']
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
@@ -14,6 +18,9 @@ export async function POST(req: NextRequest) {
   const bucket = (formData.get('bucket') as string) || 'ordenes-docs'
 
   if (!file) return NextResponse.json({ error: 'No se recibió archivo' }, { status: 400 })
+  if (!ALLOWED_BUCKETS.includes(bucket)) {
+    return NextResponse.json({ error: 'Bucket no permitido' }, { status: 400 })
+  }
 
   const ext = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
   const path = `${session.user.id}/${Date.now()}.${ext}`

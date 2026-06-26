@@ -37,9 +37,11 @@ export async function PUT(req: NextRequest) {
   }
 
   const updates = pickAllowed(body, FIELDS)
-  if (!updates.nombre || String(updates.nombre).trim() === '') {
+  const nombre = String(updates.nombre ?? '').trim()
+  if (!nombre) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
   }
+  updates.nombre = nombre
 
   const supabase = createServerClient()
   // upsert sobre la fila única (id = 1)

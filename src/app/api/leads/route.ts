@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createServerClient()
-  const vendedorId = body.vendedorId || session.user.id
+  // El vendedor solo puede crear leads a su nombre. Gerencia/administración
+  // pueden asignar el lead a otro vendedor vía body.vendedorId.
+  const puedeAsignar = ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
+  const vendedorId = puedeAsignar ? (body.vendedorId || session.user.id) : session.user.id
 
   const { data, error } = await supabase
     .from('leads')
