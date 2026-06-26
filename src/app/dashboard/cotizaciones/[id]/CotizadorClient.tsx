@@ -207,6 +207,7 @@ export default function CotizadorClient({
   const [savedId, setSavedId] = useState<string | null>(propuestaId)
   const [leadInfo, setLeadInfo] = useState<{ id: string; descripcion: string | null } | null>(null)
   const [showLeadModal, setShowLeadModal] = useState(false)
+  const [showClienteModal, setShowClienteModal] = useState(false)
   const uidRef = useState({ n: 1 })[0]
 
   // ── Init ────────────────────────────────────────────────────────────────────
@@ -632,7 +633,16 @@ export default function CotizadorClient({
           <input value={marca} onChange={e => setMarca(e.target.value)} placeholder="Marca / producto" style={inputSt} />
         </div>
         <div style={{ flex: 2, minWidth: 160, position: 'relative' }}>
-          <label style={lblSt}>Cliente</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <label style={lblSt}>Cliente</label>
+            <button
+              type="button"
+              onClick={() => setShowClienteModal(true)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--orange)', fontSize: 10, fontWeight: 700, padding: 0, marginBottom: 3 }}
+            >
+              + Nuevo
+            </button>
+          </div>
           <input value={clienteQuery} onChange={e => onClienteInput(e.target.value)} placeholder="Buscar cliente…" style={inputSt} />
           {clienteSuggs.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, marginTop: 2 }}>
@@ -856,6 +866,108 @@ export default function CotizadorClient({
           onSaved={(lead) => { setLeadInfo(lead); setLeadId(lead?.id ?? ''); setShowLeadModal(false) }}
         />
       )}
+
+      {showClienteModal && (
+        <NuevoClienteModal
+          onClose={() => setShowClienteModal(false)}
+          onCreated={(c) => {
+            setClientes(prev => [...prev, c].sort((a, b) => (a.empresa || a.nombre).localeCompare(b.empresa || b.nombre)))
+            setClienteId(c.id)
+            setClienteQuery(c.empresa || c.nombre)
+            setClienteSuggs([])
+            setShowClienteModal(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal: crear cliente inline ──────────────────────────────────────────────
+
+function NuevoClienteModal({
+  onClose, onCreated,
+}: {
+  onClose: () => void
+  onCreated: (cliente: Cliente) => void
+}) {
+  const [form, setForm] = useState({ nombre: '', empresa: '', email: '', telefono: '', tipo_cliente: 'B' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function guardar() {
+    if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return }
+    setSaving(true); setError(null)
+    const res = await fetch('/api/clientes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: form.nombre.trim(),
+        empresa: form.empresa.trim() || null,
+        email: form.email.trim() || null,
+        telefono: form.telefono.trim() || null,
+        tipo_cliente: form.tipo_cliente,
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Error al crear el cliente'); return }
+    const data = await res.json()
+    onCreated({ id: data.id, nombre: data.nombre, empresa: data.empresa ?? null })
+  }
+
+  const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box', outline: 'none' }
+  const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#4a4845', display: 'block', marginBottom: 4 }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 12px', borderBottom: '1px solid #e5e3dc' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#1a1915' }}>Nuevo cliente</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9895', padding: 4 }}><X size={16} /></button>
+        </div>
+
+        <div style={{ padding: '14px 18px 18px' }}>
+          {error && (
+            <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 7, fontSize: 12, color: '#dc2626' }}>{error}</div>
+          )}
+          <div style={{ marginBottom: 10 }}>
+            <label style={lbl}>Nombre *</label>
+            <input value={form.nombre} onChange={e => setForm(s => ({ ...s, nombre: e.target.value }))} placeholder="Nombre del cliente / contacto" style={inp} autoFocus />
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={lbl}>Empresa</label>
+            <input value={form.empresa} onChange={e => setForm(s => ({ ...s, empresa: e.target.value }))} placeholder="Razón social / marca" style={inp} />
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Email</label>
+              <input type="email" value={form.email} onChange={e => setForm(s => ({ ...s, email: e.target.value }))} placeholder="Opcional" style={inp} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Teléfono</label>
+              <input value={form.telefono} onChange={e => setForm(s => ({ ...s, telefono: e.target.value }))} placeholder="Opcional" style={inp} />
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Tipo de cliente</label>
+            <select value={form.tipo_cliente} onChange={e => setForm(s => ({ ...s, tipo_cliente: e.target.value }))} style={inp}>
+              <option value="A">A — pondera 100%</option>
+              <option value="B">B — pondera 33%</option>
+              <option value="C">C — pondera 1%</option>
+              <option value="D">D — no pondera</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e5e3dc', background: '#fff', fontSize: 12, fontWeight: 600, color: '#4a4845', cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={guardar} disabled={saving || !form.nombre.trim()} style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: saving ? 'wait' : 'pointer', opacity: form.nombre.trim() ? 1 : 0.5 }}>
+              {saving ? 'Guardando…' : 'Crear cliente'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -2,8 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { pickAllowed } from '@/lib/api/safe-patch'
 
 export const dynamic = 'force-dynamic'
+
+// Campos que cualquier rol con permiso puede setear al crear un cliente.
+const CREATE_FIELDS = [
+  'nombre',
+  'empresa',
+  'email',
+  'telefono',
+  'rut',
+  'notas',
+  'tipo_cliente',
+  'agencia_id',
+  'logo_url',
+] as const
+
+const CREATE_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -142,8 +158,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ results, total: results.length })
   }
 
-  // Single
-  const { data, error } = await supabase.from('clientes').insert(body).select().single()
+  // Single — allowlist para evitar mass-assignment
+  if (!CREATE_ROLES.includes(session.user.rol)) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+  const insertData: Record<string, unknown> = pickAllowed(body, CREATE_FIELDS)
+  if (!insertData.nombre || String(insertData.nombre).trim() === '') {
+    return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+  }
+  insertData.tipo_cliente = insertData.tipo_cliente ?? 'B'
+  // El vendedor solo crea clientes propios; los roles administrativos pueden
+  // asignar a cualquier vendedor (campo opcional del body).
+  if (session.user.rol === 'vendedor') {
+    insertData.vendedor_id = session.user.id
+  } else if (body.vendedor_id !== undefined) {
+    insertData.vendedor_id = body.vendedor_id || null
+  }
+
+  const { data, error } = await supabase.from('clientes').insert(insertData).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, { status: 201 })
 }
