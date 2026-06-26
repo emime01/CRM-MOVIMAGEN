@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import ComisionEstadoToggle from '@/components/dashboard/ComisionEstadoToggle'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,12 +36,6 @@ export default async function ComisionesPage() {
   const vendStats = Object.entries(vendMap).map(([id, v]) => ({ id, ...v })).filter(v => v.count > 0)
   const totalPendiente = vendStats.reduce((s, v) => s + v.pendiente, 0)
   const totalPagada = vendStats.reduce((s, v) => s + v.pagada, 0)
-
-  const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-    pendiente:  { bg: 'rgba(217,119,6,0.12)',  color: '#d97706', label: 'Pendiente' },
-    pagada:     { bg: 'rgba(21,128,61,0.12)',   color: '#15803d', label: 'Pagada' },
-    cancelada:  { bg: 'rgba(107,114,128,0.12)', color: '#6b7280', label: 'Cancelada' },
-  }
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
@@ -104,7 +99,6 @@ export default async function ComisionesPage() {
                 <tbody>
                   {comisiones?.map(c => {
                     const ord = Array.isArray(c.ordenes_venta) ? c.ordenes_venta[0] : c.ordenes_venta
-                    const badge = ESTADO_BADGE[c.estado ?? 'pendiente'] ?? ESTADO_BADGE['pendiente']
                     const vend = vendedores?.find(v => v.id === c.vendedor_id)
                     return (
                       <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -113,7 +107,7 @@ export default async function ComisionesPage() {
                         <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{fmtPct(Number(c.porcentaje ?? 0))}</td>
                         <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(Number(c.monto_comision ?? 0))}</td>
                         <td style={{ padding: '10px 12px' }}>
-                          <span style={{ background: badge.bg, color: badge.color, padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{badge.label}</span>
+                          <ComisionEstadoToggle id={c.id} estado={c.estado ?? 'pendiente'} />
                         </td>
                       </tr>
                     )
