@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import EmpresaConfigForm from './EmpresaConfigForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,11 +22,14 @@ export default async function ConfigPage() {
   if (!session?.user) redirect('/login')
   const supabase = createServerClient()
 
-  const [{ data: perfiles }, { data: soportes }, { data: objetivos }] = await Promise.all([
+  const [{ data: perfiles }, { data: soportes }, { data: objetivos }, { data: empresa }] = await Promise.all([
     supabase.from('perfiles').select('id, nombre, rol, activo, email').order('rol').order('nombre'),
     supabase.from('soportes').select('id, nombre, seccion, ubicacion, tipo, precio_base, activo').order('seccion').order('nombre'),
     supabase.from('objetivos').select('vendedor_id, cuatrimestre, objetivo_monto').order('cuatrimestre'),
+    supabase.from('config_empresa').select('nombre, razon_social, rut, direccion, telefono, email').eq('id', 1).maybeSingle(),
   ])
+
+  const canEditEmpresa = session.user.rol === 'administracion'
 
   const cy = new Date().getFullYear()
   const CUATRIMESTRES = [`Q1-${cy}`, `Q2-${cy}`, `Q3-${cy}`]
@@ -38,6 +42,9 @@ export default async function ConfigPage() {
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
+      {/* Datos de la empresa (emisor de facturas) */}
+      <EmpresaConfigForm initial={empresa ?? null} canEdit={canEditEmpresa} />
+
       {/* Users */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

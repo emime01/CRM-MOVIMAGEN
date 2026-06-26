@@ -3,10 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen, Receipt, DollarSign } from 'lucide-react'
+import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen, Receipt, DollarSign, Printer } from 'lucide-react'
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
+import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 
-type JoinedNombre = { id?: string; nombre: string; empresa?: string | null } | { id?: string; nombre: string; empresa?: string | null }[] | null
+type JoinedEntidad = { id?: string; nombre: string; empresa?: string | null; rut?: string | null; email?: string | null; telefono?: string | null }
+type JoinedNombre = JoinedEntidad | JoinedEntidad[] | null
 
 interface OrdenItem {
   id: string
@@ -76,6 +78,9 @@ interface Orden {
   adjunto_url: string | null
   motivo_rechazo: string | null
   aprobado_at: string | null
+  factura_numero: string | null
+  fecha_facturacion: string | null
+  fecha_cobro: string | null
   lead_id: string | null
   cliente_id: string | null
   clientes: JoinedNombre
@@ -104,6 +109,7 @@ interface Props {
   userRol: string
   userId: string
   driveConnected?: boolean
+  emisor?: Emisor | null
 }
 
 const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -135,6 +141,11 @@ function joinedEmpresa(val: JoinedNombre): string | null {
   if (!val) return null
   if (Array.isArray(val)) return val[0]?.empresa ?? null
   return val.empresa ?? null
+}
+
+function joinedEntidad(val: JoinedNombre): JoinedEntidad | null {
+  if (!val) return null
+  return Array.isArray(val) ? (val[0] ?? null) : val
 }
 
 function formatMoney(amount: number | null, currency: string = 'USD') {
@@ -185,7 +196,7 @@ const fieldValue: React.CSSProperties = {
   fontWeight: 500,
 }
 
-export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false }: Props) {
+export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false, emisor = null }: Props) {
   const router = useRouter()
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [expandedHistorial, setExpandedHistorial] = useState(true)
@@ -244,12 +255,58 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     await handleChangeEstado('pendiente_aprobacion', 'Enviada para aprobación')
   }
 
+  function generarFactura(overrides?: { factura_numero?: string; fecha_facturacion?: string }) {
+    const facturarA = orden.facturar_a === 'agencia' ? joinedEntidad(orden.agencias) : joinedEntidad(orden.clientes)
+    const cli = joinedEntidad(orden.clientes)
+    const receptor = facturarA ?? cli
+    const data: FacturaData = {
+      numero: orden.numero,
+      factura_numero: overrides?.factura_numero ?? orden.factura_numero,
+      fecha_facturacion: overrides?.fecha_facturacion ?? orden.fecha_facturacion,
+      moneda: orden.moneda ?? 'UYU',
+      monto_total: orden.monto_total,
+      marca: orden.marca,
+      referencia: orden.referencia,
+      facturar_a: orden.facturar_a,
+      fecha_alta: orden.fecha_alta_real ?? orden.fecha_alta_prevista,
+      fecha_baja: orden.fecha_baja_real ?? orden.fecha_baja_prevista,
+      receptor: {
+        nombre: receptor?.nombre ?? '—',
+        empresa: receptor?.empresa ?? null,
+        rut: receptor?.rut ?? null,
+        email: receptor?.email ?? null,
+        telefono: receptor?.telefono ?? null,
+      },
+      items: (orden.orden_items ?? []).map(it => {
+        const info = soporteInfo(it.soportes)
+        return {
+          cantidad: it.cantidad,
+          semanas: it.semanas,
+          precio_unitario: it.precio_unitario,
+          descuento_pct: it.descuento_pct ?? 0,
+          soporte_nombre: info.nombre,
+          soporte_ubicacion: info.ubicacion,
+        }
+      }),
+      forma_pago: orden.forma_pago_arrend,
+    }
+    const win = window.open('', '_blank')
+    if (!win) { alert('Permití las ventanas emergentes para generar la factura.'); return }
+    win.document.write(facturaHTML(data, emisor ?? undefined))
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 300)
+  }
+
   async function handleFacturar() {
     await handleChangeEstado('facturada', 'Factura emitida', {
       fecha_facturacion: fechaFacturacion,
       factura_numero: facturaNumero.trim() || undefined,
     })
     setShowFacturar(false)
+    // Abrir la factura recién emitida (usa los valores recién ingresados,
+    // ya que orden.* todavía no refleja el refresh).
+    generarFactura({ factura_numero: facturaNumero.trim() || undefined, fecha_facturacion: fechaFacturacion })
     setFacturaNumero('')
   }
 
@@ -377,6 +434,14 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#15803d', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
             >
               <DollarSign size={15} /> Registrar cobro
+            </button>
+          )}
+          {['facturada', 'cobrada'].includes(orden.estado) && (
+            <button
+              onClick={() => generarFactura()}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              <Printer size={15} /> Descargar factura
             </button>
           )}
         </div>
