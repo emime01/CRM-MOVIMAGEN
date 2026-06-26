@@ -24,10 +24,11 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
       forma_pago_prod, comentario_prod,
       detalles_texto, adjunto_url,
       motivo_rechazo, aprobado_at,
+      factura_numero, fecha_facturacion, fecha_cobro,
       lead_id,
       cliente_id,
-      clientes(id, nombre, empresa),
-      agencias(id, nombre),
+      clientes(id, nombre, empresa, rut, email, telefono),
+      agencias(id, nombre, rut, email, telefono),
       perfiles!vendedor_id(id, nombre),
       orden_items(
         id, cantidad, semanas, salidas, segundos,
