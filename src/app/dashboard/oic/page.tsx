@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import ItemEstadoControl from './ItemEstadoControl'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,37 +18,6 @@ function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
-
-// ─── badge styles ───────────────────────────────────────────────────────────
-
-const GRABADO_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  pendiente: { bg: '#fef9ec', color: '#b45309', label: 'Pendiente' },
-  grabado:   { bg: '#f0fdf4', color: '#15803d', label: 'Grabado' },
-}
-
-const PRODUCCION_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  pendiente:      { bg: '#f1f0ec', color: '#6b6965',  label: 'Pendiente' },
-  en_produccion:  { bg: '#eff6ff', color: '#1d4ed8',  label: 'En producción' },
-  producido:      { bg: '#fef3ec', color: '#eb691c',  label: 'Producido' },
-  instalado:      { bg: '#f0fdf4', color: '#15803d',  label: 'Instalado' },
-}
-
-function Badge({ bg, color, label }: { bg: string; color: string; label: string }) {
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: 99,
-      fontSize: 11,
-      fontWeight: 600,
-      background: bg,
-      color,
-      whiteSpace: 'nowrap',
-    }}>
-      {label}
-    </span>
-  )
 }
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -226,9 +196,6 @@ export default async function OicPage() {
                   const cliente = orden?.clientes
                   const soporte = item.soportes
 
-                  const grabadoStyle = GRABADO_STYLES[item.estado_grabado ?? 'pendiente'] ?? GRABADO_STYLES.pendiente
-                  const produccionStyle = PRODUCCION_STYLES[item.estado_produccion ?? 'pendiente'] ?? PRODUCCION_STYLES.pendiente
-
                   return (
                     <tr
                       key={item.id}
@@ -281,7 +248,7 @@ export default async function OicPage() {
                         {item.requiere_grabado === false ? (
                           <span style={{ fontSize: 11, color: '#9a9895' }}>N/A</span>
                         ) : (
-                          <Badge {...grabadoStyle} />
+                          <ItemEstadoControl itemId={item.id} campo="estado_grabado" valor={item.estado_grabado} />
                         )}
                       </td>
 
@@ -290,7 +257,7 @@ export default async function OicPage() {
                         {item.requiere_produccion === false ? (
                           <span style={{ fontSize: 11, color: '#9a9895' }}>N/A</span>
                         ) : (
-                          <Badge {...produccionStyle} />
+                          <ItemEstadoControl itemId={item.id} campo="estado_produccion" valor={item.estado_produccion} />
                         )}
                       </td>
 
