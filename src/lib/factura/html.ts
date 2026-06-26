@@ -4,14 +4,15 @@
 // Se imprime con window.print() (mismo patrón que el PDF del cotizador).
 // NO es un CFE de DGI — para eso ver la etapa 2 (integración fiscal).
 
-// ⚠️ COMPLETAR con los datos reales de Movimagen antes de usar en producción.
-// Estos valores salen en el membrete de la factura.
+// Datos del emisor (Movimagen — razón social Giralor S.A.).
+// El RUT no se publica online; completalo cuando lo tengas a mano.
 export const EMISOR = {
-  nombre:    'Movimagen',
-  rut:       '', // ej. '218888880013'
-  direccion: '', // ej. 'Av. Italia 1234, Montevideo'
-  telefono: '', // ej. '+598 2XXX XXXX'
-  email:     '', // ej. 'administracion@movimagen.com.uy'
+  nombre:       'Movimagen',
+  razon_social: 'Giralor S.A.',
+  rut:          '', // TODO: completar con el RUT real de Giralor S.A.
+  direccion:    'Av. Almirante Harwood 6411, Montevideo',
+  telefono:     '(+598) 2600 18 81',
+  email:        'info@movimagen.com',
 }
 
 interface FacturaItem {
@@ -122,7 +123,7 @@ export function facturaHTML(d: FacturaData): string {
   <div class="head">
     <div class="emisor">
       <h1>${esc(EMISOR.nombre)}</h1>
-      ${emisorLinea ? `<div class="line">${emisorLinea}</div>` : '<div class="line">Publicidad OOH</div>'}
+      <div class="line"><strong>${esc(EMISOR.razon_social)}</strong>${emisorLinea ? ' · ' + emisorLinea : ''}</div>
     </div>
     <div class="doc">
       <div class="tipo">DETALLE DE FACTURACIÓN</div>
