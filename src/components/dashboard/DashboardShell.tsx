@@ -11,7 +11,7 @@ import {
   CreditCard, Settings, MessageCircle, X, Send,
   FlaskConical, Package, BookUser, Camera, Bell,
   UserCircle, Mail, Check, ChevronRight, Reply, Copy, Loader2, CalendarDays,
-  AlertTriangle, Clock, Megaphone, ClipboardList,
+  AlertTriangle, Clock, Megaphone, ClipboardList, Menu,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -196,6 +196,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   }
   const [suggestions, setSuggestions] = useState<EmailSuggestion[]>([])
   const [bellOpen, setBellOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const bellRef = useRef<HTMLDivElement>(null)
 
   // Reply modal state
@@ -319,6 +320,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     }
   }
 
+  // Cerrar el sidebar mobile al navegar
+  useEffect(() => { setSidebarOpen(false) }, [pathname])
+
   const navItems = testMode ? NAV_ITEMS : NAV_ITEMS.filter(item => item.roles.includes(user.rol))
   const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
 
@@ -334,8 +338,14 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-app)', fontFamily: 'Montserrat, sans-serif' }}>
 
+      {/* Overlay (solo mobile, cuando el sidebar está abierto) */}
+      <div
+        className={`dash-overlay${sidebarOpen ? ' open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+
       {/* Sidebar */}
-      <aside style={{
+      <aside className={`dash-sidebar${sidebarOpen ? ' open' : ''}`} style={{
         width: 'var(--sidebar-width)',
         minWidth: 'var(--sidebar-width)',
         height: '100vh',
@@ -460,7 +470,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
       </aside>
 
       {/* Main area */}
-      <div style={{
+      <div className="dash-main" style={{
         marginLeft: 'var(--sidebar-width)',
         flex: 1,
         display: 'flex',
@@ -482,6 +492,18 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           zIndex: 20,
           gap: 8,
         }}>
+          <button
+            className="dash-hamburger"
+            onClick={() => setSidebarOpen(v => !v)}
+            aria-label="Abrir menú"
+            style={{
+              width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', alignItems: 'center',
+              justifyContent: 'center', color: 'var(--text-secondary)', flexShrink: 0,
+            }}
+          >
+            <Menu size={18} />
+          </button>
           <h1 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1 }}>
             {pageTitle}
           </h1>
