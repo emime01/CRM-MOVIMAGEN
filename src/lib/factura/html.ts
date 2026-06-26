@@ -4,12 +4,22 @@
 // Se imprime con window.print() (mismo patrón que el PDF del cotizador).
 // NO es un CFE de DGI — para eso ver la etapa 2 (integración fiscal).
 
-// Datos del emisor (Movimagen — razón social Giralor S.A.).
-// El RUT no se publica online; completalo cuando lo tengas a mano.
-export const EMISOR = {
+export interface Emisor {
+  nombre: string
+  razon_social: string | null
+  rut: string | null
+  direccion: string | null
+  telefono: string | null
+  email: string | null
+}
+
+// Fallback usado si todavía no hay datos en config_empresa.
+// Lo normal es que la factura reciba el emisor desde la BD
+// (editable en /dashboard/config).
+export const EMISOR: Emisor = {
   nombre:       'Movimagen',
   razon_social: 'Giralor S.A.',
-  rut:          '', // TODO: completar con el RUT real de Giralor S.A.
+  rut:          null,
   direccion:    'Av. Almirante Harwood 6411, Montevideo',
   telefono:     '(+598) 2600 18 81',
   email:        'info@movimagen.com',
@@ -59,7 +69,7 @@ function esc(s: string | null | undefined): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-export function facturaHTML(d: FacturaData): string {
+export function facturaHTML(d: FacturaData, emisor: Emisor = EMISOR): string {
   const sym = d.moneda === 'USD' ? 'U$S' : '$'
   const money = (n: number) => `${sym} ${Math.round(n).toLocaleString('es-UY')}`
 
@@ -83,7 +93,7 @@ export function facturaHTML(d: FacturaData): string {
   const numeroFactura = d.factura_numero || (d.numero ? `s/factura · OIC #${String(d.numero).padStart(5, '0')}` : '—')
   const receptorNombre = d.receptor.empresa || d.receptor.nombre || '—'
 
-  const emisorLinea = [EMISOR.rut && `RUT ${esc(EMISOR.rut)}`, EMISOR.direccion && esc(EMISOR.direccion), EMISOR.telefono && esc(EMISOR.telefono), EMISOR.email && esc(EMISOR.email)]
+  const emisorLinea = [emisor.rut && `RUT ${esc(emisor.rut)}`, emisor.direccion && esc(emisor.direccion), emisor.telefono && esc(emisor.telefono), emisor.email && esc(emisor.email)]
     .filter(Boolean).join(' · ')
   const receptorLineas = [
     d.receptor.rut && `RUT ${esc(d.receptor.rut)}`,
@@ -122,8 +132,8 @@ export function facturaHTML(d: FacturaData): string {
   </style></head><body>
   <div class="head">
     <div class="emisor">
-      <h1>${esc(EMISOR.nombre)}</h1>
-      <div class="line"><strong>${esc(EMISOR.razon_social)}</strong>${emisorLinea ? ' · ' + emisorLinea : ''}</div>
+      <h1>${esc(emisor.nombre)}</h1>
+      <div class="line">${emisor.razon_social ? `<strong>${esc(emisor.razon_social)}</strong>` : ''}${emisor.razon_social && emisorLinea ? ' · ' : ''}${emisorLinea}</div>
     </div>
     <div class="doc">
       <div class="tipo">DETALLE DE FACTURACIÓN</div>
@@ -174,6 +184,6 @@ export function facturaHTML(d: FacturaData): string {
     La factura electrónica oficial (CFE) se emite por el sistema de facturación de la empresa.
   </div>
 
-  <p class="footer">Generado el ${new Date().toLocaleString('es-UY')} · ${esc(EMISOR.nombre)} CRM</p>
+  <p class="footer">Generado el ${new Date().toLocaleString('es-UY')} · ${esc(emisor.nombre)} CRM</p>
   </body></html>`
 }

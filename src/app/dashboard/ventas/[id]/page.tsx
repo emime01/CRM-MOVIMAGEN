@@ -73,6 +73,13 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
     (a: { created_at: string }, b: { created_at: string }) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   )
 
+  // Datos del emisor para la factura (editables en /dashboard/config)
+  const { data: empresa } = await supabase
+    .from('config_empresa')
+    .select('nombre, razon_social, rut, direccion, telefono, email')
+    .eq('id', 1)
+    .maybeSingle()
+
   return (
     <OrdenDetalleClient
       orden={{ ...orden, orden_historial: historial } as any}
@@ -80,6 +87,7 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
       userRol={session.user.rol}
       userId={session.user.id}
       driveConnected={!!tokenRow}
+      emisor={empresa ?? null}
     />
   )
 }

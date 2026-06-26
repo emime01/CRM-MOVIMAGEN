@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen, Receipt, DollarSign, Printer } from 'lucide-react'
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
-import { facturaHTML, type FacturaData } from '@/lib/factura/html'
+import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 
 type JoinedEntidad = { id?: string; nombre: string; empresa?: string | null; rut?: string | null; email?: string | null; telefono?: string | null }
 type JoinedNombre = JoinedEntidad | JoinedEntidad[] | null
@@ -109,6 +109,7 @@ interface Props {
   userRol: string
   userId: string
   driveConnected?: boolean
+  emisor?: Emisor | null
 }
 
 const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -195,7 +196,7 @@ const fieldValue: React.CSSProperties = {
   fontWeight: 500,
 }
 
-export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false }: Props) {
+export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false, emisor = null }: Props) {
   const router = useRouter()
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [expandedHistorial, setExpandedHistorial] = useState(true)
@@ -291,7 +292,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     }
     const win = window.open('', '_blank')
     if (!win) { alert('Permití las ventanas emergentes para generar la factura.'); return }
-    win.document.write(facturaHTML(data))
+    win.document.write(facturaHTML(data, emisor ?? undefined))
     win.document.close()
     win.focus()
     setTimeout(() => win.print(), 300)
