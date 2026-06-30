@@ -58,7 +58,7 @@ interface Props {
   userRol: string
 }
 
-interface Campana { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }
+interface Campana { reservaItemId: string; nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string; instalada: boolean }
 
 function parseLados(val: string | null | undefined): string[] {
   if (!val || val === 'ninguno') return []
@@ -182,7 +182,7 @@ export default function BusesClient({ initialBuses, initialSoportesSinAsignar, c
       )}
 
       {tab === 'planilla' && (
-        <PlanillaTab buses={buses} soporteCampanasMap={soporteCampanasMap} />
+        <PlanillaTab buses={buses} soporteCampanasMap={soporteCampanasMap} canManage={canManage} />
       )}
 
       {tab === 'pendientes' && canManage && (
@@ -269,6 +269,7 @@ function estadoDeCampana(desde: string, hasta: string, hoy: string): EstadoPlani
 }
 
 interface PlanillaRow {
+  reservaItemId: string | null
   busNumero: string
   posicion: string
   soporteNombre: string
@@ -277,15 +278,43 @@ interface PlanillaRow {
   hasta: string | null
   estado: EstadoPlanilla
   conflicto: boolean
+  instalada: boolean
 }
 
-function PlanillaTab({ buses, soporteCampanasMap }: {
+function PlanillaTab({ buses, soporteCampanasMap, canManage }: {
   buses: Bus[]
   soporteCampanasMap: Record<string, Campana[]>
+  canManage: boolean
 }) {
+  const router = useRouter()
   const hoy = new Date().toISOString().slice(0, 10)
   const [q, setQ] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<'todos' | EstadoPlanilla>('todos')
+  const [editar, setEditar] = useState<PlanillaRow | null>(null)
+  const [altaReal, setAltaReal] = useState('')
+  const [bajaReal, setBajaReal] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  function abrirEdicion(r: PlanillaRow) {
+    setEditar(r)
+    setAltaReal(r.desde ?? '')
+    setBajaReal(r.hasta ?? '')
+  }
+
+  async function guardarFechas() {
+    if (!editar?.reservaItemId) return
+    setGuardando(true)
+    try {
+      const res = await fetch(`/api/reserva-items/${editar.reservaItemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha_alta_real: altaReal || null, fecha_baja_real: bajaReal || null }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al guardar'); return }
+      setEditar(null)
+      router.refresh()
+    } finally { setGuardando(false) }
+  }
 
   const rows = useMemo<PlanillaRow[]>(() => {
     const out: PlanillaRow[] = []
@@ -298,13 +327,14 @@ function PlanillaTab({ buses, soporteCampanasMap }: {
           .slice()
           .sort((a, b) => a.fecha_desde.localeCompare(b.fecha_desde))
         if (campanas.length === 0) {
-          out.push({ busNumero: bus.numero, posicion: pos.label, soporteNombre: soporte.nombre, cliente: null, desde: null, hasta: null, estado: 'libre', conflicto: false })
+          out.push({ reservaItemId: null, busNumero: bus.numero, posicion: pos.label, soporteNombre: soporte.nombre, cliente: null, desde: null, hasta: null, estado: 'libre', conflicto: false, instalada: false })
           continue
         }
         campanas.forEach((c, i) => {
           // Solapamiento con otra campaña del mismo soporte
           const conflicto = campanas.some((o, j) => j !== i && o.fecha_desde <= c.fecha_hasta && o.fecha_hasta >= c.fecha_desde)
           out.push({
+            reservaItemId: c.reservaItemId,
             busNumero: bus.numero,
             posicion: pos.label,
             soporteNombre: soporte.nombre,
@@ -313,6 +343,7 @@ function PlanillaTab({ buses, soporteCampanasMap }: {
             hasta: c.fecha_hasta,
             estado: estadoDeCampana(c.fecha_desde, c.fecha_hasta, hoy),
             conflicto,
+            instalada: c.instalada,
           })
         })
       }
@@ -385,6 +416,7 @@ function PlanillaTab({ buses, soporteCampanasMap }: {
                 <th style={th}>Desde</th>
                 <th style={th}>Hasta</th>
                 <th style={{ ...th, textAlign: 'center' }}>Estado</th>
+                {canManage && <th style={{ ...th, textAlign: 'right' }}>Fechas</th>}
               </tr>
             </thead>
             <tbody>
@@ -392,6 +424,7 @@ function PlanillaTab({ buses, soporteCampanasMap }: {
                 const est = ESTADO_PLANILLA[r.estado]
                 const nuevoBus = r.busNumero !== prevBus
                 prevBus = r.busNumero
+                const provLabel = r.cliente && !r.instalada
                 return (
                   <tr key={i} style={{ borderTop: nuevoBus ? '2px solid var(--border)' : undefined }}>
                     <td style={{ ...td, fontWeight: 700, color: nuevoBus ? 'var(--text-primary)' : 'transparent' }}>{nuevoBus ? r.busNumero : '·'}</td>
@@ -401,10 +434,23 @@ function PlanillaTab({ buses, soporteCampanasMap }: {
                       {r.conflicto && <span title="Solapamiento de fechas en esta cara" style={{ marginLeft: 6, color: '#dc2626', fontWeight: 700 }}>⚠</span>}
                     </td>
                     <td style={{ ...td, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>{r.desde ? fmtFecha(r.desde) : '—'}</td>
-                    <td style={{ ...td, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>{r.hasta ? fmtFecha(r.hasta) : '—'}</td>
+                    <td style={{ ...td, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+                      {r.hasta ? fmtFecha(r.hasta) : '—'}
+                      {provLabel && <span title="Fecha provisoria (aún no instalado)" style={{ marginLeft: 6, fontSize: 10, color: '#b45309', fontWeight: 700 }}>prov.</span>}
+                    </td>
                     <td style={{ ...td, textAlign: 'center' }}>
                       <span style={{ background: est.bg, color: est.color, padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{est.label}</span>
                     </td>
+                    {canManage && (
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        {r.reservaItemId ? (
+                          <button onClick={() => abrirEdicion(r)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 7, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            {r.instalada ? 'Editar fechas' : 'Marcar instalado'}
+                          </button>
+                        ) : null}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -413,8 +459,41 @@ function PlanillaTab({ buses, soporteCampanasMap }: {
         )}
       </div>
       <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
-        Una fila por cara del bus. El período sale de las reservas activas (aprobadas/confirmadas). ⚠ marca solapamiento de fechas en la misma cara.
+        Una fila por cara del bus. La fecha es la <b>provisoria</b> de la reserva hasta que operaciones carga la <b>real</b> de instalación; desde ahí esa fecha manda en todo el CRM. ⚠ marca solapamiento de fechas en la misma cara.
       </p>
+
+      {editar && (
+        <Modal title="Fechas reales de instalación" onClose={() => setEditar(null)} width={420}>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px' }}>
+            {editar.busNumero} · {editar.posicion} · {editar.cliente}
+            <br />Al guardar, esta fecha reemplaza a la provisoria en toda la app.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Subida real</label>
+              <input type="date" value={altaReal} onChange={e => setAltaReal(e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Bajada real</label>
+              <input type="date" value={bajaReal} onChange={e => setBajaReal(e.target.value)} style={inputStyle} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 18 }}>
+            <button
+              onClick={() => { setAltaReal(''); setBajaReal('') }}
+              style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}
+            >
+              Volver a provisoria
+            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setEditar(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={guardarFechas} disabled={guardando} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: guardando ? 'wait' : 'pointer' }}>
+                {guardando ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

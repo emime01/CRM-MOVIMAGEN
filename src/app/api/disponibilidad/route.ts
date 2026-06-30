@@ -89,10 +89,8 @@ export async function GET(req: NextRequest) {
     const [{ data: reservas }, { data: ordenes }] = await Promise.all([
       supabase
         .from('reservas')
-        .select('fecha_desde, fecha_hasta, reserva_items(soporte_id, cantidad)')
-        .in('estado', ['pendiente', 'aprobada', 'confirmada'])
-        .lte('fecha_desde', lastDay)
-        .gte('fecha_hasta', firstDay),
+        .select('fecha_desde, fecha_hasta, reserva_items(soporte_id, cantidad, fecha_alta_real, fecha_baja_real)')
+        .in('estado', ['pendiente', 'aprobada', 'confirmada']),
       supabase
         .from('ordenes_venta')
         .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, orden_items(${ORDEN_ITEMS_SELECT})`)
@@ -108,10 +106,13 @@ export async function GET(req: NextRequest) {
       const resMap = new Map<string, number>()
 
       reservas?.forEach((r: any) => {
-        if (r.fecha_desde > dateStr || r.fecha_hasta < dateStr) return
         ;(r.reserva_items ?? []).forEach((item: any) => {
-          if (item.soporte_id)
-            resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
+          if (!item.soporte_id) return
+          // Fecha efectiva por soporte: real (si se instaló) ?? ventana de la reserva
+          const desde = item.fecha_alta_real ?? r.fecha_desde
+          const hasta = item.fecha_baja_real ?? r.fecha_hasta
+          if (!desde || !hasta || desde > dateStr || hasta < dateStr) return
+          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
         })
       })
 
@@ -137,10 +138,8 @@ export async function GET(req: NextRequest) {
   const [{ data: reservas }, { data: ordenes }] = await Promise.all([
     supabase
       .from('reservas')
-      .select('clientes(nombre, empresa), reserva_items(soporte_id, cantidad)')
-      .in('estado', ['pendiente', 'aprobada', 'confirmada'])
-      .lte('fecha_desde', fecha)
-      .gte('fecha_hasta', fecha),
+      .select('fecha_desde, fecha_hasta, clientes(nombre, empresa), reserva_items(soporte_id, cantidad, fecha_alta_real, fecha_baja_real)')
+      .in('estado', ['pendiente', 'aprobada', 'confirmada']),
     supabase
       .from('ordenes_venta')
       .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(${ORDEN_ITEMS_SELECT})`)
@@ -155,6 +154,10 @@ export async function GET(req: NextRequest) {
     const nombre = cli?.empresa ?? cli?.nombre ?? null
     ;(r.reserva_items ?? []).forEach((item: any) => {
       if (!item.soporte_id) return
+      // Fecha efectiva por soporte: real (si se instaló) ?? ventana de la reserva
+      const desde = item.fecha_alta_real ?? r.fecha_desde
+      const hasta = item.fecha_baja_real ?? r.fecha_hasta
+      if (!desde || !hasta || desde > fecha || hasta < fecha) return
       reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
     })
