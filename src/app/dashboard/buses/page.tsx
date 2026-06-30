@@ -35,7 +35,7 @@ export default async function BusesPage() {
       .order('fecha_desde'),
     supabase
       .from('reservas')
-      .select('estado, fecha_desde, fecha_hasta, clientes(nombre, empresa), reserva_items(soporte_id)')
+      .select('estado, fecha_desde, fecha_hasta, clientes(nombre, empresa), reserva_items(id, soporte_id, fecha_alta_real, fecha_baja_real)')
       .in('estado', ['aprobada', 'confirmada']),
   ])
 
@@ -53,20 +53,30 @@ export default async function BusesPage() {
     r.reserva_items.some(it => it.soportes?.tipo === 'bus' || it.soportes?.bus_id)
   )
 
-  // Build soporte_id → cliente+fechas for active (aprobada/confirmada) reservations
+  // Build soporte_id → cliente+fechas for active (aprobada/confirmada) reservations.
+  // soporteClienteMap: solo la primera campaña (lo usa la pestaña Flota).
+  // soporteCampanasMap: TODAS las campañas por soporte (lo usa la Planilla).
+  // La fecha efectiva por soporte = real (si operaciones la cargó) ?? provisoria
+  // (ventana de la reserva). `instalada` indica que ya hay fecha real.
   const soporteClienteMap: Record<string, { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }> = {}
+  const soporteCampanasMap: Record<string, Array<{ reservaItemId: string; nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string; instalada: boolean }>> = {}
   for (const r of (activasRes.data ?? []) as unknown as Array<{
     fecha_desde: string
     fecha_hasta: string
     clientes: { nombre: string; empresa: string | null } | { nombre: string; empresa: string | null }[] | null
-    reserva_items: { soporte_id: string }[]
+    reserva_items: { id: string; soporte_id: string; fecha_alta_real: string | null; fecha_baja_real: string | null }[]
   }>) {
     const cli = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
     if (!cli) continue
     for (const it of r.reserva_items) {
-      if (it.soporte_id && !soporteClienteMap[it.soporte_id]) {
-        soporteClienteMap[it.soporte_id] = { nombre: cli.nombre, empresa: cli.empresa, fecha_desde: r.fecha_desde, fecha_hasta: r.fecha_hasta }
+      if (!it.soporte_id) continue
+      const desde = it.fecha_alta_real ?? r.fecha_desde
+      const hasta = it.fecha_baja_real ?? r.fecha_hasta
+      const instalada = !!(it.fecha_alta_real || it.fecha_baja_real)
+      if (!soporteClienteMap[it.soporte_id]) {
+        soporteClienteMap[it.soporte_id] = { nombre: cli.nombre, empresa: cli.empresa, fecha_desde: desde, fecha_hasta: hasta }
       }
+      ;(soporteCampanasMap[it.soporte_id] ??= []).push({ reservaItemId: it.id, nombre: cli.nombre, empresa: cli.empresa, fecha_desde: desde, fecha_hasta: hasta, instalada })
     }
   }
 
@@ -77,6 +87,7 @@ export default async function BusesPage() {
       clientes={clientesRes.data ?? []}
       initialReservas={reservas as unknown as Parameters<typeof BusesClient>[0]['initialReservas']}
       soporteClienteMap={soporteClienteMap}
+      soporteCampanasMap={soporteCampanasMap}
       userRol={session.user.rol}
     />
   )

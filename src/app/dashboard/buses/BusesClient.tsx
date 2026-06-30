@@ -54,8 +54,11 @@ interface Props {
   clientes: Cliente[]
   initialReservas: ReservaPendiente[]
   soporteClienteMap: Record<string, { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }>
+  soporteCampanasMap: Record<string, Campana[]>
   userRol: string
 }
+
+interface Campana { reservaItemId: string; nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string; instalada: boolean }
 
 function parseLados(val: string | null | undefined): string[] {
   if (!val || val === 'ninguno') return []
@@ -111,9 +114,9 @@ function Modal({ title, onClose, children, width = 560 }: { title: string; onClo
   )
 }
 
-export default function BusesClient({ initialBuses, initialSoportesSinAsignar, clientes, initialReservas, soporteClienteMap, userRol }: Props) {
+export default function BusesClient({ initialBuses, initialSoportesSinAsignar, clientes, initialReservas, soporteClienteMap, soporteCampanasMap, userRol }: Props) {
   const router = useRouter()
-  const [tab, setTab] = useState<'flota' | 'pendientes'>('flota')
+  const [tab, setTab] = useState<'flota' | 'planilla' | 'pendientes'>('flota')
   const [buses, setBuses] = useState(initialBuses)
   const [soportesSinAsignar, setSoportesSinAsignar] = useState(initialSoportesSinAsignar)
   const [reservas, setReservas] = useState(initialReservas)
@@ -141,11 +144,12 @@ export default function BusesClient({ initialBuses, initialSoportesSinAsignar, c
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
         {[
           { key: 'flota', label: 'Flota' },
+          { key: 'planilla', label: 'Planilla' },
           { key: 'pendientes', label: `Reservas pendientes${reservas.length > 0 ? ` (${reservas.length})` : ''}` },
-        ].filter(t => t.key === 'flota' || canManage).map(t => (
+        ].filter(t => t.key !== 'pendientes' || canManage).map(t => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key as 'flota' | 'pendientes')}
+            onClick={() => setTab(t.key as 'flota' | 'planilla' | 'pendientes')}
             style={{
               border: 'none',
               background: 'transparent',
@@ -175,6 +179,10 @@ export default function BusesClient({ initialBuses, initialSoportesSinAsignar, c
           onNew={() => setBusModal({ open: true, data: { lado_disponible: 'ambos' } })}
           onImport={() => setImportModal(true)}
         />
+      )}
+
+      {tab === 'planilla' && (
+        <PlanillaTab buses={buses} soporteCampanasMap={soporteCampanasMap} canManage={canManage} />
       )}
 
       {tab === 'pendientes' && canManage && (
@@ -236,7 +244,260 @@ export default function BusesClient({ initialBuses, initialSoportesSinAsignar, c
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-components defined below (FlotaTab, PendientesTab, BusModal, ImportModal, ConfirmReservaModal)
+// Sub-components defined below (FlotaTab, PlanillaTab, PendientesTab, BusModal, ImportModal, ConfirmReservaModal)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Planilla de buses: una fila por bus + posición, estilo Excel ──────────────
+type EstadoPlanilla = 'libre' | 'por_subir' | 'operando' | 'por_bajar' | 'finalizada'
+
+const ESTADO_PLANILLA: Record<EstadoPlanilla, { label: string; bg: string; color: string }> = {
+  libre:      { label: 'Libre',      bg: '#f1f0ec', color: '#6b6965' },
+  por_subir:  { label: 'Por subir',  bg: '#eff6ff', color: '#1d4ed8' },
+  operando:   { label: 'Operando',   bg: '#f0fdf4', color: '#15803d' },
+  por_bajar:  { label: 'Por bajar',  bg: '#fef3ec', color: '#c2410c' },
+  finalizada: { label: 'Finalizada', bg: '#faf9f7', color: '#9a9895' },
+}
+
+function estadoDeCampana(desde: string, hasta: string, hoy: string): EstadoPlanilla {
+  if (hasta < hoy) return 'finalizada'
+  if (desde > hoy) return 'por_subir'
+  // operando: ¿termina dentro de los próximos 7 días?
+  const finMs = new Date(hasta + 'T00:00:00').getTime()
+  const hoyMs = new Date(hoy + 'T00:00:00').getTime()
+  if ((finMs - hoyMs) / 86400000 <= 7) return 'por_bajar'
+  return 'operando'
+}
+
+interface PlanillaRow {
+  reservaItemId: string | null
+  busNumero: string
+  posicion: string
+  soporteNombre: string
+  cliente: string | null
+  desde: string | null
+  hasta: string | null
+  estado: EstadoPlanilla
+  conflicto: boolean
+  instalada: boolean
+}
+
+function PlanillaTab({ buses, soporteCampanasMap, canManage }: {
+  buses: Bus[]
+  soporteCampanasMap: Record<string, Campana[]>
+  canManage: boolean
+}) {
+  const router = useRouter()
+  const hoy = new Date().toISOString().slice(0, 10)
+  const [q, setQ] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState<'todos' | EstadoPlanilla>('todos')
+  const [editar, setEditar] = useState<PlanillaRow | null>(null)
+  const [altaReal, setAltaReal] = useState('')
+  const [bajaReal, setBajaReal] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  function abrirEdicion(r: PlanillaRow) {
+    setEditar(r)
+    setAltaReal(r.desde ?? '')
+    setBajaReal(r.hasta ?? '')
+  }
+
+  async function guardarFechas() {
+    if (!editar?.reservaItemId) return
+    setGuardando(true)
+    try {
+      const res = await fetch(`/api/reserva-items/${editar.reservaItemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha_alta_real: altaReal || null, fecha_baja_real: bajaReal || null }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al guardar'); return }
+      setEditar(null)
+      router.refresh()
+    } finally { setGuardando(false) }
+  }
+
+  const rows = useMemo<PlanillaRow[]>(() => {
+    const out: PlanillaRow[] = []
+    const busesOrdenados = [...buses].sort((a, b) => a.numero.localeCompare(b.numero, 'es', { numeric: true }))
+    for (const bus of busesOrdenados) {
+      for (const pos of POSICIONES) {
+        const soporte = bus.soportes.find(s => (s.lado_bus ?? '') === pos.key)
+        if (!soporte) continue // posición sin cara vendible
+        const campanas = (soporteCampanasMap[soporte.id] ?? [])
+          .slice()
+          .sort((a, b) => a.fecha_desde.localeCompare(b.fecha_desde))
+        if (campanas.length === 0) {
+          out.push({ reservaItemId: null, busNumero: bus.numero, posicion: pos.label, soporteNombre: soporte.nombre, cliente: null, desde: null, hasta: null, estado: 'libre', conflicto: false, instalada: false })
+          continue
+        }
+        campanas.forEach((c, i) => {
+          // Solapamiento con otra campaña del mismo soporte
+          const conflicto = campanas.some((o, j) => j !== i && o.fecha_desde <= c.fecha_hasta && o.fecha_hasta >= c.fecha_desde)
+          out.push({
+            reservaItemId: c.reservaItemId,
+            busNumero: bus.numero,
+            posicion: pos.label,
+            soporteNombre: soporte.nombre,
+            cliente: c.empresa || c.nombre,
+            desde: c.fecha_desde,
+            hasta: c.fecha_hasta,
+            estado: estadoDeCampana(c.fecha_desde, c.fecha_hasta, hoy),
+            conflicto,
+            instalada: c.instalada,
+          })
+        })
+      }
+    }
+    return out
+  }, [buses, soporteCampanasMap, hoy])
+
+  const filtradas = useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return rows.filter(r => {
+      if (filtroEstado !== 'todos' && r.estado !== filtroEstado) return false
+      if (term && !(`${r.busNumero} ${r.cliente ?? ''}`.toLowerCase().includes(term))) return false
+      return true
+    })
+  }, [rows, q, filtroEstado])
+
+  const stats = useMemo(() => ({
+    operando: rows.filter(r => r.estado === 'operando' || r.estado === 'por_bajar').length,
+    porSubir: rows.filter(r => r.estado === 'por_subir').length,
+    porBajar: rows.filter(r => r.estado === 'por_bajar').length,
+    libres: rows.filter(r => r.estado === 'libre').length,
+  }), [rows])
+
+  const th: React.CSSProperties = { padding: '9px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }
+  const td: React.CSSProperties = { padding: '10px 12px', fontSize: 13, color: 'var(--text-primary)', borderTop: '1px solid var(--border)' }
+
+  let prevBus = ''
+
+  return (
+    <div>
+      {/* Resumen */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Operando', value: stats.operando, color: '#15803d' },
+          { label: 'Por subir', value: stats.porSubir, color: '#1d4ed8' },
+          { label: 'Por bajar (7 días)', value: stats.porBajar, color: '#c2410c' },
+          { label: 'Caras libres', value: stats.libres, color: '#6b6965' },
+        ].map(s => (
+          <div key={s.label} style={{ flex: '1 1 140px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>{s.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtros */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar bus o cliente…" style={{ ...inputStyle, maxWidth: 260 }} />
+        <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value as 'todos' | EstadoPlanilla)} style={{ ...inputStyle, maxWidth: 180 }}>
+          <option value="todos">Todos los estados</option>
+          <option value="operando">Operando</option>
+          <option value="por_subir">Por subir</option>
+          <option value="por_bajar">Por bajar</option>
+          <option value="libre">Libres</option>
+          <option value="finalizada">Finalizadas</option>
+        </select>
+      </div>
+
+      {/* Planilla */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        {filtradas.length === 0 ? (
+          <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>No hay filas para este filtro.</p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-app)' }}>
+                <th style={th}>Bus</th>
+                <th style={th}>Posición</th>
+                <th style={th}>Cliente</th>
+                <th style={th}>Desde</th>
+                <th style={th}>Hasta</th>
+                <th style={{ ...th, textAlign: 'center' }}>Estado</th>
+                {canManage && <th style={{ ...th, textAlign: 'right' }}>Fechas</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.map((r, i) => {
+                const est = ESTADO_PLANILLA[r.estado]
+                const nuevoBus = r.busNumero !== prevBus
+                prevBus = r.busNumero
+                const provLabel = r.cliente && !r.instalada
+                return (
+                  <tr key={i} style={{ borderTop: nuevoBus ? '2px solid var(--border)' : undefined }}>
+                    <td style={{ ...td, fontWeight: 700, color: nuevoBus ? 'var(--text-primary)' : 'transparent' }}>{nuevoBus ? r.busNumero : '·'}</td>
+                    <td style={{ ...td, color: 'var(--text-secondary)' }}>{r.posicion}</td>
+                    <td style={td}>
+                      {r.cliente ?? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>— libre —</span>}
+                      {r.conflicto && <span title="Solapamiento de fechas en esta cara" style={{ marginLeft: 6, color: '#dc2626', fontWeight: 700 }}>⚠</span>}
+                    </td>
+                    <td style={{ ...td, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>{r.desde ? fmtFecha(r.desde) : '—'}</td>
+                    <td style={{ ...td, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+                      {r.hasta ? fmtFecha(r.hasta) : '—'}
+                      {provLabel && <span title="Fecha provisoria (aún no instalado)" style={{ marginLeft: 6, fontSize: 10, color: '#b45309', fontWeight: 700 }}>prov.</span>}
+                    </td>
+                    <td style={{ ...td, textAlign: 'center' }}>
+                      <span style={{ background: est.bg, color: est.color, padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{est.label}</span>
+                    </td>
+                    {canManage && (
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        {r.reservaItemId ? (
+                          <button onClick={() => abrirEdicion(r)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 7, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            {r.instalada ? 'Editar fechas' : 'Marcar instalado'}
+                          </button>
+                        ) : null}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
+        Una fila por cara del bus. La fecha es la <b>provisoria</b> de la reserva hasta que operaciones carga la <b>real</b> de instalación; desde ahí esa fecha manda en todo el CRM. ⚠ marca solapamiento de fechas en la misma cara.
+      </p>
+
+      {editar && (
+        <Modal title="Fechas reales de instalación" onClose={() => setEditar(null)} width={420}>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px' }}>
+            {editar.busNumero} · {editar.posicion} · {editar.cliente}
+            <br />Al guardar, esta fecha reemplaza a la provisoria en toda la app.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Subida real</label>
+              <input type="date" value={altaReal} onChange={e => setAltaReal(e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Bajada real</label>
+              <input type="date" value={bajaReal} onChange={e => setBajaReal(e.target.value)} style={inputStyle} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 18 }}>
+            <button
+              onClick={() => { setAltaReal(''); setBajaReal('') }}
+              style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}
+            >
+              Volver a provisoria
+            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setEditar(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={guardarFechas} disabled={guardando} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: guardando ? 'wait' : 'pointer' }}>
+                {guardando ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FlotaTab({ buses, stats, canManage, soporteClienteMap, onEdit, onNew, onImport }: {
