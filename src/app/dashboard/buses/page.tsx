@@ -53,8 +53,11 @@ export default async function BusesPage() {
     r.reserva_items.some(it => it.soportes?.tipo === 'bus' || it.soportes?.bus_id)
   )
 
-  // Build soporte_id → cliente+fechas for active (aprobada/confirmada) reservations
+  // Build soporte_id → cliente+fechas for active (aprobada/confirmada) reservations.
+  // soporteClienteMap: solo la primera campaña (lo usa la pestaña Flota).
+  // soporteCampanasMap: TODAS las campañas por soporte (lo usa la Planilla).
   const soporteClienteMap: Record<string, { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }> = {}
+  const soporteCampanasMap: Record<string, Array<{ nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }>> = {}
   for (const r of (activasRes.data ?? []) as unknown as Array<{
     fecha_desde: string
     fecha_hasta: string
@@ -64,9 +67,11 @@ export default async function BusesPage() {
     const cli = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
     if (!cli) continue
     for (const it of r.reserva_items) {
-      if (it.soporte_id && !soporteClienteMap[it.soporte_id]) {
+      if (!it.soporte_id) continue
+      if (!soporteClienteMap[it.soporte_id]) {
         soporteClienteMap[it.soporte_id] = { nombre: cli.nombre, empresa: cli.empresa, fecha_desde: r.fecha_desde, fecha_hasta: r.fecha_hasta }
       }
+      ;(soporteCampanasMap[it.soporte_id] ??= []).push({ nombre: cli.nombre, empresa: cli.empresa, fecha_desde: r.fecha_desde, fecha_hasta: r.fecha_hasta })
     }
   }
 
@@ -77,6 +82,7 @@ export default async function BusesPage() {
       clientes={clientesRes.data ?? []}
       initialReservas={reservas as unknown as Parameters<typeof BusesClient>[0]['initialReservas']}
       soporteClienteMap={soporteClienteMap}
+      soporteCampanasMap={soporteCampanasMap}
       userRol={session.user.rol}
     />
   )
