@@ -12,7 +12,7 @@ type SoporteInfo = {
   nombre: string
   es_digital: boolean | null
   bus_id: string | null
-  buses: { numero_bus: string | null } | null
+  buses: { numero: string | null } | null
 }
 
 export async function POST(req: NextRequest) {
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       clientes(nombre, empresa),
       reserva_items(
         soporte_id,
-        soportes(id, nombre, es_digital, bus_id, buses(numero_bus))
+        soportes(id, nombre, es_digital, bus_id, buses(numero))
       )
     `)
     .eq('id', reserva_id)
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
       for (const r of busRegistros) {
         const s = soporteMap.get(r.soporte_id)
         const nombre   = s?.nombre ?? r.soporte_id
-        const busNumero = s?.buses?.numero_bus ?? 'N/A'
+        const busNumero = s?.buses?.numero ?? 'N/A'
         if (!grupoMap.has(nombre)) grupoMap.set(nombre, { buses: new Set(), fotos: [] })
         const g = grupoMap.get(nombre)!
         g.buses.add(busNumero)
