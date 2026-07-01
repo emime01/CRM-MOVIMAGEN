@@ -5,7 +5,14 @@ import { createServerClient } from '@/lib/supabase-server'
 import type { BusPhotoItem, BusSoporteGroup } from '@/lib/comprobantes/pdf'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+// En Vercel Hobby el límite real es ~60s (maxDuration=300 sólo aplica en Pro).
+export const maxDuration = 60
+
+// La generación de video (ffmpeg) no es viable en Vercel Hobby: el binario es
+// pesado y el proceso excede el límite de tiempo/memoria. Queda detrás de un
+// flag apagado por defecto; si se pasa a Pro (o se mueve fuera de Vercel),
+// setear COMPROBANTE_VIDEO=on. Con el flag apagado, el comprobante son PDFs.
+const VIDEO_ENABLED = process.env.COMPROBANTE_VIDEO === 'on'
 
 type SoporteInfo = {
   id: string
@@ -78,28 +85,8 @@ export async function POST(req: NextRequest) {
   const generated: { tipo: string; path: string }[] = []
   const errors: { tipo: string; message: string }[] = []
 
-  // ── Video comprobante ─────────────────────────────────────────────────────
-  if (videoRegistros.length > 0) {
-    try {
-      const { generateVideoComprobante } = await import('@/lib/comprobantes/video')
-      const clips = videoRegistros.map(r => ({
-        url: `${registrosBase}/${r.storage_path}`,
-        soporteNombre: soporteMap.get(r.soporte_id)?.nombre ?? r.soporte_id,
-      }))
-      const buffer = await generateVideoComprobante({
-        cliente: clienteNombre, numeroCampana,
-        fechaDesde: reserva.fecha_desde, fechaHasta: reserva.fecha_hasta,
-        clips, introUrl, outroUrl,
-      })
-      const videoPath = `${reserva_id}/video.mp4`
-      const { error: upErr } = await supabase.storage.from('comprobantes').upload(videoPath, buffer, { contentType: 'video/mp4', upsert: true })
-      if (upErr) throw new Error(`Upload falló: ${upErr.message}`)
-      generated.push({ tipo: 'video', path: videoPath })
-    } catch (err) {
-      console.error('Video generation error:', err)
-      errors.push({ tipo: 'video', message: err instanceof Error ? err.message : String(err) })
-    }
-  }
+  // Los PDF se generan PRIMERO (rápidos y confiables en cualquier plan). El
+  // video, si está habilitado, va al final para no bloquearlos.
 
   // ── PDF comprobante — buses (landscape, lista + fotos grandes) ────────────
   if (busRegistros.length > 0) {
@@ -162,7 +149,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Video comprobante (best-effort, sólo con el flag habilitado) ──────────
+  if (VIDEO_ENABLED && videoRegistros.length > 0) {
+    try {
+      const { generateVideoComprobante } = await import('@/lib/comprobantes/video')
+      const clips = videoRegistros.map(r => ({
+        url: `${registrosBase}/${r.storage_path}`,
+        soporteNombre: soporteMap.get(r.soporte_id)?.nombre ?? r.soporte_id,
+      }))
+      const buffer = await generateVideoComprobante({
+        cliente: clienteNombre, numeroCampana,
+        fechaDesde: reserva.fecha_desde, fechaHasta: reserva.fecha_hasta,
+        clips, introUrl, outroUrl,
+      })
+      const videoPath = `${reserva_id}/video.mp4`
+      const { error: upErr } = await supabase.storage.from('comprobantes').upload(videoPath, buffer, { contentType: 'video/mp4', upsert: true })
+      if (upErr) throw new Error(`Upload falló: ${upErr.message}`)
+      generated.push({ tipo: 'video', path: videoPath })
+    } catch (err) {
+      console.error('Video generation error:', err)
+      errors.push({ tipo: 'video', message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
   if (generated.length === 0) {
+    // Caso típico en Hobby: sólo hay videos subidos y el video está deshabilitado.
+    if (!VIDEO_ENABLED && fotoRegistros.length === 0 && videoRegistros.length > 0) {
+      return NextResponse.json({ error: 'La generación de video está deshabilitada en este plan. Subí fotos para generar el comprobante en PDF.' }, { status: 400 })
+    }
     const detail = errors.map(e => `${e.tipo}: ${e.message}`).join(' | ') || 'Error desconocido'
     return NextResponse.json({ error: `Error generando comprobante - ${detail}` }, { status: 500 })
   }
