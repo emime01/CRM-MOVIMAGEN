@@ -84,7 +84,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       monto_total:          propuesta.monto_total ?? null,
       fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
       fecha_baja_prevista:  propuesta.fecha_fin ?? null,
-      notas:                `Generada desde cotización ${propuesta.numero ?? ''}`.trim(),
+      // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.
+      // (ordenes_venta no tiene columna `notas`; usamos detalles_texto para la nota.)
+      detalles_texto:       `Generada desde cotización ${propuesta.numero ?? ''}`.trim(),
     })
     .select('id, numero')
     .single()
