@@ -62,6 +62,67 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
   const [generando, setGenerando] = useState<Record<string, boolean>>({})
   const [comprobantesMap, setComprobantesMap] = useState<Record<string, Array<{ tipo: string; url: string }>>>({})
 
+  // El video comprobante se arma en el navegador (ffmpeg.wasm), así que hay que
+  // mostrar el avance: puede tardar un par de minutos según cuántos clips haya.
+  const [videoProgreso, setVideoProgreso] = useState<Record<string, { ratio: number; detalle: string }>>({})
+
+  async function handleGenerarVideo(reservaId: string) {
+    setVideoProgreso(prev => ({ ...prev, [reservaId]: { ratio: 0, detalle: 'Buscando los videos…' } }))
+    try {
+      const resDatos = await fetch(`/api/comprobantes/video-data?reserva_id=${reservaId}`)
+      if (!resDatos.ok) {
+        const err = await resDatos.json().catch(() => ({ error: 'Error desconocido' }))
+        alert(err.error ?? 'No se pudieron traer los datos del video')
+        return
+      }
+      const datos = await resDatos.json()
+      if (!datos.clips?.length) {
+        alert('Esta reserva no tiene videos subidos en soportes LED/digitales.\n\nLos buses y estáticos se documentan con fotos y salen en el comprobante PDF.')
+        return
+      }
+
+      const { generarVideoComprobante } = await import('@/lib/comprobantes/video-browser')
+      const blob = await generarVideoComprobante({
+        intro: { cliente: datos.cliente, campana: '', periodo: datos.periodo },
+        clips: datos.clips,
+        onProgreso: p => setVideoProgreso(prev => ({ ...prev, [reservaId]: p })),
+      })
+
+      setVideoProgreso(prev => ({ ...prev, [reservaId]: { ratio: 1, detalle: 'Subiendo…' } }))
+      const resUp = await fetch('/api/comprobantes/video-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reserva_id: reservaId }),
+      })
+      if (!resUp.ok) {
+        const err = await resUp.json().catch(() => ({ error: 'Error desconocido' }))
+        alert(err.error ?? 'No se pudo preparar la subida')
+        return
+      }
+      const { path, token, url } = await resUp.json()
+      const { error: upErr } = await supabase.storage.from('comprobantes').uploadToSignedUrl(path, token, blob, {
+        contentType: 'video/mp4',
+      })
+      if (upErr) {
+        alert(`El video se generó pero no se pudo subir: ${upErr.message}`)
+        return
+      }
+
+      setComprobantesMap(prev => ({
+        ...prev,
+        [reservaId]: [...(prev[reservaId] ?? []).filter(c => c.tipo !== 'video'), { tipo: 'video', url }],
+      }))
+    } catch (err) {
+      console.error('Error generando el video comprobante:', err)
+      alert(`No se pudo generar el video: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setVideoProgreso(prev => {
+        const { [reservaId]: _, ...resto } = prev
+        return resto
+      })
+    }
+  }
+
   async function handleGenerarComprobante(reservaId: string) {
     setGenerando(prev => ({ ...prev, [reservaId]: true }))
     try {
@@ -213,10 +274,28 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                       title="Generar comprobante"
                       style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: generando[reserva.id] ? '#e5e7eb' : '#1a1a2e', color: generando[reserva.id] ? 'var(--text-muted)' : '#fff', cursor: generando[reserva.id] ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Montserrat, sans-serif' }}
                     >
-                      {generando[reserva.id] ? <Loader2 size={12} /> : <Film size={12} />}
+                      {generando[reserva.id] ? <Loader2 size={12} /> : <FileText size={12} />}
                       {generando[reserva.id] ? 'Generando...' : 'Comprobante'}
                     </button>
                   )}
+                  {/* Video comprobante (LED/digitales) — se arma en el navegador */}
+                  {canGenerateComprobante && (() => {
+                    const prog = videoProgreso[reserva.id]
+                    const enCurso = prog != null
+                    return (
+                      <button
+                        onClick={() => handleGenerarVideo(reserva.id)}
+                        disabled={enCurso}
+                        title="Generar video comprobante de pantallas LED"
+                        style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: enCurso ? '#e5e7eb' : '#EB691C', color: enCurso ? 'var(--text-muted)' : '#fff', cursor: enCurso ? 'progress' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'Montserrat, sans-serif', minWidth: enCurso ? 190 : undefined }}
+                      >
+                        <Film size={12} />
+                        {enCurso
+                          ? `${Math.round(prog.ratio * 100)}% · ${prog.detalle}`
+                          : 'Video LED'}
+                      </button>
+                    )
+                  })()}
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{cli?.empresa ?? cli?.nombre ?? '—'}</div>
                     <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: reserva.estado === 'confirmada' ? '#f0fdf4' : '#fef9ec', color: reserva.estado === 'confirmada' ? '#15803d' : '#b45309' }}>
