@@ -68,6 +68,14 @@ export default function BandejaClient({
         body: JSON.stringify({ estado: 'aprobada', comentario: 'Aprobada desde bandeja' }),
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al aprobar'); return }
+      // Aprobar la OIC también aprueba su reserva y genera las tareas: se avisa
+      // para que quede claro que no falta hacer nada más.
+      const d = await res.json().catch(() => ({}))
+      const partes = ['✓ OIC aprobada']
+      if (d.tasks_creadas) partes.push(`${d.tasks_creadas} tarea(s) generadas para arte y operaciones`)
+      if (d.reserva_estado === 'aprobada') partes.push('Reserva de soportes aprobada')
+      if (d.warnings?.length) partes.push(`\n⚠ ${d.warnings.join('\n⚠ ')}`)
+      alert(partes.join('\n· '))
       router.refresh()
     } finally { setLoadingId(null) }
   }
@@ -186,10 +194,13 @@ export default function BandejaClient({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <CalendarClock size={15} style={{ color: 'var(--text-secondary)' }} />
             <h2 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              Reservas pendientes
+              Reservas sueltas
               <span style={{ marginLeft: 8, background: 'rgba(37,99,235,0.12)', color: '#2563eb', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>{reservas.length}</span>
             </h2>
           </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '-6px 0 12px' }}>
+            Bloqueos de soportes sin venta asociada. Las reservas que vienen de una cotización se aprueban solas al aprobar su OIC.
+          </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {reservas.map(r => (
               <div key={r.id} style={card}>

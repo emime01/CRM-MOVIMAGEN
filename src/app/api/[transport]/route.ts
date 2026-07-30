@@ -726,9 +726,12 @@ const handler = createMcpHandler(
           return text(`Hay ${validas.length} cotizaciones abiertas que matchean:\n${validas.map((p: any) => `   ${p.numero} · ${first<any>(p.clientes)?.nombre ?? '—'} [${p.estado}]`).join('\n')}\nEspecificá el número.`)
         }
         const { aceptarCotizacion } = await import('@/lib/cotizaciones/aceptar')
-        const r = await aceptarCotizacion(supabase, (validas[0] as any).id)
+        const r = await aceptarCotizacion(supabase, (validas[0] as any).id, me.perfilId ?? undefined)
         if (!r.ok) return text(`No se pudo: ${r.error}`)
-        return text(`✓ ${r.numero ?? 'Cotización'} marcada como ACEPTADA. ${r.itemsReservados} soporte(s) bloqueados con reserva pendiente.\nPróximo paso: crear la orden de venta desde la web (botón "Crear orden de venta" en la cotización).`)
+        if (r.ordenError) {
+          return text(`✓ ${r.numero ?? 'Cotización'} marcada como ACEPTADA. ${r.itemsReservados} soporte(s) reservados.\n⚠ No se pudo generar la OIC: ${r.ordenError}\nSe puede reintentar desde la web con "Crear OIC".`)
+        }
+        return text(`✓ ${r.numero ?? 'Cotización'} ACEPTADA — venta cerrada.\n   · ${r.itemsReservados} soporte(s) reservados\n   · OIC #${r.ordenNumero ?? '—'} generada, esperando aprobación del gerente`)
       },
     )
 
