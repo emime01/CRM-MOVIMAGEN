@@ -458,14 +458,24 @@ export default function CotizadorClient({
   }
 
   async function marcarAceptada() {
-    if (!confirm('¿El cliente aceptó esta cotización? Se bloquearán los soportes con una reserva pendiente.')) return
+    if (!confirm('¿El cliente aceptó esta cotización?\n\nSe reservan los soportes y se genera la orden de venta (OIC) para que la apruebe el gerente.')) return
     const id = await save()
     if (!id) return
     const res = await fetch(`/api/propuestas/${id}/aprobar`, { method: 'POST' })
     const data = await res.json()
     if (!res.ok) { alert(data.error ?? 'Error al marcar aceptada'); return }
-    alert(`✓ Cotización aceptada. ${data.items_reservados ?? 0} soporte(s) reservados.`)
-    router.refresh()
+
+    if (data.orden_error) {
+      // La cotización quedó aceptada y los soportes reservados, pero la OIC no
+      // se pudo crear: se avisa para reintentar con el botón de respaldo.
+      alert(`✓ Cotización aceptada · ${data.items_reservados ?? 0} soporte(s) reservados.\n\n⚠ No se pudo generar la OIC: ${data.orden_error}\nUsá "Crear OIC" para reintentar.`)
+      router.refresh()
+      return
+    }
+
+    alert(`✓ Venta cerrada\n\n· ${data.items_reservados ?? 0} soporte(s) reservados\n· OIC #${data.orden_numero ?? '—'} generada y enviada al gerente para aprobar`)
+    if (data.orden_id) router.push(`/dashboard/ventas/${data.orden_id}`)
+    else router.refresh()
   }
 
   async function duplicar() {

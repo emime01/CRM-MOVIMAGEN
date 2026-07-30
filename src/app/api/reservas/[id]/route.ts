@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { asignarBusesYDetectarConflictos } from '@/lib/reservas/confirmar'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -58,55 +59,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { error } = await supabase.from('reservas').update(updates).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // ── Bus assignment on confirmation ────────────────────────────────────────
+  // ── Asignación de buses al confirmar ──────────────────────────────────────
+  // La lógica es compartida con el paso de la OIC a producción, que confirma la
+  // reserva en el mismo movimiento.
   if (body.estado === 'confirmada') {
-    const overrideMap = new Map((body.busOverrides ?? []).map(o => [o.itemId, o.busId]))
-
-    // Get reserva with dates and items (with their soportes' bus_id)
-    const { data: reserva } = await supabase
-      .from('reservas')
-      .select('fecha_desde, fecha_hasta, reserva_items(id, soporte_id, soportes(bus_id, lado_bus))')
-      .eq('id', params.id)
-      .single()
-
-    if (reserva?.reserva_items?.length) {
-      const conflicts: { itemId: string; busNumero: string }[] = []
-
-      for (const item of reserva.reserva_items as unknown as Array<{
-        id: string
-        soporte_id: string
-        soportes: { bus_id: string | null; lado_bus: string | null } | null
-      }>) {
-        const targetBusId = overrideMap.get(item.id) ?? item.soportes?.bus_id ?? null
-        if (!targetBusId) continue
-
-        // Check if this soporte is already in a confirmed/aprobada reservation with overlapping dates
-        const { data: conflictItems } = await supabase
-          .from('reserva_items')
-          .select('id, reservas!inner(id, fecha_desde, fecha_hasta, estado)')
-          .eq('soporte_id', item.soporte_id)
-          .neq('reservas.id', params.id)
-          .in('reservas.estado', ['confirmada', 'aprobada'])
-          .lte('reservas.fecha_desde', reserva.fecha_hasta)
-          .gte('reservas.fecha_hasta', reserva.fecha_desde)
-
-        if (conflictItems && conflictItems.length > 0) {
-          const { data: bus } = await supabase.from('buses').select('numero').eq('id', targetBusId).single()
-          conflicts.push({ itemId: item.id, busNumero: bus?.numero ?? targetBusId })
-          continue
-        }
-
-        // Assign bus to this reservation item
-        await supabase.from('reserva_items').update({ bus_id: targetBusId }).eq('id', item.id)
-      }
-
-      if (conflicts.length > 0) {
-        return NextResponse.json({
-          ok: true,
-          warnings: conflicts.map(c => `Bus #${c.busNumero} tiene conflicto de fechas — asignar manualmente`),
-          conflicts,
-        })
-      }
+    const { warnings, conflictos } = await asignarBusesYDetectarConflictos(supabase, params.id, body.busOverrides ?? [])
+    if (conflictos.length > 0) {
+      return NextResponse.json({ ok: true, warnings, conflicts: conflictos })
     }
   }
 

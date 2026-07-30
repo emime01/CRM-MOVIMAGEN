@@ -1,16 +1,32 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { crearOrdenDesdePropuesta } from '@/lib/ventas/crear-orden'
 
 /**
- * Marca una cotización como aceptada por el cliente y bloquea los soportes
- * creando una Reserva pendiente con sus items. Compartida entre la web
- * (POST /api/propuestas/[id]/aprobar) y el MCP (marcar_cotizacion_aceptada).
+ * El cliente aceptó la cotización: cierra la venta en un solo paso.
+ *
+ * Antes esto sólo creaba la reserva y la OIC había que crearla aparte con otro
+ * botón. Eran dos acciones para un mismo hecho, y si alguien olvidaba la
+ * segunda la venta quedaba a medias: sin OIC, sin tareas y con el lead sin
+ * marcar como ganado. Ahora los tres pasos (aceptar, reservar, generar la OIC)
+ * salen juntos.
+ *
+ * Compartida entre la web (POST /api/propuestas/[id]/aprobar) y el MCP
+ * (marcar_cotizacion_aceptada).
  */
-export async function aceptarCotizacion(supabase: SupabaseClient, propuestaId: string): Promise<{
+export async function aceptarCotizacion(
+  supabase: SupabaseClient,
+  propuestaId: string,
+  userId?: string,
+): Promise<{
   ok: boolean
   error?: string
   numero?: string | null
   reservaId?: string | null
   itemsReservados?: number
+  ordenId?: string | null
+  ordenNumero?: number | null
+  /** Si la reserva se creó pero la OIC no, para avisar sin romper el flujo. */
+  ordenError?: string
 }> {
   const { data: propuesta } = await supabase
     .from('propuestas')
@@ -69,8 +85,25 @@ export async function aceptarCotizacion(supabase: SupabaseClient, propuestaId: s
           cantidad:   it.cantidad_soportes ?? it.cantidad ?? 1,
         })),
       )
+
+      // Procedencia de la reserva. Best-effort: si la migración v26 todavía no
+      // corrió, la columna no existe y la venta no debe romperse por esto.
+      await supabase.from('reservas').update({ propuesta_id: propuestaId }).eq('id', reservaId)
     }
   }
 
-  return { ok: true, numero: propuesta.numero ?? null, reservaId, itemsReservados: itemsConSoporte.length }
+  // La OIC sale en el mismo movimiento y queda esperando al gerente.
+  const orden = await crearOrdenDesdePropuesta(supabase, propuestaId, userId ?? propuesta.vendedor_id)
+
+  return {
+    ok: true,
+    numero: propuesta.numero ?? null,
+    reservaId,
+    itemsReservados: itemsConSoporte.length,
+    ordenId: orden.ordenId ?? null,
+    ordenNumero: orden.numero ?? null,
+    // La cotización ya quedó aceptada y los soportes reservados; si la OIC falló
+    // se informa para que se pueda reintentar con el botón de respaldo.
+    ordenError: orden.ok ? undefined : orden.error,
+  }
 }

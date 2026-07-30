@@ -2,28 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { crearOrdenDesdePropuesta } from '@/lib/ventas/crear-orden'
 
 /**
  * POST /api/propuestas/[id]/crear-orden
  *
- * A partir de una cotización ya aceptada por el cliente, crea la Orden de Venta
- * con todos los datos pre-cargados (lead, cliente, items, fechas, precios) en
- * estado 'borrador'. El vendedor luego la manda a aprobar.
+ * Respaldo para cotizaciones que quedaron aceptadas sin OIC. En el camino normal
+ * la OIC ya se crea al aceptar la cotización (ver /aprobar), así que acá no hace
+ * falta pasar por este paso.
  *
- * Marca el lead asociado como 'ganado' (la venta es real ahora).
- *
- * Cada orden_item arranca con las fechas previstas iguales a las de la cotización;
- * vendedor/operaciones pueden ajustarlas por ítem después.
+ * La OIC nace en 'pendiente_aprobacion' y avisa al gerente.
  */
-
-// Mapeo de tipo_cotizador → flags requiere_grabado / requiere_produccion
-function flagsPorTipo(tipo: string | null): { requiere_grabado: boolean; requiere_produccion: boolean } {
-  if (!tipo) return { requiere_grabado: false, requiere_produccion: false }
-  const digital = ['led', 'banner_shopping', 'circuito'].includes(tipo)
-  const impreso = ['estatico_bus', 'estatico_shopping', 'medianera'].includes(tipo)
-  return { requiere_grabado: digital, requiere_produccion: impreso }
-}
-
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
@@ -33,108 +22,28 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const supabase = createServerClient()
 
-  const { data: propuesta } = await supabase
-    .from('propuestas')
-    .select('*, propuesta_items(*)')
-    .eq('id', params.id)
-    .single()
-
-  if (!propuesta) return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 })
-  if (propuesta.estado !== 'aceptada') {
-    return NextResponse.json({ error: 'La cotización debe estar aceptada por el cliente primero' }, { status: 400 })
-  }
-
   // Ownership: un vendedor solo crea OICs sobre sus propias cotizaciones.
-  if (session.user.rol === 'vendedor' && propuesta.vendedor_id !== session.user.id) {
-    return NextResponse.json({ error: 'Sin permisos sobre esta cotización' }, { status: 403 })
-  }
-
-  // Evitar duplicar OIC si ya existe una desde esta cotización
-  const { data: existing } = await supabase
-    .from('ordenes_venta')
-    .select('id')
-    .eq('propuesta_id', params.id)
-    .maybeSingle()
-  if (existing) {
-    return NextResponse.json({ error: 'Ya hay una orden creada desde esta cotización', orden_id: existing.id }, { status: 409 })
-  }
-
-  // Siguiente número de orden vía secuencia Postgres (atómico, sin race).
-  // Si la secuencia todavía no existe (migración v17 no aplicada), fallback
-  // al patrón max+1 — pero con riesgo de race.
-  let siguienteNumero: number
-  const { data: seqRow, error: seqErr } = await supabase.rpc('nextval', { seq: 'ordenes_venta_numero_seq' }).single<number>()
-  if (!seqErr && typeof seqRow === 'number') {
-    siguienteNumero = seqRow
-  } else {
-    const { data: ordenSeq } = await supabase.from('ordenes_venta').select('numero').order('numero', { ascending: false }).limit(1).maybeSingle()
-    siguienteNumero = ((ordenSeq?.numero ?? 0) as number) + 1
-  }
-
-  const { data: orden, error: ordenErr } = await supabase
-    .from('ordenes_venta')
-    .insert({
-      propuesta_id:         propuesta.id,
-      lead_id:              propuesta.lead_id ?? null,
-      cliente_id:           propuesta.cliente_id,
-      vendedor_id:          propuesta.vendedor_id ?? session.user.id,
-      numero:               siguienteNumero,
-      estado:               'borrador',
-      moneda:               propuesta.moneda ?? 'UYU',
-      monto_total:          propuesta.monto_total ?? null,
-      fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
-      fecha_baja_prevista:  propuesta.fecha_fin ?? null,
-      // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.
-      // (ordenes_venta no tiene columna `notas`; usamos detalles_texto para la nota.)
-      detalles_texto:       `Generada desde cotización ${propuesta.numero ?? ''}`.trim(),
-    })
-    .select('id, numero')
-    .single()
-
-  if (ordenErr || !orden) {
-    return NextResponse.json({ error: ordenErr?.message ?? 'No se pudo crear la orden' }, { status: 500 })
-  }
-
-  // Items: copiar de propuesta_items → orden_items con fechas por ítem
-  const items = (propuesta.propuesta_items ?? []) as any[]
-  if (items.length > 0) {
-    const itemRows = items.map((it: any) => {
-      const flags = flagsPorTipo(it.tipo_cotizador)
-      return {
-        orden_id:             orden.id,
-        soporte_id:           it.soporte_id ?? null,
-        cantidad:             it.cantidad_soportes ?? it.cantidad ?? 1,
-        semanas:              it.semanas ?? 1,
-        salidas:              it.salidas_elegidas ?? null,
-        precio_unitario:      it.precio_unitario ?? 0,
-        descuento_pct:        0,
-        nota:                 null,
-        fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
-        fecha_baja_prevista:  propuesta.fecha_fin ?? null,
-        ...flags,
-      }
-    })
-    const { error: itemsErr } = await supabase.from('orden_items').insert(itemRows)
-    if (itemsErr) {
-      await supabase.from('ordenes_venta').delete().eq('id', orden.id)
-      return NextResponse.json({ error: 'Error al copiar items: ' + itemsErr.message }, { status: 500 })
+  if (session.user.rol === 'vendedor') {
+    const { data: propia } = await supabase
+      .from('propuestas')
+      .select('vendedor_id')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (!propia) return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 })
+    if (propia.vendedor_id !== session.user.id) {
+      return NextResponse.json({ error: 'Sin permisos sobre esta cotización' }, { status: 403 })
     }
   }
 
-  // Lead ganado (la venta se concreta acá, no en la aprobación de la cotización)
-  if (propuesta.lead_id) {
-    await supabase
-      .from('leads')
-      .update({ estado: 'ganado', updated_at: new Date().toISOString() })
-      .eq('id', propuesta.lead_id)
+  const r = await crearOrdenDesdePropuesta(supabase, params.id, session.user.id)
+
+  if (!r.ok) {
+    const status = r.motivo === 'no_encontrada' ? 404
+      : r.motivo === 'ya_existe' ? 409
+      : r.motivo === 'error' ? 500
+      : 400
+    return NextResponse.json({ error: r.error, orden_id: r.ordenId }, { status })
   }
 
-  await supabase.from('orden_historial').insert({
-    orden_id:    orden.id,
-    perfil_id:   session.user.id,
-    estado_nuevo: 'borrador',
-    comentario:  `Creada desde cotización ${propuesta.numero ?? ''}`.trim(),
-  })
-
-  return NextResponse.json({ ok: true, orden_id: orden.id, orden_numero: orden.numero })
+  return NextResponse.json({ ok: true, orden_id: r.ordenId, orden_numero: r.numero })
 }

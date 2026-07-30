@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { generarTasksDeOrden } from '@/lib/tasks/generar-desde-orden'
+import { sincronizarReservaConOrden } from '@/lib/reservas/confirmar'
 
 const ESTADOS_VALIDOS = ['aprobada', 'rechazada', 'en_oic', 'facturada', 'cobrada', 'borrador', 'pendiente_aprobacion'] as const
 
@@ -92,6 +93,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     tasksCreated = r.created
   }
 
+  // La reserva sigue a la venta: aprobar la OIC la aprueba, y ponerla en
+  // producción la confirma (asignando buses). Antes había que hacerlo aparte en
+  // otra pantalla, y si no se hacía la campaña no aparecía en Comprobantes.
+  let reservaSincronizada: string | null = null
+  const warnings: string[] = []
+  if (body.estado === 'aprobada' || body.estado === 'en_oic') {
+    const sync = await sincronizarReservaConOrden(supabase, params.id, body.estado, session.user.id)
+    reservaSincronizada = sync.estado
+    warnings.push(...sync.warnings)
+  }
+
   // Al cobrar, generar pago + comisión automáticamente.
   // Idempotente: si ya hay comisión para esta orden, no duplica.
   let comisionGenerada = false
@@ -167,5 +179,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  return NextResponse.json({ ok: true, tasks_creadas: tasksCreated, comision_generada: comisionGenerada })
+  return NextResponse.json({
+    ok: true,
+    tasks_creadas: tasksCreated,
+    comision_generada: comisionGenerada,
+    reserva_estado: reservaSincronizada,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  })
 }
