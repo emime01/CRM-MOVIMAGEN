@@ -173,7 +173,7 @@ export default function LeadDetalleClient({ lead, propuestas, userRol, userId }:
 
           {puedeGestionar && lead.estado !== 'ganado' && lead.estado !== 'perdido' && (
             <Link
-              href={`/dashboard/cotizaciones/nueva?lead=${lead.id}`}
+              href={`/dashboard/leads/${lead.id}/cotizar`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '8px 14px', borderRadius: 7, background: 'var(--orange)', color: '#fff',

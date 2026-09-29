@@ -866,7 +866,7 @@ function LeadCard({
       {/* Nueva cotización button */}
       {(lead.estado === 'nuevo' || lead.estado === 'en_conversacion' || lead.estado === 'negociacion') && (
         <Link
-          href={`/dashboard/cotizaciones/nueva?lead_id=${lead.id}&cliente_id=${lead.cliente_id ?? ''}`}
+          href={`/dashboard/leads/${lead.id}/cotizar`}
           onClick={e => e.stopPropagation()}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,

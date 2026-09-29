@@ -66,7 +66,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.marca !== undefined)          updates.marca = body.marca || null
   if (body.observaciones !== undefined)  updates.observaciones = body.observaciones || null
   if (body.cliente_id !== undefined)     updates.cliente_id = body.cliente_id || null
-  if (body.lead_id !== undefined)        updates.lead_id = body.lead_id || null
+  // El lead se puede reasignar, pero no quitar: toda cotización cuelga de uno.
+  if (body.lead_id !== undefined) {
+    if (!body.lead_id) {
+      return NextResponse.json({ error: 'La cotización tiene que estar asociada a un lead' }, { status: 400 })
+    }
+    updates.lead_id = body.lead_id
+  }
   if (body.fecha_inicio !== undefined)   updates.fecha_inicio = body.fecha_inicio || null
   if (body.fecha_fin !== undefined)      updates.fecha_fin = body.fecha_fin || null
   if (body.notas !== undefined)          updates.notas = body.notas || null

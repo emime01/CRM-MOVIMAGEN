@@ -166,14 +166,23 @@ export default function CotizadorClient({
   propuestaId,
   rol,
   userId: _userId,
-  initialLeadId = null,
-  initialClienteId = null,
+  lead = null,
 }: {
   propuestaId: string | null
   rol: string
   userId: string
-  initialLeadId?: string | null
-  initialClienteId?: string | null
+  /**
+   * Lead del que nace la cotización. Cuando viene, el cliente y la agencia
+   * quedan fijados por el lead y no se pueden cambiar acá: son el origen de
+   * la venta, no un dato editable de la cotización.
+   */
+  lead?: {
+    id: string
+    descripcion: string | null
+    clienteId: string
+    clienteNombre: string
+    agenciaNombre: string | null
+  } | null
 }) {
   const router = useRouter()
   const isNew = propuestaId === null
@@ -282,11 +291,10 @@ export default function CotizadorClient({
         const in4w  = new Date(today.getTime() + 28 * 86400000)
         setFechaInicio(today.toISOString().slice(0, 10))
         setFechaFin(in4w.toISOString().slice(0, 10))
-        if (initialLeadId) setLeadId(initialLeadId)
-        if (initialClienteId) {
-          setClienteId(initialClienteId)
-          const cli = (cData.clientes ?? []).find((c: Cliente) => c.id === initialClienteId)
-          if (cli) setClienteQuery(cli.empresa || cli.nombre || '')
+        if (lead) {
+          setLeadId(lead.id)
+          setClienteId(lead.clienteId)
+          setClienteQuery(lead.clienteNombre)
         }
       }
       setLoadingInit(false)
@@ -481,7 +489,7 @@ export default function CotizadorClient({
   async function duplicar() {
     const pid = savedId ?? propuestaId
     if (!pid) return
-    if (!confirm('¿Duplicar esta cotización? Se crea un borrador nuevo (COT-XXXX) con los mismos items y sin lead asignado.')) return
+    if (!confirm('¿Duplicar esta cotización? Se crea un borrador nuevo (COT-XXXX) con los mismos items, sobre el mismo lead y cliente.')) return
     const res = await fetch(`/api/propuestas/${pid}/duplicar`, { method: 'POST' })
     const data = await res.json()
     if (!res.ok) { alert(data.error ?? 'Error al duplicar'); return }
@@ -684,29 +692,54 @@ export default function CotizadorClient({
           <input value={marca} onChange={e => setMarca(e.target.value)} placeholder="Marca / producto" style={inputSt} />
         </div>
         <div style={{ flex: 2, minWidth: 160, position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <label style={lblSt}>Cliente</label>
-            <button
-              type="button"
-              onClick={() => setShowClienteModal(true)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--orange)', fontSize: 10, fontWeight: 700, padding: 0, marginBottom: 3 }}
-            >
-              + Nuevo
-            </button>
-          </div>
-          <input value={clienteQuery} onChange={e => onClienteInput(e.target.value)} placeholder="Buscar cliente…" style={inputSt} />
-          {clienteSuggs.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, marginTop: 2 }}>
-              {clienteSuggs.map(c => (
-                <button key={c.id} onClick={() => { setClienteId(c.id); setClienteQuery(c.empresa || c.nombre); setClienteSuggs([]) }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f3f4f6' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                  {c.empresa || c.nombre}
-                  {c.empresa && <span style={{ color: '#9ca3af', marginLeft: 6 }}>{c.nombre}</span>}
+          {lead ? (
+            /* Viene de un lead: cliente y agencia quedan fijos, son su origen */
+            <>
+              <label style={lblSt}>Cliente · desde el lead</label>
+              <div style={{
+                ...inputSt, display: 'flex', alignItems: 'center', gap: 6,
+                background: '#f4f3f0', borderColor: '#e5e3dc', cursor: 'default', overflow: 'hidden',
+              }}>
+                <span style={{ fontWeight: 700, color: '#1a1915', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {lead.clienteNombre}
+                </span>
+                {lead.agenciaNombre && (
+                  <span style={{
+                    flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 5,
+                    background: 'rgba(235,105,28,0.12)', color: 'var(--orange, #eb691c)',
+                  }}>
+                    {lead.agenciaNombre}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={lblSt}>Cliente</label>
+                <button
+                  type="button"
+                  onClick={() => setShowClienteModal(true)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--orange)', fontSize: 10, fontWeight: 700, padding: 0, marginBottom: 3 }}
+                >
+                  + Nuevo
                 </button>
-              ))}
-            </div>
+              </div>
+              <input value={clienteQuery} onChange={e => onClienteInput(e.target.value)} placeholder="Buscar cliente…" style={inputSt} />
+              {clienteSuggs.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, marginTop: 2 }}>
+                  {clienteSuggs.map(c => (
+                    <button key={c.id} onClick={() => { setClienteId(c.id); setClienteQuery(c.empresa || c.nombre); setClienteSuggs([]) }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f3f4f6' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                      {c.empresa || c.nombre}
+                      {c.empresa && <span style={{ color: '#9ca3af', marginLeft: 6 }}>{c.nombre}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
         <div style={{ flex: 1, minWidth: 110 }}>
@@ -1310,11 +1343,8 @@ function AsignarLeadModal({
                 <button onClick={() => setModoCreacion(true)} style={{ flex: 1, minWidth: 140, padding: '8px 14px', borderRadius: 7, border: '1px dashed #fcd34d', background: '#fffbeb', color: '#b45309', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                   + Crear lead nuevo
                 </button>
-                {actualLeadId && (
-                  <button onClick={() => asignarExistente(null)} disabled={saving} style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                    Quitar lead
-                  </button>
-                )}
+                {/* No hay "quitar lead": toda cotización tiene que colgar de uno.
+                    Si está mal asignada, se elige otro de la lista. */}
               </div>
             </>
           )}

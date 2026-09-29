@@ -41,8 +41,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   const { data: nueva, error } = await supabase
     .from('propuestas')
     .insert({
-      lead_id:        null,
+      // La copia mantiene el lead y la agencia del original: una cotización sin
+      // lead no puede existir, y duplicar es rehacer la misma oportunidad.
+      lead_id:        src.lead_id,
       cliente_id:     src.cliente_id,
+      agencia_id:     src.agencia_id ?? null,
       vendedor_id:    session.user.id,
       numero,
       nombre:         src.nombre ? `${src.nombre} (copia)` : null,
