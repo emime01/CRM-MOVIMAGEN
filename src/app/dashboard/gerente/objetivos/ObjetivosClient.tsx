@@ -16,7 +16,7 @@ const ROL_LABELS: Record<string, string> = {
 interface Vendedor { id: string; nombre: string; rol: string }
 
 interface ClienteObjetivo {
-  vendedor_id: string
+  vendedor_id: string | null
   cliente_id: string
   ponderacion_pct: number | null
   objetivo_c1: number | null
@@ -29,6 +29,9 @@ interface Props {
   vendedores: Vendedor[]
   objMap: Record<string, number>
   clienteObjetivos: ClienteObjetivo[]
+  /** Clientes con objetivo cargado pero sin dueño: su objetivo no suma para nadie. */
+  sinVendedor: ClienteObjetivo[]
+  year: number
 }
 
 function clienteNombre(co: ClienteObjetivo): string {
@@ -234,7 +237,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   )
 }
 
-export default function ObjetivosClient({ vendedores, objMap: initialObjMap, clienteObjetivos }: Props) {
+export default function ObjetivosClient({ vendedores, objMap: initialObjMap, clienteObjetivos, sinVendedor, year }: Props) {
   const [objMap, setObjMap] = useState<Record<string, number>>(initialObjMap)
   const [editValues, setEditValues] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {}
@@ -248,6 +251,42 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [importOpen, setImportOpen] = useState(false)
+
+  // ── Asignación de clientes sin dueño ──────────────────────────────────────
+  // Un cliente sin vendedor tiene su objetivo cargado pero no suma para nadie,
+  // así que los tableros lo muestran en cero. Acá se les pone dueño.
+  const [asignaciones, setAsignaciones] = useState<Record<string, string>>({})
+  const [asignando, setAsignando] = useState(false)
+  const [asignError, setAsignError] = useState<string | null>(null)
+
+  const pendientes = sinVendedor.length
+  const totalPendiente = sinVendedor.reduce(
+    (acc, co) => acc + Number(co.objetivo_c1 ?? 0) + Number(co.objetivo_c2 ?? 0) + Number(co.objetivo_c3 ?? 0), 0)
+  const elegidos = Object.values(asignaciones).filter(Boolean).length
+
+  async function guardarAsignaciones() {
+    const lista = Object.entries(asignaciones)
+      .filter(([, vendedorId]) => vendedorId)
+      .map(([clienteId, vendedorId]) => ({ clienteId, vendedorId }))
+    if (lista.length === 0) return
+
+    setAsignando(true); setAsignError(null)
+    try {
+      const res = await fetch('/api/objetivos/asignar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asignaciones: lista, year }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setAsignError(data.error ?? 'No se pudo guardar'); return }
+      // Recargar: cambian los totales por vendedor y la lista de pendientes.
+      window.location.reload()
+    } catch (err) {
+      setAsignError(err instanceof Error ? err.message : 'Error al guardar')
+    } finally {
+      setAsignando(false)
+    }
+  }
 
   function getEdit(vendedorId: string, cuatrimestre: string): string {
     const key = `${vendedorId}-${cuatrimestre}`
@@ -303,7 +342,8 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Objetivos {y}</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            {clienteObjetivos.length} cliente(s) con objetivos cargados
+            {clienteObjetivos.length} cliente(s) con objetivos asignados
+            {pendientes > 0 && ` · ${pendientes} sin vendedor`}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -324,6 +364,75 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
           </button>
         </div>
       </div>
+
+      {/* Clientes con objetivo cargado pero sin dueño: hasta asignarlos, su
+          objetivo no suma para ningún vendedor y los tableros muestran cero. */}
+      {pendientes > 0 && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid #f3c39c', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', background: 'rgba(235,105,28,0.07)', borderBottom: '1px solid #f3c39c' }}>
+            <div style={{ fontSize: 14, fontWeight: 750, color: 'var(--text-primary)' }}>
+              {pendientes} cliente(s) sin vendedor asignado
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 3 }}>
+              Suman <b>{fmt(totalPendiente)}</b> en objetivos que hoy no cuentan para nadie.
+              Asignales un vendedor y los totales se recalculan solos.
+            </div>
+          </div>
+
+          <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <tbody>
+                {sinVendedor.map(co => {
+                  const total = Number(co.objetivo_c1 ?? 0) + Number(co.objetivo_c2 ?? 0) + Number(co.objetivo_c3 ?? 0)
+                  return (
+                    <tr key={co.cliente_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '8px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {clienteNombre(co)}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        {fmt(total)}
+                      </td>
+                      <td style={{ padding: '6px 16px', textAlign: 'right', width: 190 }}>
+                        <select
+                          value={asignaciones[co.cliente_id] ?? ''}
+                          onChange={e => setAsignaciones(prev => ({ ...prev, [co.cliente_id]: e.target.value }))}
+                          style={{
+                            width: '100%', height: 32, padding: '0 8px', borderRadius: 7,
+                            border: '1px solid var(--border)', background: 'var(--bg-card)',
+                            fontSize: 12.5, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-primary)',
+                          }}
+                        >
+                          <option value="">— sin asignar —</option>
+                          {vendedores.map(v => (
+                            <option key={v.id} value={v.id}>{v.nombre}</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button
+              onClick={guardarAsignaciones}
+              disabled={elegidos === 0 || asignando}
+              style={{
+                padding: '9px 18px', border: 'none', borderRadius: 8,
+                background: elegidos === 0 || asignando ? '#e5e3dc' : 'var(--orange)',
+                color: elegidos === 0 || asignando ? 'var(--text-muted)' : '#fff',
+                cursor: elegidos === 0 || asignando ? 'not-allowed' : 'pointer',
+                fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif',
+              }}
+            >
+              {asignando ? 'Guardando…' : `Asignar ${elegidos} cliente(s)`}
+            </button>
+            {asignError && <span style={{ fontSize: 12.5, color: '#dc2626' }}>{asignError}</span>}
+          </div>
+        </div>
+      )}
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
