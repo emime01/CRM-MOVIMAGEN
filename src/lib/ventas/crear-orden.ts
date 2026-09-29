@@ -75,6 +75,9 @@ export async function crearOrdenDesdePropuesta(
       propuesta_id:         propuesta.id,
       lead_id:              propuesta.lead_id ?? null,
       cliente_id:           propuesta.cliente_id,
+      // La agencia viene del lead, pasa por la cotización y llega acá, que es
+      // donde se liquidan sus comisiones.
+      agencia_id:           propuesta.agencia_id ?? null,
       vendedor_id:          propuesta.vendedor_id ?? userId,
       numero:               siguienteNumero,
       estado:               ESTADO_INICIAL,

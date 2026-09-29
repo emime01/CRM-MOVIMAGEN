@@ -48,20 +48,39 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const supabase = createServerClient()
 
+  // Toda cotización nace de un lead. Antes era opcional y se podía cotizar
+  // "suelto", lo que dejaba la sección de leads a medio usar y sin rastro de
+  // dónde salió cada venta. El cliente y la agencia se toman del lead, no de
+  // lo que mande el cliente web, para que no puedan quedar desalineados.
+  const leadId: string | null = body.lead_id ?? null
+  if (!leadId) {
+    return NextResponse.json(
+      { error: 'Las cotizaciones se crean desde un lead. Abrí el lead y usá "Cotizar".' },
+      { status: 400 },
+    )
+  }
+
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('id, cliente_id, agencia_id, vendedor_id')
+    .eq('id', leadId)
+    .maybeSingle()
+
+  if (!lead) return NextResponse.json({ error: 'El lead no existe' }, { status: 404 })
+  if (session.user.rol === 'vendedor' && lead.vendedor_id !== session.user.id) {
+    return NextResponse.json({ error: 'Ese lead no es tuyo' }, { status: 403 })
+  }
+
   // Auto-generate numero
   const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
   const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
-
-  // El lead es opcional; se asocia explícitamente desde la cotización (botón
-  // "Asignar a lead"). No se auto-crea para no generar leads basura cuando
-  // el vendedor solo quiere armar una cotización rápida.
-  const leadId: string | null = body.lead_id ?? null
 
   const { data, error } = await supabase
     .from('propuestas')
     .insert({
       lead_id:        leadId,
-      cliente_id:     body.cliente_id ?? null,
+      cliente_id:     lead.cliente_id,
+      agencia_id:     lead.agencia_id ?? null,
       vendedor_id:    session.user.id,
       numero,
       nombre:         body.nombre ?? null,

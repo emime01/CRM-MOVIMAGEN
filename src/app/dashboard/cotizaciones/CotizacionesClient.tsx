@@ -82,7 +82,8 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
           </p>
         </div>
         <button
-          onClick={() => router.push('/dashboard/cotizaciones/nueva')}
+          onClick={() => router.push('/dashboard/leads')}
+          title="Las cotizaciones se crean desde un lead"
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             background: '#111827', color: '#fff', border: 'none',
@@ -90,7 +91,7 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
             fontWeight: 600, cursor: 'pointer',
           }}
         >
-          <Plus size={15} /> Nueva Cotización
+          <Plus size={15} /> Cotizar desde un lead
         </button>
       </div>
 
@@ -120,11 +121,14 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
         <div style={{ textAlign: 'center', padding: 60 }}>
           <FileText size={40} style={{ color: '#d1d5db', margin: '0 auto 12px' }} />
           <p style={{ color: '#6b7280', fontSize: 14 }}>No hay cotizaciones aún</p>
+          <p style={{ color: '#9ca3af', fontSize: 12.5, margin: '4px 0 0' }}>
+            Cada cotización nace de un lead: abrí el lead y usá &ldquo;Cotizar&rdquo;.
+          </p>
           <button
-            onClick={() => router.push('/dashboard/cotizaciones/nueva')}
+            onClick={() => router.push('/dashboard/leads')}
             style={{ marginTop: 12, padding: '8px 16px', background: '#111827', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13 }}
           >
-            Crear la primera
+            Ir a Leads
           </button>
         </div>
       ) : (
