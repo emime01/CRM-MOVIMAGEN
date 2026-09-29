@@ -23,20 +23,31 @@ export async function GET(req: NextRequest) {
   const effectiveRol = (userRol === 'arte' || userRol === 'operaciones') ? userRol : filterRol
 
   const supabase = createServerClient()
-  let q = supabase
-    .from('tasks')
-    .select(`
+
+  const CAMPOS = `
       id, tipo, asignado_a_rol, estado, descripcion, fecha_limite, created_at, completed_at,
       ordenes_venta(id, numero, clientes(nombre, empresa)),
-      soportes(nombre)
-    `)
-    .order('fecha_limite', { ascending: true, nullsFirst: false })
-    .limit(limite)
+      soportes(nombre)`
 
-  if (effectiveRol) q = q.eq('asignado_a_rol', effectiveRol)
-  if (estado) q = q.eq('estado', estado)
+  // `perfiles(nombre)` es quién tomó la tarea (tasks.asignado_a). Va aparte para
+  // poder reintentar sin ese embed: si la relación no resolviera, el tablero
+  // tiene que seguir funcionando igual, sólo sin las iniciales.
+  const armarQuery = (campos: string) => {
+    let q = supabase
+      .from('tasks')
+      .select(campos)
+      .order('fecha_limite', { ascending: true, nullsFirst: false })
+      .limit(limite)
+    if (effectiveRol) q = q.eq('asignado_a_rol', effectiveRol)
+    if (estado) q = q.eq('estado', estado)
+    return q
+  }
 
-  const { data, error } = await q
+  let { data, error } = await armarQuery(`${CAMPOS}, perfiles(nombre)`)
+  if (error) {
+    ;({ data, error } = await armarQuery(CAMPOS))
+  }
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ tasks: data ?? [] })
 }
