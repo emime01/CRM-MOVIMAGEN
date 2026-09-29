@@ -27,11 +27,13 @@ export default async function ObjetivosPage() {
       .from('objetivos')
       .select('vendedor_id, cuatrimestre, objetivo_monto')
       .in('cuatrimestre', CUATRIMESTRES),
+    // Se traen TODOS, con y sin vendedor: los que no tienen dueño son
+    // justamente los que hay que poder asignar desde acá. Antes se filtraban
+    // y quedaban invisibles, con su objetivo sin sumar para nadie.
     supabase
       .from('cliente_objetivos')
-      .select('vendedor_id, cliente_id, ponderacion_pct, objetivo_c1, objetivo_c2, objetivo_c3, clientes(nombre)')
-      .eq('year', y)
-      .not('vendedor_id', 'is', null),
+      .select('cliente_id, vendedor_id, ponderacion_pct, objetivo_c1, objetivo_c2, objetivo_c3, clientes(nombre)')
+      .eq('year', y),
   ])
 
   const objMap: Record<string, number> = {}
@@ -39,11 +41,15 @@ export default async function ObjetivosPage() {
     objMap[`${o.vendedor_id}-${o.cuatrimestre}`] = Number(o.objetivo_monto)
   })
 
+  const todos = (clienteObjetivos ?? []) as any[]
+
   return (
     <ObjetivosClient
       vendedores={vendedores ?? []}
       objMap={objMap}
-      clienteObjetivos={(clienteObjetivos ?? []) as any}
+      clienteObjetivos={todos.filter(co => co.vendedor_id) as any}
+      sinVendedor={todos.filter(co => !co.vendedor_id) as any}
+      year={y}
     />
   )
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { recalcularObjetivos } from '@/lib/objetivos/recalcular'
 import { pickAllowed } from '@/lib/api/safe-patch'
 
 export const dynamic = 'force-dynamic'
@@ -47,18 +48,31 @@ export async function POST(req: NextRequest) {
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
     const perfilList = (perfiles ?? []) as { id: string; nombre: string }[]
 
-    const findVendedor = (ejecVtas: string): string | null => {
-      if (!ejecVtas) return null
+    /**
+     * Resuelve el vendedor por nombre. Devuelve también por qué falló, para
+     * poder avisarlo: antes, cuando no resolvía, el cliente se guardaba sin
+     * dueño y la importación igual reportaba éxito — así quedaron cientos de
+     * clientes sin vendedor y sus objetivos sin sumar para nadie.
+     */
+    const findVendedor = (ejecVtas: string): { id: string | null; motivo?: 'vacio' | 'sin_match' | 'ambiguo' } => {
+      if (!ejecVtas?.trim()) return { id: null, motivo: 'vacio' }
       const v = norm(ejecVtas)
-      // Exact match first
-      let m = perfilList.find(p => norm(p.nombre) === v)
-      if (m) return m.id
-      // Partial match: perfil name contained in excel value (e.g. "Fabián" in "Fabian Cairele")
-      m = perfilList.find(p => v.includes(norm(p.nombre)) || norm(p.nombre).includes(v))
-      return m?.id ?? null
+
+      const exacto = perfilList.find(p => norm(p.nombre) === v)
+      if (exacto) return { id: exacto.id }
+
+      // Parcial en los dos sentidos: "Fabián" contra "Fabian Cairele".
+      const parciales = perfilList.filter(p => v.includes(norm(p.nombre)) || norm(p.nombre).includes(v))
+      if (parciales.length === 1) return { id: parciales[0].id }
+      // Con más de un candidato no se adivina: elegir el primero asignaba
+      // clientes al vendedor equivocado en silencio.
+      if (parciales.length > 1) return { id: null, motivo: 'ambiguo' }
+      return { id: null, motivo: 'sin_match' }
     }
 
     const results = []
+    /** Filas que quedaron sin dueño, para devolverlas y que se puedan arreglar. */
+    const sinVendedor: { cliente: string; ejec_vtas: string; motivo: string }[] = []
     const year = new Date().getFullYear()
 
     for (const row of body.items) {
@@ -79,7 +93,17 @@ export async function POST(req: NextRequest) {
       }
 
       // Resolve vendedor (accent + partial-name tolerant)
-      const vendedorId = findVendedor(row.ejec_vtas ?? '')
+      const resuelto = findVendedor(row.ejec_vtas ?? '')
+      const vendedorId = resuelto.id
+      if (!vendedorId) {
+        sinVendedor.push({
+          cliente: clienteNombre,
+          ejec_vtas: (row.ejec_vtas ?? '').trim(),
+          motivo: resuelto.motivo === 'vacio' ? 'sin ejecutivo en la planilla'
+            : resuelto.motivo === 'ambiguo' ? 'coincide con más de un vendedor'
+            : 'no coincide con ningún vendedor',
+        })
+      }
 
       // Upsert cliente
       let clienteId: string | null = null
@@ -130,32 +154,18 @@ export async function POST(req: NextRequest) {
       results.push({ cliente: clienteNombre, status: existingCl ? 'actualizado' : 'creado' })
     }
 
-    // Aggregate cliente_objetivos → objetivos (sum per vendedor per cuatrimestre)
-    const { data: coData } = await supabase
-      .from('cliente_objetivos')
-      .select('vendedor_id, objetivo_c1, objetivo_c2, objetivo_c3')
-      .eq('year', year)
-      .not('vendedor_id', 'is', null)
+    // Recalcular los totales por vendedor a partir de los objetivos por cliente.
+    const resumen = await recalcularObjetivos(supabase, year)
 
-    const vendedorTotals: Record<string, Record<string, number>> = {}
-    for (const co of coData ?? []) {
-      if (!co.vendedor_id) continue
-      if (!vendedorTotals[co.vendedor_id]) vendedorTotals[co.vendedor_id] = {}
-      const vt = vendedorTotals[co.vendedor_id]
-      vt[`Q1-${year}`] = (vt[`Q1-${year}`] ?? 0) + Number(co.objetivo_c1 ?? 0)
-      vt[`Q2-${year}`] = (vt[`Q2-${year}`] ?? 0) + Number(co.objetivo_c2 ?? 0)
-      vt[`Q3-${year}`] = (vt[`Q3-${year}`] ?? 0) + Number(co.objetivo_c3 ?? 0)
-    }
-    for (const [vendedorId, quarters] of Object.entries(vendedorTotals)) {
-      for (const [cuatrimestre, monto] of Object.entries(quarters)) {
-        await supabase.from('objetivos').delete().eq('vendedor_id', vendedorId).eq('cuatrimestre', cuatrimestre)
-        if (monto > 0) {
-          await supabase.from('objetivos').insert({ vendedor_id: vendedorId, cuatrimestre, objetivo_monto: monto })
-        }
-      }
-    }
-
-    return NextResponse.json({ results, total: results.length })
+    return NextResponse.json({
+      results,
+      total: results.length,
+      // Lo importante para quien importa: qué filas quedaron sin dueño. Sin
+      // vendedor, el objetivo de ese cliente no suma para nadie.
+      sin_vendedor: sinVendedor,
+      sin_vendedor_total: sinVendedor.length,
+      vendedores_con_objetivo: resumen.vendedores,
+    })
   }
 
   // Single — allowlist para evitar mass-assignment
