@@ -12,13 +12,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const { data: propuesta, error } = await supabase
     .from('propuestas')
+  // El embed de leads va desambiguado por la columna (leads!lead_id): hay dos
+  // relaciones entre propuestas y leads (propuestas.lead_id y
+  // leads.propuesta_ganadora_id) y sin esa pista PostgREST corta con
+  // "more than one relationship was found" y se cae toda la sección.
     .select(`
       id, numero, nombre, marca, observaciones, estado, moneda,
       monto_neto, monto_total, monto_impactos,
       fecha_inicio, fecha_fin, notas,
       lead_id, cliente_id, vendedor_id, created_at, updated_at,
       clientes(id, nombre, empresa),
-      leads(id, descripcion),
+      leads!lead_id(id, descripcion),
       perfiles(id, nombre)
     `)
     .eq('id', params.id)
