@@ -60,6 +60,7 @@ interface PropuestaHeader {
   moneda: string
   notas: string | null
   clientes: { nombre: string; empresa: string | null } | null
+  agencias: { id: string; nombre: string | null } | null
   leads: { id: string; descripcion: string | null } | null
 }
 
@@ -303,6 +304,20 @@ export default function CotizadorClient({
   }, [propuestaId])
 
   // ── Derived ────────────────────────────────────────────────────────────────
+
+  /**
+   * Cliente y agencia mostrados en el encabezado. Salen del lead cuando la
+   * cotización se está creando, y de la cotización guardada cuando se reabre.
+   * En los dos casos son de sólo lectura: vienen del lead, que es el origen.
+   */
+  const clienteFijo = lead
+    ? { nombre: lead.clienteNombre, agencia: lead.agenciaNombre }
+    : propuesta?.clientes
+      ? {
+          nombre: propuesta.clientes.empresa || propuesta.clientes.nombre,
+          agencia: propuesta.agencias?.nombre ?? null,
+        }
+      : null
 
   const semanasGlobal = getSemanasFromDates(fechaInicio, fechaFin)
 
@@ -692,8 +707,9 @@ export default function CotizadorClient({
           <input value={marca} onChange={e => setMarca(e.target.value)} placeholder="Marca / producto" style={inputSt} />
         </div>
         <div style={{ flex: 2, minWidth: 160, position: 'relative' }}>
-          {lead ? (
-            /* Viene de un lead: cliente y agencia quedan fijos, son su origen */
+          {clienteFijo ? (
+            /* El cliente y la agencia vienen del lead: son el origen de la
+               venta, no un dato editable de la cotización. */
             <>
               <label style={lblSt}>Cliente · desde el lead</label>
               <div style={{
@@ -701,14 +717,14 @@ export default function CotizadorClient({
                 background: '#f4f3f0', borderColor: '#e5e3dc', cursor: 'default', overflow: 'hidden',
               }}>
                 <span style={{ fontWeight: 700, color: '#1a1915', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {lead.clienteNombre}
+                  {clienteFijo.nombre}
                 </span>
-                {lead.agenciaNombre && (
+                {clienteFijo.agencia && (
                   <span style={{
                     flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 5,
                     background: 'rgba(235,105,28,0.12)', color: 'var(--orange, #eb691c)',
                   }}>
-                    {lead.agenciaNombre}
+                    {clienteFijo.agencia}
                   </span>
                 )}
               </div>

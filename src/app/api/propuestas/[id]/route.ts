@@ -20,8 +20,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       id, numero, nombre, marca, observaciones, estado, moneda,
       monto_neto, monto_total, monto_impactos,
       fecha_inicio, fecha_fin, notas,
-      lead_id, cliente_id, vendedor_id, created_at, updated_at,
+      lead_id, cliente_id, agencia_id, vendedor_id, created_at, updated_at,
       clientes(id, nombre, empresa),
+      agencias!agencia_id(id, nombre),
       leads!lead_id(id, descripcion),
       perfiles(id, nombre)
     `)
