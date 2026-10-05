@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { ESTADOS_BLOQUEO_VIVO } from '@/lib/ventas/asignar-buses'
 
 /**
  * GET /api/disponibilidad/soporte/[id]?fecha=YYYY-MM-DD
@@ -36,9 +37,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       .from('reserva_items')
       .select(`
         id, cantidad,
-        reservas(id, estado, fecha_desde, fecha_hasta, clientes(nombre, empresa), perfiles!reservas_vendedor_id_fkey(nombre))
+        reservas!inner(id, estado, orden_id, fecha_desde, fecha_hasta, vence_el, motivo,
+          clientes(nombre, empresa), perfiles!reservas_vendedor_id_fkey(nombre))
       `)
-      .eq('soporte_id', params.id),
+      .eq('soporte_id', params.id)
+      // Un bloqueo que ya se convirtió en venta no cuenta: la venta lo cubre.
+      .is('reservas.orden_id', null),
   ])
 
   if (!soporte) return NextResponse.json({ error: 'Soporte no encontrado' }, { status: 404 })
@@ -73,7 +77,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const reservasActivas = (reservas ?? [])
     .map((ri: any) => {
       const r = first<any>(ri.reservas)
-      if (!r || !['pendiente', 'aprobada', 'confirmada'].includes(r.estado)) return null
+      if (!r || !ESTADOS_BLOQUEO_VIVO.includes(r.estado)) return null
       if (r.fecha_desde > fecha || r.fecha_hasta < fecha) return null
       const cli = first<any>(r.clientes)
       const v = first<any>(r.perfiles)

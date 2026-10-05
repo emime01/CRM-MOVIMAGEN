@@ -317,5 +317,38 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // ── 9. Bloqueos de espacio por vencer o vencidos ─────────────────────────
+  // El bloqueo retiene un espacio mientras llega la orden de compra. Cuando
+  // se vence hay que avisarle al vendedor para que decida: insistir con el
+  // cliente, extenderlo o soltar el espacio.
+  const hoyStr = new Date().toISOString().slice(0, 10)
+  const en2dias = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)
+
+  const { data: bloqueos } = await supabase
+    .from('reservas')
+    .select('id, vence_el, motivo, vendedor_id, clientes(nombre, empresa)')
+    .not('vence_el', 'is', null)
+    .is('orden_id', null)
+    .lte('vence_el', en2dias)
+
+  for (const b of bloqueos ?? []) {
+    if (!b.vendedor_id) continue
+    const cli = Array.isArray(b.clientes) ? b.clientes[0] : b.clientes
+    const clienteNombre = (cli as any)?.empresa || (cli as any)?.nombre || 'cliente'
+    const vencido = (b.vence_el as string) < hoyStr
+    const motivo = b.motivo ? ` (${b.motivo})` : ''
+
+    await createNotif(
+      b.vendedor_id,
+      vencido ? 'bloqueo_vencido' : 'bloqueo_por_vencer',
+      vencido ? `Bloqueo vencido: ${clienteNombre}` : `Bloqueo por vencer: ${clienteNombre}`,
+      vencido
+        ? `El bloqueo de espacio para ${clienteNombre}${motivo} venció el ${b.vence_el}. Decidí si lo extendés o liberás el espacio.`
+        : `El bloqueo de espacio para ${clienteNombre}${motivo} vence el ${b.vence_el}.`,
+      '/dashboard/disponibilidad',
+      b.id,
+    )
+  }
+
   return NextResponse.json({ ok: true, created })
 }

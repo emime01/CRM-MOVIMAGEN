@@ -39,26 +39,27 @@ interface ReservaItem {
   soportes: { nombre: string; tipo: string | null; bus_id: string | null; lado_bus: string | null } | null
 }
 
-interface ReservaPendiente {
+interface VentaPendiente {
   id: string
+  numero: number | null
   fecha_desde: string
   fecha_hasta: string
   estado: string
   clientes: { nombre: string; empresa: string | null } | null
-  reserva_items: ReservaItem[]
+  items: ReservaItem[]
 }
 
 interface Props {
   initialBuses: Bus[]
   initialSoportesSinAsignar: Soporte[]
   clientes: Cliente[]
-  initialReservas: ReservaPendiente[]
+  initialVentas: VentaPendiente[]
   soporteClienteMap: Record<string, { nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string }>
   soporteCampanasMap: Record<string, Campana[]>
   userRol: string
 }
 
-interface Campana { reservaItemId: string; nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string; instalada: boolean }
+interface Campana { ordenItemId: string; nombre: string; empresa: string | null; fecha_desde: string; fecha_hasta: string; instalada: boolean }
 
 function parseLados(val: string | null | undefined): string[] {
   if (!val || val === 'ninguno') return []
@@ -114,12 +115,12 @@ function Modal({ title, onClose, children, width = 560 }: { title: string; onClo
   )
 }
 
-export default function BusesClient({ initialBuses, initialSoportesSinAsignar, clientes, initialReservas, soporteClienteMap, soporteCampanasMap, userRol }: Props) {
+export default function BusesClient({ initialBuses, initialSoportesSinAsignar, clientes, initialVentas, soporteClienteMap, soporteCampanasMap, userRol }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<'flota' | 'planilla' | 'pendientes'>('flota')
   const [buses, setBuses] = useState(initialBuses)
   const [soportesSinAsignar, setSoportesSinAsignar] = useState(initialSoportesSinAsignar)
-  const [reservas, setReservas] = useState(initialReservas)
+  const [reservas, setReservas] = useState(initialVentas)
 
   const canManage = ['operaciones', 'administracion'].includes(userRol)
   const clienteMap = useMemo(() => new Map(clientes.map(c => [c.id, c])), [clientes])
@@ -137,7 +138,7 @@ export default function BusesClient({ initialBuses, initialSoportesSinAsignar, c
   // Modals
   const [busModal, setBusModal] = useState<{ open: boolean; data: Partial<Bus> & { soporteAssignments?: { soporteId: string; ladoBus: string }[] } | null }>({ open: false, data: null })
   const [importModal, setImportModal] = useState(false)
-  const [confirmModal, setConfirmModal] = useState<{ open: boolean; reserva: ReservaPendiente | null; conflicts: { itemId: string; busNumero: string }[]; overrides: Record<string, string> }>({ open: false, reserva: null, conflicts: [], overrides: {} })
+  const [confirmModal, setConfirmModal] = useState<{ open: boolean; reserva: VentaPendiente | null; conflicts: { itemId: string; busNumero: string }[]; overrides: Record<string, string> }>({ open: false, reserva: null, conflicts: [], overrides: {} })
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
@@ -269,7 +270,7 @@ function estadoDeCampana(desde: string, hasta: string, hoy: string): EstadoPlani
 }
 
 interface PlanillaRow {
-  reservaItemId: string | null
+  ordenItemId: string | null
   busNumero: string
   posicion: string
   soporteNombre: string
@@ -302,10 +303,10 @@ function PlanillaTab({ buses, soporteCampanasMap, canManage }: {
   }
 
   async function guardarFechas() {
-    if (!editar?.reservaItemId) return
+    if (!editar?.ordenItemId) return
     setGuardando(true)
     try {
-      const res = await fetch(`/api/reserva-items/${editar.reservaItemId}`, {
+      const res = await fetch(`/api/orden-items/${editar.ordenItemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fecha_alta_real: altaReal || null, fecha_baja_real: bajaReal || null }),
@@ -327,14 +328,14 @@ function PlanillaTab({ buses, soporteCampanasMap, canManage }: {
           .slice()
           .sort((a, b) => a.fecha_desde.localeCompare(b.fecha_desde))
         if (campanas.length === 0) {
-          out.push({ reservaItemId: null, busNumero: bus.numero, posicion: pos.label, soporteNombre: soporte.nombre, cliente: null, desde: null, hasta: null, estado: 'libre', conflicto: false, instalada: false })
+          out.push({ ordenItemId: null, busNumero: bus.numero, posicion: pos.label, soporteNombre: soporte.nombre, cliente: null, desde: null, hasta: null, estado: 'libre', conflicto: false, instalada: false })
           continue
         }
         campanas.forEach((c, i) => {
           // Solapamiento con otra campaña del mismo soporte
           const conflicto = campanas.some((o, j) => j !== i && o.fecha_desde <= c.fecha_hasta && o.fecha_hasta >= c.fecha_desde)
           out.push({
-            reservaItemId: c.reservaItemId,
+            ordenItemId: c.ordenItemId,
             busNumero: bus.numero,
             posicion: pos.label,
             soporteNombre: soporte.nombre,
@@ -443,7 +444,7 @@ function PlanillaTab({ buses, soporteCampanasMap, canManage }: {
                     </td>
                     {canManage && (
                       <td style={{ ...td, textAlign: 'right' }}>
-                        {r.reservaItemId ? (
+                        {r.ordenItemId ? (
                           <button onClick={() => abrirEdicion(r)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 7, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                             {r.instalada ? 'Editar fechas' : 'Marcar instalado'}
@@ -661,11 +662,11 @@ function FlotaTab({ buses, stats, canManage, soporteClienteMap, onEdit, onNew, o
 }
 
 function PendientesTab({ reservas, buses, onConfirm }: {
-  reservas: ReservaPendiente[]
-  setReservas: React.Dispatch<React.SetStateAction<ReservaPendiente[]>>
+  reservas: VentaPendiente[]
+  setReservas: React.Dispatch<React.SetStateAction<VentaPendiente[]>>
   busByNumeroMap: Map<string, Bus>
   buses: Bus[]
-  onConfirm: (r: ReservaPendiente) => void
+  onConfirm: (r: VentaPendiente) => void
 }) {
   const busById = useMemo(() => new Map(buses.map(b => [b.id, b])), [buses])
 
@@ -682,7 +683,7 @@ function PendientesTab({ reservas, buses, onConfirm }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {reservas.map(r => {
         const cliente = r.clientes?.empresa ?? r.clientes?.nombre ?? '—'
-        const busItems = r.reserva_items.filter(it => it.soportes?.tipo === 'bus' || it.soportes?.bus_id)
+        const busItems = r.items.filter(it => it.soportes?.tipo === 'bus' || it.soportes?.bus_id)
         return (
           <div key={r.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -730,12 +731,12 @@ function PendientesTab({ reservas, buses, onConfirm }: {
 }
 
 function ConfirmReservaModal({ reserva, conflicts, overrides: initialOverrides, buses, onClose, onConflicts, onConfirmed }: {
-  reserva: ReservaPendiente
+  reserva: VentaPendiente
   conflicts: { itemId: string; busNumero: string }[]
   overrides: Record<string, string>
   buses: Bus[]
   onClose: () => void
-  onConflicts: (conflicts: { itemId: string; busNumero: string }[], reserva: ReservaPendiente) => void
+  onConflicts: (conflicts: { itemId: string; busNumero: string }[], reserva: VentaPendiente) => void
   onConfirmed: (id: string) => void
 }) {
   const [overrides, setOverrides] = useState<Record<string, string>>(initialOverrides)
@@ -749,10 +750,10 @@ function ConfirmReservaModal({ reserva, conflicts, overrides: initialOverrides, 
         .filter(([, v]) => v)
         .map(([itemId, busId]) => ({ itemId, busId }))
 
-      const res = await fetch(`/api/reservas/${reserva.id}`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/ordenes/${reserva.id}/asignar-buses`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'confirmada', busOverrides }),
+        body: JSON.stringify({ busOverrides }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'Error al confirmar'); return }
@@ -765,7 +766,7 @@ function ConfirmReservaModal({ reserva, conflicts, overrides: initialOverrides, 
     } finally { setSaving(false) }
   }
 
-  const busItems = reserva.reserva_items.filter(it => it.soportes?.tipo === 'bus' || it.soportes?.bus_id)
+  const busItems = reserva.items.filter(it => it.soportes?.tipo === 'bus' || it.soportes?.bus_id)
   const conflictSet = new Set(conflicts.map(c => c.itemId))
 
   return (

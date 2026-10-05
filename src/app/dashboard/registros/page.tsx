@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import RegistrosClient from './RegistrosClient'
 
 export const dynamic = 'force-dynamic'
@@ -12,19 +13,21 @@ export default async function RegistrosPage() {
 
   const supabase = createServerClient()
 
-  const [reservasRes, soportesRes] = await Promise.all([
+  // Los registros documentan lo vendido, así que se listan las ventas vivas.
+  // Antes se listaban reservas: una venta sin bloqueo previo no aparecía acá.
+  const [ventasRes, soportesRes] = await Promise.all([
     supabase
-      .from('reservas')
+      .from('ordenes_venta')
       .select(`
-        id, fecha_desde, fecha_hasta, estado,
+        id, numero, estado, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
         clientes(id, nombre, empresa),
-        reserva_items(
+        orden_items(
           id, soporte_id,
           soportes(id, nombre, tipo, es_digital)
         )
       `)
-      .in('estado', ['aprobada', 'confirmada'])
-      .order('fecha_desde', { ascending: false }),
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
+      .order('fecha_alta_prevista', { ascending: false }),
     supabase
       .from('soportes')
       .select('id, nombre, tipo, es_digital')
@@ -32,9 +35,20 @@ export default async function RegistrosPage() {
       .order('nombre'),
   ])
 
+  // Se aplana a la forma que usa la pantalla; la fecha real manda cuando existe.
+  const reservas = (ventasRes.data ?? []).map((v: any) => ({
+    id: v.id,
+    numero: v.numero,
+    estado: v.estado,
+    fecha_desde: v.fecha_alta_real ?? v.fecha_alta_prevista ?? '',
+    fecha_hasta: v.fecha_baja_real ?? v.fecha_baja_prevista ?? '',
+    clientes: Array.isArray(v.clientes) ? (v.clientes[0] ?? null) : v.clientes,
+    reserva_items: v.orden_items ?? [],
+  }))
+
   return (
     <RegistrosClient
-      reservas={(reservasRes.data ?? []) as unknown as Parameters<typeof RegistrosClient>[0]['reservas']}
+      reservas={reservas as unknown as Parameters<typeof RegistrosClient>[0]['reservas']}
       soportes={soportesRes.data ?? []}
       userId={session.user.id}
       userRol={session.user.rol}

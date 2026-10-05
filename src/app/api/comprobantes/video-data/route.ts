@@ -48,29 +48,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
-  const reservaId = req.nextUrl.searchParams.get('reserva_id')
-  if (!reservaId) return NextResponse.json({ error: 'reserva_id requerido' }, { status: 400 })
+  const ordenId = req.nextUrl.searchParams.get('orden_id') ?? req.nextUrl.searchParams.get('reserva_id')
+  if (!ordenId) return NextResponse.json({ error: 'orden_id requerido' }, { status: 400 })
 
   const supabase = createServerClient()
 
   const { data: reserva } = await supabase
-    .from('reservas')
+    .from('ordenes_venta')
     .select(`
-      id, fecha_desde, fecha_hasta,
+      id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
       clientes(nombre, empresa),
-      reserva_items(
-        soporte_id, fecha_alta_real, fecha_baja_real,
+      orden_items(
+        soporte_id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
         soportes(id, nombre, categoria, ubicacion, es_digital, bus_id)
       )
     `)
-    .eq('id', reservaId)
+    .eq('id', ordenId)
     .single()
 
-  if (!reserva) return NextResponse.json({ error: 'Reserva no encontrada' }, { status: 404 })
+  if (!reserva) return NextResponse.json({ error: 'Orden de venta no encontrada' }, { status: 404 })
 
-  const items = reserva.reserva_items as unknown as Array<{
+  const items = reserva.orden_items as unknown as Array<{
     soporte_id: string
+    fecha_alta_prevista: string | null
     fecha_alta_real: string | null
+    fecha_baja_prevista: string | null
     fecha_baja_real: string | null
     soportes: SoporteInfo | null
   }>
@@ -82,7 +84,7 @@ export async function GET(req: NextRequest) {
   const { data: registros } = await supabase
     .from('registros')
     .select('soporte_id, storage_path, tipo, fecha_registro')
-    .eq('reserva_id', reservaId)
+    .eq('orden_id', ordenId)
     .eq('tipo', 'video')
     .in('soporte_id', digitales.map(it => it.soporte_id))
     .order('fecha_registro')
@@ -93,8 +95,8 @@ export async function GET(req: NextRequest) {
     const item = infoPorSoporte.get(r.soporte_id)
     const sop = item?.soportes
     // La fecha real de instalación manda sobre la provisoria de la reserva.
-    const desde = item?.fecha_alta_real ?? reserva.fecha_desde
-    const hasta = item?.fecha_baja_real ?? reserva.fecha_hasta
+    const desde = item?.fecha_alta_real ?? item?.fecha_alta_prevista ?? reserva.fecha_alta_real ?? reserva.fecha_alta_prevista
+    const hasta = item?.fecha_baja_real ?? item?.fecha_baja_prevista ?? reserva.fecha_baja_real ?? reserva.fecha_baja_prevista
     return {
       url: `${base}/${r.storage_path}`,
       rotulo: (sop?.categoria ?? 'LED').toUpperCase(),
@@ -107,9 +109,9 @@ export async function GET(req: NextRequest) {
   const cli = Array.isArray(reserva.clientes) ? reserva.clientes[0] : reserva.clientes
 
   return NextResponse.json({
-    reserva_id: reserva.id,
+    orden_id: reserva.id,
     cliente: cli?.empresa ?? cli?.nombre ?? 'Cliente',
-    periodo: periodo(reserva.fecha_desde, reserva.fecha_hasta),
+    periodo: periodo(reserva.fecha_alta_real ?? reserva.fecha_alta_prevista, reserva.fecha_baja_real ?? reserva.fecha_baja_prevista),
     clips,
   })
 }

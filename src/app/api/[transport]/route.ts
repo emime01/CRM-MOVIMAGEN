@@ -729,9 +729,9 @@ const handler = createMcpHandler(
         const r = await aceptarCotizacion(supabase, (validas[0] as any).id, me.perfilId ?? undefined)
         if (!r.ok) return text(`No se pudo: ${r.error}`)
         if (r.ordenError) {
-          return text(`✓ ${r.numero ?? 'Cotización'} marcada como ACEPTADA. ${r.itemsReservados} soporte(s) reservados.\n⚠ No se pudo generar la OIC: ${r.ordenError}\nSe puede reintentar desde la web con "Crear OIC".`)
+          return text(`✓ ${r.numero ?? 'Cotización'} marcada como ACEPTADA. ${r.itemsReservados} soporte(s) en la campaña.\n⚠ No se pudo generar la OIC: ${r.ordenError}\nSe puede reintentar desde la web con "Crear OIC".`)
         }
-        return text(`✓ ${r.numero ?? 'Cotización'} ACEPTADA — venta cerrada.\n   · ${r.itemsReservados} soporte(s) reservados\n   · OIC #${r.ordenNumero ?? '—'} generada, esperando aprobación del gerente`)
+        return text(`✓ ${r.numero ?? 'Cotización'} ACEPTADA — venta cerrada.\n   · ${r.itemsReservados} soporte(s) en la campaña\n   · OIC #${r.ordenNumero ?? '—'} generada, esperando aprobación del gerente`)
       },
     )
 
