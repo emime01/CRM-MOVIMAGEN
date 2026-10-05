@@ -39,10 +39,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   if (!docId) return NextResponse.json({ error: 'docId requerido' }, { status: 400 })
 
   const supabase = createServerClient()
+  // Se ata el documento a la orden de la URL: sin esto, con sólo saber un
+  // docId se podía borrar el adjunto de cualquier venta.
   const { error } = await supabase
     .from('orden_documentos')
     .delete()
     .eq('id', docId)
+    .eq('orden_id', params.id)
     .eq('orden_id', params.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

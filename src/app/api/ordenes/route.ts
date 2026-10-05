@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 interface OrdenItem {
   soporteId: string
@@ -50,6 +51,10 @@ export async function POST(req: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   }
+  // Antes sólo pedía sesión: arte u operaciones podían crear ventas.
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
+    return NextResponse.json({ error: 'Tu rol no puede crear ventas' }, { status: 403 })
+  }
 
   let body: OrdenPayload
   try {
@@ -63,7 +68,12 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createServerClient()
-  const vendedorId = body.asignadoAId || session.user.id
+
+  // Un vendedor sólo crea ventas a su nombre. `asignadoAId` venía sin validar,
+  // así que cualquiera podía cargar una venta a nombre de otro vendedor y
+  // ensuciarle los números y la comisión.
+  const puedeAsignar = puede(session.user.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
+  const vendedorId = puedeAsignar ? (body.asignadoAId || session.user.id) : session.user.id
 
   const montoTotal = (body.items ?? []).reduce((sum, item) => {
     const lineTotal = item.precioUnitario * item.cantidad * item.semanas * (1 - (item.descuentoPct ?? 0) / 100)

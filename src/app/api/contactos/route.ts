@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { pickAllowed } from '@/lib/api/safe-patch'
+import { puede } from '@/lib/auth/roles'
+
+const CONTACTO_FIELDS = [
+  'cuenta_id', 'tipo_cuenta', 'nombres', 'apellidos', 'cargo',
+  'telefono1', 'telefono2', 'mail1', 'mail2',
+  'cumple_dia', 'cumple_mes', 'notas', 'activo',
+] as const
+
+// Los contactos son la agenda comercial: los maneja quien vende o asiste.
+const CONTACTO_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
+
 
 export const dynamic = 'force-dynamic'
 
@@ -71,6 +83,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  // Antes sólo pedía sesión, y la importación masiva además pisa contactos
+  // existentes buscándolos por mail.
+  if (!puede(session.user.rol, CONTACTO_ROLES)) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
 
   const body = await req.json()
   const supabase = createServerClient()
@@ -128,8 +145,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ results, total: results.length })
   }
 
-  // Single insert
-  const { data, error } = await supabase.from('contactos').insert(body).select().single()
+  // Single insert — allowlist para evitar mass-assignment
+  const { data, error } = await supabase.from('contactos').insert(pickAllowed(body, CONTACTO_FIELDS)).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, { status: 201 })
 }

@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import EmpresaConfigForm from './EmpresaConfigForm'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,11 @@ const ROL_LABELS: Record<string, string> = {
 export default async function ConfigPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  // En el menú esta pantalla es sólo de administración, pero la página no lo
+  // chequeaba: cualquiera que escribiera la URL (o apretara el modo prueba,
+  // que muestra el menú completo) veía la nómina con emails y roles, el
+  // catálogo de soportes y los objetivos de todos los vendedores.
+  if (!puede(session.user.rol, ['administracion', 'gerente_comercial'])) redirect('/dashboard')
   const supabase = createServerClient()
 
   const [{ data: perfiles }, { data: soportes }, { data: objetivos }, { data: empresa }] = await Promise.all([

@@ -507,7 +507,14 @@ async function executeTool(name: string, input: Record<string, any>, supabase: R
     case 'consultar_leads':          return runLeads(supabase, userId, rol, input as any)
     case 'buscar_cliente':           return runBuscarCliente(supabase, input as any)
     case 'resumen_ventas':           return runResumenVentas(supabase, userId, rol, input as any)
-    case 'consultar_deudores':       return runDeudores(supabase, input as any)
+    // La cartera morosa es de administración y gerencia: la pantalla de
+    // Deudores redirige a cualquier otro rol y /api/cobranza lo exige. El
+    // chat la entregaba a cualquiera que supiera preguntar.
+    case 'consultar_deudores':
+      if (!puede(rol, ['administracion', 'gerente_comercial'])) {
+        return 'La cartera de deudores es información de administración. Pedísela a Belén o a Gonzalo.'
+      }
+      return runDeudores(supabase, input as any)
     case 'estado_registros':         return runEstadoRegistros(supabase)
     case 'buscar_emails':            return runBuscarEmails(supabase, userId, input as any)
     default: return `Herramienta desconocida: ${name}`
