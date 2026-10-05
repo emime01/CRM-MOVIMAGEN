@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { areasDeTarea } from '@/lib/auth/roles'
 
 /**
  * GET /api/tasks?rol=&estado=&limite=
@@ -19,8 +20,10 @@ export async function GET(req: NextRequest) {
   const estado = searchParams.get('estado')
   const limite = Number(searchParams.get('limite') ?? 100)
 
-  // arte / operaciones: forzar a ver solo su rol
-  const effectiveRol = (userRol === 'arte' || userRol === 'operaciones') ? userRol : filterRol
+  // arte y operaciones ven sólo lo suyo; el resto (gerencia, administración)
+  // ve todo y puede filtrar. El rol mixto atiende las de operaciones.
+  const areas = areasDeTarea(userRol)
+  const effectiveRol = areas.length > 0 ? areas[0] : filterRol
 
   const supabase = createServerClient()
 

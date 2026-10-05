@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 import type { BusPhotoItem, BusSoporteGroup } from '@/lib/comprobantes/pdf'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const canGenerate = ['operaciones', 'administracion', 'asistente_ventas', 'gerente_comercial'].includes(session.user.rol)
+  const canGenerate = puede(session.user.rol, ['operaciones', 'administracion', 'asistente_ventas', 'gerente_comercial'])
   if (!canGenerate) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const { reserva_id } = await req.json()

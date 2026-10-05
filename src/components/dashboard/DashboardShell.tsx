@@ -1,5 +1,7 @@
 'use client'
 
+import { puede } from '@/lib/auth/roles'
+
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -86,7 +88,7 @@ function renderMarkdown(text: string): React.ReactNode {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion'
+type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion' | 'asistente_ventas_ops'
 
 interface NavItem {
   href: string
@@ -153,6 +155,7 @@ const PAGE_TITLES: Record<string, string> = {
 const ROL_LABELS: Record<Rol, string> = {
   vendedor: 'Vendedor',
   asistente_ventas: 'Asistente de Ventas',
+  asistente_ventas_ops: 'Asistente Ventas y Operaciones',
   gerente_comercial: 'Gerente Comercial',
   operaciones: 'Operaciones',
   arte: 'Arte',
@@ -323,7 +326,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   // Cerrar el sidebar mobile al navegar
   useEffect(() => { setSidebarOpen(false) }, [pathname])
 
-  const navItems = testMode ? NAV_ITEMS : NAV_ITEMS.filter(item => item.roles.includes(user.rol))
+  // puede() expande el rol mixto a ventas + operaciones, así que ve las
+  // secciones de las dos áreas sin tener que listarlo en cada ítem.
+  const navItems = testMode ? NAV_ITEMS : NAV_ITEMS.filter(item => puede(user.rol, item.roles))
   const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
 
   const isActive = (href: string) => {

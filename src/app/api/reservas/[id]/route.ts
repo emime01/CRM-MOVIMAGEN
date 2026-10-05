@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 import { asignarBusesYDetectarConflictos } from '@/lib/reservas/confirmar'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -9,9 +10,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const rol = session.user.rol
-  const canApprove = ['asistente_ventas', 'gerente_comercial', 'administracion'].includes(rol)
-  const canConfirm = ['operaciones', 'administracion'].includes(rol)
-  const isManager = ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'].includes(rol)
+  const canApprove = puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
+  const canConfirm = puede(rol, ['operaciones', 'administracion'])
+  const isManager = puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'])
 
   let body: { estado: string; comentario?: string; busOverrides?: { itemId: string; busId: string }[] }
   try { body = await req.json() } catch {

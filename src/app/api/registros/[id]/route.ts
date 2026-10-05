@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -22,7 +23,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const isVendor = session.user.rol === 'vendedor'
   const canDelete = !isVendor && (
     session.user.id === registro.subido_por ||
-    ['administracion', 'operaciones'].includes(session.user.rol)
+    puede(session.user.rol, ['administracion', 'operaciones'])
   )
   if (!canDelete) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 

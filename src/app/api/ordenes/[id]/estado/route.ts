@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 import { generarTasksDeOrden } from '@/lib/tasks/generar-desde-orden'
 import { sincronizarReservaConOrden } from '@/lib/reservas/confirmar'
 
@@ -43,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Validar transición por rol/ownership
   const permiso = PERMISO_POR_ESTADO[body.estado]
-  const tieneRol = permiso?.roles.includes(session.user.rol)
+  const tieneRol = puede(session.user.rol, permiso?.roles ?? [])
   let esDueño = false
   if (!tieneRol && permiso?.self) {
     const { data: orden } = await supabase.from('ordenes_venta').select('vendedor_id').eq('id', params.id).maybeSingle()

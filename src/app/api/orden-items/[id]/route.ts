@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 const ESTADOS_GRABADO = ['pendiente', 'grabado']
 const ESTADOS_PRODUCCION = ['pendiente', 'en_produccion', 'producido', 'instalado']
@@ -20,7 +21,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const canEdit = ['operaciones', 'administracion'].includes(session.user.rol)
+  const canEdit = puede(session.user.rol, ['operaciones', 'administracion'])
   if (!canEdit) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   let body: {
