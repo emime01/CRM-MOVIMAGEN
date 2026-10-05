@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const reservaId = searchParams.get('reserva_id')
+  // Los registros cuelgan de la venta. Se acepta reserva_id por compatibilidad
+  // con enlaces viejos mientras termina la migración.
+  const ordenId = searchParams.get('orden_id') ?? searchParams.get('reserva_id')
   const soporteId = searchParams.get('soporte_id')
 
   const supabase = createServerClient()
@@ -20,7 +22,7 @@ export async function GET(req: NextRequest) {
     .select('*, soportes(nombre, tipo, es_digital), perfiles(nombre)')
     .order('created_at', { ascending: false })
 
-  if (reservaId) query = query.eq('reserva_id', reservaId)
+  if (ordenId) query = query.eq('orden_id', ordenId)
   if (soporteId) query = query.eq('soporte_id', soporteId)
 
   const { data, error } = await query
@@ -37,7 +39,7 @@ export async function POST(req: NextRequest) {
   if (!canUpload) return NextResponse.json({ error: 'Sin permisos para subir registros' }, { status: 403 })
 
   const body = await req.json()
-  const { soporte_id, reserva_id, tipo, storage_path, nombre_archivo, notas, fecha_registro } = body
+  const { soporte_id, orden_id, tipo, storage_path, nombre_archivo, notas, fecha_registro } = body
 
   if (!soporte_id || !tipo || !storage_path) {
     return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
     .from('registros')
     .insert({
       soporte_id,
-      reserva_id: reserva_id || null,
+      orden_id: orden_id || null,
       tipo,
       storage_path,
       nombre_archivo: nombre_archivo || null,

@@ -18,7 +18,7 @@ interface Reserva {
 interface Registro {
   id: string
   soporte_id: string
-  reserva_id: string | null
+  orden_id: string | null
   tipo: 'foto' | 'video'
   storage_path: string
   nombre_archivo: string | null
@@ -70,7 +70,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
   async function handleGenerarVideo(reservaId: string) {
     setVideoProgreso(prev => ({ ...prev, [reservaId]: { ratio: 0, detalle: 'Buscando los videos…' } }))
     try {
-      const resDatos = await fetch(`/api/comprobantes/video-data?reserva_id=${reservaId}`)
+      const resDatos = await fetch(`/api/comprobantes/video-data?orden_id=${reservaId}`)
       if (!resDatos.ok) {
         const err = await resDatos.json().catch(() => ({ error: 'Error desconocido' }))
         alert(err.error ?? 'No se pudieron traer los datos del video')
@@ -93,7 +93,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
       const resUp = await fetch('/api/comprobantes/video-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reserva_id: reservaId }),
+        body: JSON.stringify({ orden_id: reservaId }),
       })
       if (!resUp.ok) {
         const err = await resUp.json().catch(() => ({ error: 'Error desconocido' }))
@@ -130,7 +130,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
       const res = await fetch('/api/comprobantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reserva_id: reservaId }),
+        body: JSON.stringify({ orden_id: reservaId }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Error desconocido' }))
@@ -173,7 +173,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
     const key = `${soporteId}__${reservaId}`
     if (loadedKeys.has(key)) return
     setLoadedKeys(prev => new Set(prev).add(key))
-    const res = await fetch(`/api/registros?soporte_id=${soporteId}&reserva_id=${reservaId}`)
+    const res = await fetch(`/api/registros?soporte_id=${soporteId}&orden_id=${reservaId}`)
     if (!res.ok) return
     const data: Registro[] = await res.json()
     setRegistrosMap(prev => ({ ...prev, [key]: data }))
@@ -195,7 +195,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
       const res = await fetch('/api/registros', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soporte_id: soporteId, reserva_id: reservaId, tipo, storage_path: path, nombre_archivo: file.name }),
+        body: JSON.stringify({ soporte_id: soporteId, orden_id: reservaId, tipo, storage_path: path, nombre_archivo: file.name }),
       })
       if (!res.ok) { alert('Error guardando registro'); continue }
       const created: Registro = await res.json()

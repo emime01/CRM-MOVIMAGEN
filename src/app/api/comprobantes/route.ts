@@ -30,36 +30,43 @@ export async function POST(req: NextRequest) {
   const canGenerate = puede(session.user.rol, ['operaciones', 'administracion', 'asistente_ventas', 'gerente_comercial'])
   if (!canGenerate) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  const { reserva_id } = await req.json()
-  if (!reserva_id) return NextResponse.json({ error: 'reserva_id requerido' }, { status: 400 })
+  // El comprobante documenta lo que se vendió, así que cuelga de la orden de
+  // venta. Antes colgaba de la reserva, que es un bloqueo opcional y previo:
+  // una venta sin bloqueo se quedaba sin comprobante posible.
+  const body = await req.json()
+  const orden_id: string | undefined = body.orden_id ?? body.reserva_id
+  if (!orden_id) return NextResponse.json({ error: 'orden_id requerido' }, { status: 400 })
 
   const supabase = createServerClient()
 
   const { data: reserva } = await supabase
-    .from('reservas')
+    .from('ordenes_venta')
     .select(`
-      id, fecha_desde, fecha_hasta,
+      id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
       clientes(nombre, empresa),
-      reserva_items(
-        soporte_id,
+      orden_items(
+        soporte_id, bus_id,
         soportes(id, nombre, es_digital, bus_id, buses(numero))
       )
     `)
-    .eq('id', reserva_id)
+    .eq('id', orden_id)
     .single()
 
-  if (!reserva) return NextResponse.json({ error: 'Reserva no encontrada' }, { status: 404 })
+  if (!reserva) return NextResponse.json({ error: 'Orden de venta no encontrada' }, { status: 404 })
 
   const cli = Array.isArray(reserva.clientes) ? reserva.clientes[0] : reserva.clientes
+  // Manda la fecha real cuando existe: el comprobante muestra lo que pasó.
+  const fechaDesde = reserva.fecha_alta_real ?? reserva.fecha_alta_prevista ?? ''
+  const fechaHasta = reserva.fecha_baja_real ?? reserva.fecha_baja_prevista ?? ''
   const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'Cliente'
-  const numeroCampana = reserva_id.slice(0, 8)
+  const numeroCampana = orden_id.slice(0, 8)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const registrosBase = `${supabaseUrl}/storage/v1/object/public/registros`
   const assetsBase = `${supabaseUrl}/storage/v1/object/public/assets`
   const introUrl = `${assetsBase}/comprobantes/intro.mp4`
   const outroUrl = `${assetsBase}/comprobantes/outro.mp4`
 
-  const items = (reserva.reserva_items as unknown as Array<{
+  const items = (reserva.orden_items as unknown as Array<{
     soporte_id: string
     soportes: SoporteInfo | null
   }>)
@@ -69,7 +76,7 @@ export async function POST(req: NextRequest) {
     .from('registros')
     .select('*')
     .in('soporte_id', soporteIds)
-    .eq('reserva_id', reserva_id)
+    .eq('orden_id', orden_id)
     .order('fecha_registro')
 
   const soporteMap = new Map<string, SoporteInfo | null>(items.map(it => [it.soporte_id, it.soportes]))
@@ -113,10 +120,10 @@ export async function POST(req: NextRequest) {
 
       const buffer = await generateBusPdfComprobante({
         cliente: clienteNombre, numeroCampana,
-        fechaDesde: reserva.fecha_desde, fechaHasta: reserva.fecha_hasta,
+        fechaDesde: fechaDesde, fechaHasta: fechaHasta,
         grupos,
       })
-      const busPath = `${reserva_id}/comprobante_buses.pdf`
+      const busPath = `${orden_id}/comprobante_buses.pdf`
       const { error: upErr } = await supabase.storage.from('comprobantes').upload(busPath, buffer, { contentType: 'application/pdf', upsert: true })
       if (upErr) throw new Error(`Upload falló: ${upErr.message}`)
       generated.push({ tipo: 'pdf_buses', path: busPath })
@@ -137,10 +144,10 @@ export async function POST(req: NextRequest) {
       }))
       const buffer = await generateStaticPdfComprobante({
         cliente: clienteNombre, numeroCampana,
-        fechaDesde: reserva.fecha_desde, fechaHasta: reserva.fecha_hasta,
+        fechaDesde: fechaDesde, fechaHasta: fechaHasta,
         fotos,
       })
-      const pdfPath = `${reserva_id}/comprobante_estaticos.pdf`
+      const pdfPath = `${orden_id}/comprobante_estaticos.pdf`
       const { error: upErr } = await supabase.storage.from('comprobantes').upload(pdfPath, buffer, { contentType: 'application/pdf', upsert: true })
       if (upErr) throw new Error(`Upload falló: ${upErr.message}`)
       generated.push({ tipo: 'pdf', path: pdfPath })
@@ -160,10 +167,10 @@ export async function POST(req: NextRequest) {
       }))
       const buffer = await generateVideoComprobante({
         cliente: clienteNombre, numeroCampana,
-        fechaDesde: reserva.fecha_desde, fechaHasta: reserva.fecha_hasta,
+        fechaDesde: fechaDesde, fechaHasta: fechaHasta,
         clips, introUrl, outroUrl,
       })
-      const videoPath = `${reserva_id}/video.mp4`
+      const videoPath = `${orden_id}/video.mp4`
       const { error: upErr } = await supabase.storage.from('comprobantes').upload(videoPath, buffer, { contentType: 'video/mp4', upsert: true })
       if (upErr) throw new Error(`Upload falló: ${upErr.message}`)
       generated.push({ tipo: 'video', path: videoPath })

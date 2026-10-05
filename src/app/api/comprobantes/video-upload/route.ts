@@ -26,16 +26,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
-  const { reserva_id } = await req.json()
-  if (!reserva_id) return NextResponse.json({ error: 'reserva_id requerido' }, { status: 400 })
+  const body = await req.json()
+  const orden_id: string | undefined = body.orden_id ?? body.reserva_id
+  if (!orden_id) return NextResponse.json({ error: 'orden_id requerido' }, { status: 400 })
 
   const supabase = createServerClient()
 
   // Validar que la reserva exista antes de firmar cualquier subida.
-  const { data: reserva } = await supabase.from('reservas').select('id').eq('id', reserva_id).maybeSingle()
-  if (!reserva) return NextResponse.json({ error: 'Reserva no encontrada' }, { status: 404 })
+  const { data: orden } = await supabase.from('ordenes_venta').select('id').eq('id', orden_id).maybeSingle()
+  if (!orden) return NextResponse.json({ error: 'Orden de venta no encontrada' }, { status: 404 })
 
-  const path = `${reserva_id}/comprobante_video.mp4`
+  const path = `${orden_id}/comprobante_video.mp4`
 
   // upsert para poder regenerar el video de una misma reserva.
   const { data, error } = await supabase.storage

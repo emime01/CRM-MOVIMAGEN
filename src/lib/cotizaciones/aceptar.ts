@@ -58,39 +58,13 @@ export async function aceptarCotizacion(
   }
 
   const itemsConSoporte = (propuesta.propuesta_items ?? []).filter((it: any) => it.soporte_id)
-  let reservaId: string | null = null
 
-  if (itemsConSoporte.length > 0) {
-    const { data: reserva } = await supabase
-      .from('reservas')
-      .insert({
-        cliente_id:  propuesta.cliente_id,
-        vendedor_id: propuesta.vendedor_id,
-        lead_id:     propuesta.lead_id,
-        fecha_desde: propuesta.fecha_inicio,
-        fecha_hasta: propuesta.fecha_fin,
-        estado:      'pendiente',
-        notas:       `Auto-creada desde cotización ${propuesta.numero ?? ''}`.trim(),
-      })
-      .select('id')
-      .single()
-
-    reservaId = reserva?.id ?? null
-
-    if (reservaId) {
-      await supabase.from('reserva_items').insert(
-        itemsConSoporte.map((it: any) => ({
-          reserva_id: reservaId,
-          soporte_id: it.soporte_id,
-          cantidad:   it.cantidad_soportes ?? it.cantidad ?? 1,
-        })),
-      )
-
-      // Procedencia de la reserva. Best-effort: si la migración v26 todavía no
-      // corrió, la columna no existe y la venta no debe romperse por esto.
-      await supabase.from('reservas').update({ propuesta_id: propuestaId }).eq('id', reservaId)
-    }
-  }
+  // No se crea ninguna reserva acá. La reserva es un BLOQUEO opcional y previo
+  // a la venta: el vendedor retiene un espacio con riesgo de perderse mientras
+  // espera la orden de compra del cliente. Crearla con cada venta hacía que la
+  // misma campaña ocupara doble en la planilla de disponibilidad, y convertía
+  // en obligatorio un paso que en la práctica casi nunca se pide.
+  // El espacio queda ocupado por la orden de venta, que se crea abajo.
 
   // La OIC sale en el mismo movimiento y queda esperando al gerente.
   const orden = await crearOrdenDesdePropuesta(supabase, propuestaId, userId ?? propuesta.vendedor_id)
@@ -98,7 +72,7 @@ export async function aceptarCotizacion(
   return {
     ok: true,
     numero: propuesta.numero ?? null,
-    reservaId,
+    reservaId: null,
     itemsReservados: itemsConSoporte.length,
     ordenId: orden.ordenId ?? null,
     ordenNumero: orden.numero ?? null,
