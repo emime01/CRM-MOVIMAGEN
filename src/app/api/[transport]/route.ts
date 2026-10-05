@@ -234,12 +234,12 @@ const handler = createMcpHandler(
         const me = ident(extra)
         const supabase = createServerClient()
         const st = estado ?? 'pendiente'
-        let q = supabase.from('reservas').select('fecha_desde, fecha_hasta, estado, clientes(nombre, empresa), perfiles(nombre), reserva_items(soportes(nombre))').eq('estado', st).order('created_at', { ascending: false }).limit(30)
+        let q = supabase.from('reservas').select('fecha_desde, fecha_hasta, estado, clientes(nombre, empresa), vendedor:perfiles!reservas_vendedor_id_fkey(nombre), reserva_items(soportes(nombre))').eq('estado', st).order('created_at', { ascending: false }).limit(30)
         if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
         const { data } = await q
         if (!data?.length) return text(`No hay reservas en estado "${st}".`)
         const body = data.map((r: any) => {
-          const cli = first<any>(r.clientes); const v = first<any>(r.perfiles)
+          const cli = first<any>(r.clientes); const v = first<any>(r.vendedor)
           const soportes = (r.reserva_items ?? []).map((i: any) => first<any>(i.soportes)?.nombre).filter(Boolean).join(', ') || '—'
           return `• ${cli?.empresa ?? cli?.nombre ?? '—'} [${(r.estado ?? '').toUpperCase()}]\n   Soportes: ${soportes}\n   ${fmtDate(r.fecha_desde)} → ${fmtDate(r.fecha_hasta)} · Vendedor: ${v?.nombre ?? '—'}`
         }).join('\n\n')
@@ -965,7 +965,7 @@ const handler = createMcpHandler(
           return text('Tu rol no permite marcar cotizaciones ganadoras.')
         }
         const supabase = createServerClient()
-        let q = supabase.from('propuestas').select('id, lead_id, estado, vendedor_id, clientes(nombre, empresa), leads(id, estado)').ilike('numero', numero.trim())
+        let q = supabase.from('propuestas').select('id, lead_id, estado, vendedor_id, clientes(nombre, empresa)').ilike('numero', numero.trim())
         if (esVendedor(me) && me.perfilId) q = q.eq('vendedor_id', me.perfilId)
         const { data: propuesta } = await q.maybeSingle()
         if (!propuesta) return text(`No encontré la cotización ${numero}${esVendedor(me) ? ' entre las tuyas' : ''}.`)

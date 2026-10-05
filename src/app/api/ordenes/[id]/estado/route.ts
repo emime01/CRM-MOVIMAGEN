@@ -6,6 +6,7 @@ import { puede } from '@/lib/auth/roles'
 import { generarTasksDeOrden } from '@/lib/tasks/generar-desde-orden'
 import { cerrarBloqueoDeVenta } from '@/lib/reservas/confirmar'
 import { asignarBusesDeOrden } from '@/lib/ventas/asignar-buses'
+import { detectarSobreventa, textoSobreventa } from '@/lib/ventas/sobreventa'
 
 import {
   ESTADOS_VENTA, PERMISO_POR_ESTADO, MOVIDO_A_SU_ENDPOINT, estaCerrada,
@@ -98,6 +99,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     warnings.push(...buses.warnings)
 
     bloqueoCerrado = (await cerrarBloqueoDeVenta(supabase, params.id, session.user.id)).estado
+
+    // Avisar si se comprometió más espacio del que hay. No frena la
+    // aprobación —a veces se sobrevende a propósito y se arregla corriendo la
+    // instalación—, pero antes no lo decía nadie en ningún lado.
+    for (const s of await detectarSobreventa(supabase, params.id)) {
+      warnings.push(textoSobreventa(s))
+    }
   }
 
   // Aviso inmediato al gerente cuando una OIC queda esperando su aprobación

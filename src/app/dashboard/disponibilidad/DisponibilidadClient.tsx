@@ -77,6 +77,9 @@ function OccupancyBar({ pct }: { pct: number }) {
 function SoporteCard({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; onReservar: () => void; onShowDetail: () => void }) {
   const icon = getCatIcon(s)
   const colors = {
+    // Sobrevendido se ve distinto de ocupado a propósito: antes eran iguales
+    // en pantalla y un espacio vendido dos veces pasaba desapercibido.
+    sobrevendido: { border: '#dc2626', top: '#991b1b', badge: { bg: '#dc2626', color: '#fff', label: 'SOBREVENDIDO' } },
     ocupado:  { border: '#fecaca', top: '#dc2626', badge: { bg: 'rgba(220,38,38,0.1)',  color: '#dc2626', label: 'OCUPADO'  } },
     parcial:  { border: '#fde68a', top: '#d97706', badge: { bg: 'rgba(217,119,6,0.12)', color: '#b45309', label: 'PARCIAL'  } },
     libre:    { border: '#bbf7d0', top: '#16a34a', badge: { bg: 'rgba(21,128,61,0.1)',  color: '#15803d', label: 'LIBRE'    } },
@@ -117,7 +120,11 @@ function SoporteCard({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; onR
 
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 11, color: '#6e6a62' }}>{s.reservado}/{s.cap} <span style={{ color: '#9a9895' }}>ocupados</span></span>
+            <span style={{ fontSize: 11, color: s.sobreventa > 0 ? '#991b1b' : '#6e6a62', fontWeight: s.sobreventa > 0 ? 700 : 400 }}>
+              {s.reservado}/{s.cap} <span style={{ color: s.sobreventa > 0 ? '#991b1b' : '#9a9895' }}>
+                {s.sobreventa > 0 ? `ocupados · ${s.sobreventa} de más` : 'ocupados'}
+              </span>
+            </span>
             <span style={{ fontSize: 11, fontWeight: 700, color: colors.top }}>{s.pct}%</span>
           </div>
           <OccupancyBar pct={s.pct} />
@@ -146,6 +153,7 @@ function SoporteCard({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; onR
 function SoporteListRow({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; onReservar: () => void; onShowDetail: () => void }) {
   const icon = getCatIcon(s)
   const badgeCfg = {
+    sobrevendido: { bg: '#dc2626', color: '#fff', label: 'SOBREVENDIDO' },
     ocupado:  { bg: 'rgba(220,38,38,0.1)',  color: '#dc2626', label: 'OCUPADO'  },
     parcial:  { bg: 'rgba(217,119,6,0.12)', color: '#b45309', label: 'PARCIAL'  },
     libre:    { bg: 'rgba(21,128,61,0.1)',  color: '#15803d', label: 'LIBRE'    },

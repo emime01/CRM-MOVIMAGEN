@@ -25,7 +25,7 @@ interface Regalo {
   estado: string
   contacto_id: string
   contactos?: { nombres: string | null; apellidos: string | null; cumple_dia: number | null; cumple_mes: number | null; cuenta_id: string | null; tipo_cuenta: string | null } | null
-  'perfiles!solicitado_por'?: { nombre: string } | null
+  vendedor?: { nombre: string } | null
 }
 
 function BirthdayPanel({ userRol }: { userRol: string }) {
@@ -204,7 +204,7 @@ function BirthdayPanel({ userRol }: { userRol: string }) {
             {pendingRegalos.map(r => {
               const c = r.contactos
               const nombre = c ? [c.nombres, c.apellidos].filter(Boolean).join(' ') : 'Contacto'
-              const vendedor = (r as any)['perfiles!solicitado_por']?.nombre ?? '—'
+              const vendedor = r.vendedor?.nombre ?? '—'
               const fechaCumple = c?.cumple_dia && c?.cumple_mes
                 ? `${c.cumple_dia} de ${MESES_ES[c.cumple_mes - 1] ?? ''}`
                 : null
