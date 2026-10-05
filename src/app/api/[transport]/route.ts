@@ -751,7 +751,7 @@ const handler = createMcpHandler(
       'listar_ordenes',
       'Lista órdenes de venta (OIC) con estado, cliente, vendedor y monto. Útil para ver qué hay pendiente de aprobación.',
       {
-        estado: z.enum(['borrador', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'en_oic', 'facturada', 'cobrada']).optional(),
+        estado: z.enum(['borrador', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'en_oic']).optional(),
         limite: z.number().int().min(1).max(50).optional(),
       },
       async ({ estado, limite }, extra) => {

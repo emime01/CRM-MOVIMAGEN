@@ -118,7 +118,7 @@ const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }>
   pendiente_aprobacion: { bg: '#fff7e5', color: '#b87900', label: 'Pend. aprobación' },
   aprobada:             { bg: '#e8f5ec', color: '#2f7d3f', label: 'Aprobada' },
   rechazada:            { bg: '#fdecec', color: '#c82f2f', label: 'Rechazada' },
-  en_oic:               { bg: '#fff0e3', color: '#d1620e', label: 'En OIC' },
+  en_oic:               { bg: '#fff0e3', color: '#d1620e', label: 'En producción' },
   facturada:            { bg: '#e8f5ec', color: '#2f7d3f', label: 'Facturada' },
   cobrada:              { bg: '#e8f5ec', color: '#2f7d3f', label: 'Cobrada' },
 }

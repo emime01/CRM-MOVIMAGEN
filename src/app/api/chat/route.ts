@@ -227,7 +227,7 @@ async function runOrdenes(supabase: ReturnType<typeof createServerClient>, userI
   const fmt = (n: number, mon: string) => `${mon === 'USD' ? 'U$S' : '$'} ${n.toLocaleString('es-UY', { maximumFractionDigits: 0 })}`
   const estadoLabels: Record<string, string> = {
     borrador: 'Borrador', enviada: 'Enviada', aprobada: 'Aprobada',
-    en_oic: 'En OIC', facturada: 'Facturada', cobrada: 'Cobrada',
+    en_oic: 'En producción', facturada: 'Facturada', cobrada: 'Cobrada',
     rechazada: 'Rechazada', cancelada: 'Cancelada',
   }
 

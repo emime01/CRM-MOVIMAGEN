@@ -21,7 +21,7 @@ const ESTADO_BADGE: Record<EstadoOrden, { bg: string; color: string; label: stri
   pendiente_aprobacion: { bg: 'var(--amber-pale)', color: 'var(--amber)', label: 'Pend. aprobación' },
   aprobada:             { bg: 'var(--green-pale)', color: 'var(--green)', label: 'Aprobada' },
   rechazada:            { bg: 'var(--red-pale)', color: 'var(--red)', label: 'Rechazada' },
-  en_oic:               { bg: 'var(--orange-pale)', color: 'var(--orange)', label: 'En OIC' },
+  en_oic:               { bg: 'var(--orange-pale)', color: 'var(--orange)', label: 'En producción' },
   facturada:            { bg: 'var(--green-pale)', color: 'var(--green)', label: 'Facturada' },
   cobrada:              { bg: 'var(--green-pale)', color: 'var(--green)', label: 'Cobrada' },
 }
