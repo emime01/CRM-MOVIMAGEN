@@ -318,30 +318,54 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   }
 
   async function handleFacturar() {
-    // Facturar no cambia el estado de la venta: la producción sigue su curso.
-    await fetch(`/api/ordenes/${orden.id}/facturar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fecha: fechaFacturacion, numero: facturaNumero.trim() || undefined }),
-    })
-    router.refresh()
-    setShowFacturar(false)
-    // Abrir la factura recién emitida (usa los valores recién ingresados,
-    // ya que orden.* todavía no refleja el refresh).
-    generarFactura({ factura_numero: facturaNumero.trim() || undefined, fecha_facturacion: fechaFacturacion })
-    setFacturaNumero('')
+    if (actionLoading) return
+    setActionLoading(true)
+    try {
+      // Facturar no cambia el estado de la venta: la producción sigue su curso.
+      const res = await fetch(`/api/ordenes/${orden.id}/facturar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: fechaFacturacion, numero: facturaNumero.trim() || undefined }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        alert(err?.error ?? 'No se pudo registrar la factura')
+        return
+      }
+      router.refresh()
+      setShowFacturar(false)
+      // Abrir la factura recién emitida (usa los valores recién ingresados,
+      // ya que orden.* todavía no refleja el refresh).
+      generarFactura({ factura_numero: facturaNumero.trim() || undefined, fecha_facturacion: fechaFacturacion })
+      setFacturaNumero('')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   async function handleCobrar() {
-    // El cobro tampoco toca el estado; genera el pago y la comisión.
-    await fetch(`/api/ordenes/${orden.id}/cobrar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fecha: fechaCobro, metodo: metodoPago.trim() || undefined }),
-    })
-    router.refresh()
-    setShowCobrar(false)
-    setMetodoPago('')
+    // Sin este candado, un doble clic mandaba dos cobros y se generaban dos
+    // comisiones por la misma venta.
+    if (actionLoading) return
+    setActionLoading(true)
+    try {
+      // El cobro tampoco toca el estado; genera el pago y la comisión.
+      const res = await fetch(`/api/ordenes/${orden.id}/cobrar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: fechaCobro, metodo: metodoPago.trim() || undefined }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        alert(err?.error ?? 'No se pudo registrar el cobro')
+        return
+      }
+      router.refresh()
+      setShowCobrar(false)
+      setMetodoPago('')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   async function handleUploadDoc() {

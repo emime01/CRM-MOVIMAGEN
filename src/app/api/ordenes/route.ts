@@ -84,6 +84,8 @@ export async function POST(req: NextRequest) {
       moneda: body.moneda,
       estado: body.estado,
       monto_total: montoTotal,
+      // Acá las líneas ya vienen sin IVA, así que el total es el neto.
+      monto_neto: montoTotal,
       fecha_alta_prevista: body.fechaAltaPrevista || null,
       fecha_baja_prevista: body.fechaBajaPrevista || null,
       validez: body.validez || null,

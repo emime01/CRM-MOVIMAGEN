@@ -21,7 +21,7 @@ export default async function DeudoresPage() {
 
   const { data: facturadas } = await supabase
     .from('ordenes_venta')
-    .select('id, numero, monto_total, moneda, estado, created_at, fecha_alta_prevista, clientes(nombre, empresa), perfiles!vendedor_id(nombre)')
+    .select('id, numero, monto_total, moneda, estado, created_at, fecha_alta_prevista, fecha_facturacion, clientes(nombre, empresa), perfiles!vendedor_id(nombre)')
     // Deudor = facturado y sin cobrar. El estado de la venta sigue su propio
     // carril (producción), así que no sirve para esto.
     .not('fecha_facturacion', 'is', null)
@@ -58,7 +58,11 @@ export default async function DeudoresPage() {
       monto_total: o.monto_total as number | null,
       moneda: (o.moneda as string) ?? 'UYU',
       vendedor: vend?.nombre ?? '—',
-      dias: diasDesde(o.created_at as string),
+      // La deuda arranca cuando se factura, no cuando se creó la venta. Con
+      // created_at, una campaña vendida en enero y facturada ayer aparecía
+      // como "Crítico +60 días" el primer día, y su monto entraba en el
+      // "Monto vencido" que se reporta hacia arriba.
+      dias: diasDesde((o.fecha_facturacion ?? o.created_at) as string),
       ultima_gestion: g,
     }
   })

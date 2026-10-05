@@ -57,13 +57,18 @@ export async function GET(req: NextRequest) {
   if (ordenes?.length) {
     const { data: items } = await supabase
       .from('orden_items')
-      .select('soporte_id, cantidad, semanas, precio_unitario')
+      .select('soporte_id, cantidad, semanas, precio_unitario, descuento_pct')
       .in('orden_id', ordenes.map(o => o.id))
 
     for (const item of items ?? []) {
       const shoppingId = soporteShoppingMap[item.soporte_id]
       if (!shoppingId) continue
-      const revenue = Number(item.precio_unitario ?? 0) * Number(item.cantidad ?? 1) * Number(item.semanas ?? 1)
+      // El descuento existe en el ítem y se usa en la factura y en la pantalla
+      // de la venta, pero acá no se aplicaba: el canon salía sobre el precio de
+      // lista, así que al shopping se le liquidaba de más. Se cobró lo
+      // descontado, el canon va sobre eso.
+      const descuento = 1 - (Number(item.descuento_pct ?? 0) / 100)
+      const revenue = Number(item.precio_unitario ?? 0) * Number(item.cantidad ?? 1) * Number(item.semanas ?? 1) * descuento
       revenueMap[shoppingId] = (revenueMap[shoppingId] ?? 0) + revenue
     }
   }
