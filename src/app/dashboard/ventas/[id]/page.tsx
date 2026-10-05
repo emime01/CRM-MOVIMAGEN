@@ -16,7 +16,7 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
     .from('ordenes_venta')
     .select(`
       id, numero, estado, moneda, monto_total, created_at, updated_at,
-      contacto, facturar_a, marca, referencia, validez,
+      contacto, facturar_a, marca, campana, referencia, validez,
       fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real,
       es_canje, incluir_reportes, es_mensualizada,
       tiene_produccion, tiene_digital,

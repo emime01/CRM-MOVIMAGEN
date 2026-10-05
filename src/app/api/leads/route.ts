@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     agenciaId?: string
     vendedorId?: string
     descripcion?: string
+    campana?: string
     montoPotencial?: number
     cuatrimestre?: string
     estado?: string
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
       cliente_id: body.clienteId || null,
       agencia_id: body.agenciaId || null,
       descripcion: body.descripcion || null,
+      campana: body.campana || null,
       monto_potencial: body.montoPotencial ?? null,
       cuatrimestre: body.cuatrimestre || null,
       estado: body.estado || 'nuevo',

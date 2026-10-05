@@ -10,6 +10,7 @@ interface VentaItem { id: string; soporte_id: string; soportes: SoporteInfo | nu
 interface Venta {
   id: string
   numero: number | null
+  campana: string | null
   fecha_desde: string
   fecha_hasta: string
   estado: string
@@ -93,7 +94,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
 
       const { generarVideoComprobante } = await import('@/lib/comprobantes/video-browser')
       const blob = await generarVideoComprobante({
-        intro: { cliente: datos.cliente, campana: '', periodo: datos.periodo },
+        intro: { cliente: datos.cliente, campana: datos.campana ?? '', periodo: datos.periodo },
         clips: datos.clips,
         onProgreso: p => setVideoProgreso(prev => ({ ...prev, [ventaId]: p })),
       })
@@ -258,6 +259,11 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
                   <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
                     {venta.numero ? `#${venta.numero}` : venta.id.slice(0, 8).toUpperCase()}
                   </span>
+                  {venta.campana && (
+                    <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 600, color: 'var(--orange)' }}>
+                      {venta.campana}
+                    </span>
+                  )}
                   <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-muted)' }}>
                     {fmtFecha(venta.fecha_desde)} → {fmtFecha(venta.fecha_hasta)}
                   </span>

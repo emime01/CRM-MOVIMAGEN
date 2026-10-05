@@ -264,6 +264,7 @@ export interface LeadRow {
   cliente_id: string | null
   vendedor_id: string | null
   descripcion: string | null
+  campana: string | null
   monto_potencial: number | null
   cuatrimestre: string | null
   estado: string
@@ -384,6 +385,7 @@ interface ModalState {
 interface LeadFormValues {
   clienteId: string
   descripcion: string
+  campana: string
   montoPotencial: string
   cuatrimestre: string
   estado: EstadoLead
@@ -398,6 +400,7 @@ function emptyForm(userId: string): LeadFormValues {
   return {
     clienteId: '',
     descripcion: '',
+    campana: '',
     montoPotencial: '',
     cuatrimestre: `Q1-${new Date().getFullYear()}`,
     estado: 'nuevo',
@@ -413,6 +416,7 @@ function leadToForm(lead: LeadRow, userId: string): LeadFormValues {
   return {
     clienteId: lead.cliente_id ?? '',
     descripcion: lead.descripcion ?? '',
+    campana: lead.campana ?? '',
     montoPotencial: lead.monto_potencial != null ? String(lead.monto_potencial) : '',
     cuatrimestre: lead.cuatrimestre ?? `Q1-${new Date().getFullYear()}`,
     estado: (lead.estado as EstadoLead) ?? 'nuevo',
@@ -460,6 +464,7 @@ function LeadModal({
     const body: Record<string, unknown> = {
       clienteId: form.clienteId || undefined,
       descripcion: form.descripcion || undefined,
+      campana: form.campana || null,
       montoPotencial: form.montoPotencial !== '' ? Number(form.montoPotencial) : null,
       cuatrimestre: form.cuatrimestre || undefined,
       estado: form.estado,
@@ -584,6 +589,18 @@ function LeadModal({
               value={form.descripcion}
               onChange={e => set('descripcion', e.target.value)}
               placeholder="Descripción del lead..."
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Campaña — se declara acá y baja sola a la cotización, la venta y el comprobante */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Campaña</label>
+            <input
+              type="text"
+              value={form.campana}
+              onChange={e => set('campana', e.target.value)}
+              placeholder="Verano, Lanzamiento, Black Friday..."
               style={inputStyle}
             />
           </div>

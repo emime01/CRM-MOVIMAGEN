@@ -22,6 +22,7 @@ interface OrdenPayload {
   agenciaId?: string
   facturarA?: 'agencia' | 'cliente_final'
   marca?: string
+  campana?: string
   referencia?: string
   validez?: string
   fechaAltaPrevista?: string
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest) {
       contacto: body.contacto || null,
       facturar_a: body.facturarA || 'cliente_final',
       marca: body.marca || null,
+      campana: body.campana || null,
       referencia: body.referencia || null,
       moneda: body.moneda,
       estado: body.estado,

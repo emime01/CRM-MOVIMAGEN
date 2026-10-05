@@ -49,6 +49,7 @@ export interface FacturaData {
   moneda: string
   monto_total: number | null
   marca: string | null
+  campana: string | null
   referencia: string | null
   facturar_a: string | null
   fecha_alta: string | null
@@ -150,7 +151,7 @@ export function facturaHTML(d: FacturaData, emisor: Emisor = EMISOR): string {
     </div>
     <div class="party">
       <div class="lbl">Referencia</div>
-      <div class="name">${d.marca ? esc(d.marca) : '—'}</div>
+      <div class="name">${[d.marca, d.campana].filter(Boolean).map(esc).join(' · ') || '—'}</div>
       ${d.referencia ? `<div class="sub">${esc(d.referencia)}</div>` : ''}
     </div>
   </div>

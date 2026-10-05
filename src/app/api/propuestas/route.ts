@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   const { data: lead } = await supabase
     .from('leads')
-    .select('id, cliente_id, agencia_id, vendedor_id')
+    .select('id, cliente_id, agencia_id, vendedor_id, campana')
     .eq('id', leadId)
     .maybeSingle()
 
@@ -86,6 +86,8 @@ export async function POST(req: NextRequest) {
       lead_id:        leadId,
       cliente_id:     lead.cliente_id,
       agencia_id:     lead.agencia_id ?? null,
+      // La campaña se declara en el lead y viaja sola hasta el comprobante.
+      campana:        lead.campana ?? null,
       vendedor_id:    session.user.id,
       numero,
       nombre:         body.nombre ?? null,

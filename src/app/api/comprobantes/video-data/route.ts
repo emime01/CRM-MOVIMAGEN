@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   const { data: reserva } = await supabase
     .from('ordenes_venta')
     .select(`
-      id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
+      id, campana, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
       clientes(nombre, empresa),
       orden_items(
         soporte_id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
@@ -111,6 +111,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     orden_id: reserva.id,
     cliente: cli?.empresa ?? cli?.nombre ?? 'Cliente',
+    campana: reserva.campana ?? '',
     periodo: periodo(reserva.fecha_alta_real ?? reserva.fecha_alta_prevista, reserva.fecha_baja_real ?? reserva.fecha_baja_prevista),
     clips,
   })

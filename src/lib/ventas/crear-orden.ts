@@ -78,6 +78,10 @@ export async function crearOrdenDesdePropuesta(
       // La agencia viene del lead, pasa por la cotización y llega acá, que es
       // donde se liquidan sus comisiones.
       agencia_id:           propuesta.agencia_id ?? null,
+      // Marca y campaña hacen el mismo recorrido: se cargan una vez arriba y
+      // llegan hasta el comprobante sin que nadie las vuelva a tipear.
+      marca:                propuesta.marca ?? null,
+      campana:              propuesta.campana ?? null,
       vendedor_id:          propuesta.vendedor_id ?? userId,
       numero:               siguienteNumero,
       estado:               ESTADO_INICIAL,
