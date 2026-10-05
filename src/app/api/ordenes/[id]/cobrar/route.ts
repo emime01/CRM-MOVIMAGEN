@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const supabase = createServerClient()
   const { data: orden } = await supabase
     .from('ordenes_venta')
-    .select('id, fecha_facturacion')
+    .select('id, estado, fecha_facturacion')
     .eq('id', params.id)
     .maybeSingle()
   if (!orden) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
@@ -41,6 +41,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     userId: session.user.id,
   })
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+
+  // Facturar deja constancia en el historial y cobrar no dejaba ninguna, así
+  // que la venta mostraba la factura pero no el cobro. Se anota con el estado
+  // que la venta ya tenía: el cobro no la mueve de donde está.
+  await supabase.from('orden_historial').insert({
+    orden_id: params.id,
+    perfil_id: session.user.id,
+    estado_nuevo: orden.estado,
+    comentario: `Cobrada${body.metodo ? ` · ${body.metodo}` : ''}`,
+  })
 
   return NextResponse.json({ ok: true, comision_generada: r.comisionGenerada })
 }
