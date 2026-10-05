@@ -21,7 +21,7 @@ export default async function DeudoresPage() {
 
   const { data: facturadas } = await supabase
     .from('ordenes_venta')
-    .select('id, numero, monto_total, moneda, estado, created_at, fecha_alta_prevista, clientes(nombre, empresa), perfiles(nombre)')
+    .select('id, numero, monto_total, moneda, estado, created_at, fecha_alta_prevista, clientes(nombre, empresa), perfiles!vendedor_id(nombre)')
     // Deudor = facturado y sin cobrar. El estado de la venta sigue su propio
     // carril (producción), así que no sirve para esto.
     .not('fecha_facturacion', 'is', null)

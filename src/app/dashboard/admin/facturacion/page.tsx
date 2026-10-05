@@ -26,7 +26,7 @@ export default async function FacturacionPage() {
   // Facturar dejó de ser un estado de la venta, así que filtrar por estado
   // mostraba toda venta aprobada como pendiente para siempre —aun ya
   // facturada— y la lista de recientes no traía nunca nada.
-  const CAMPOS = 'id, numero, monto_total, moneda, estado, created_at, fecha_facturacion, factura_numero, clientes(nombre, empresa), perfiles(nombre)'
+  const CAMPOS = 'id, numero, monto_total, moneda, estado, created_at, fecha_facturacion, factura_numero, clientes(nombre, empresa), perfiles!vendedor_id(nombre)'
   const [{ data: pendientes }, { data: recientes }] = await Promise.all([
     supabase.from('ordenes_venta')
       .select(CAMPOS)

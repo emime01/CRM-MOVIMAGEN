@@ -28,8 +28,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       lead_id,
       clientes(id, nombre, empresa),
       agencias(id, nombre),
-      perfiles!vendedor_id(id, nombre),
-      perfiles!aprobado_por(id, nombre),
+      vendedor:perfiles!vendedor_id(id, nombre),
+      aprobador:perfiles!aprobado_por(id, nombre),
       orden_items(
         id, cantidad, semanas, salidas, segundos,
         precio_unitario, descuento_pct, nota,
@@ -45,7 +45,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .eq('id', params.id)
     .single()
 
-  if (error || !data) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+  // El error de PostgREST se devolvía como 404 "Orden no encontrada", así que
+  // una consulta mal armada parecía una orden inexistente. Los dos embeds a
+  // perfiles se llamaban igual y la consulta fallaba siempre.
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
 
   return NextResponse.json(data)
 }
