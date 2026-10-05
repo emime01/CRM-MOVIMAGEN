@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 /**
  * PATCH /api/reserva-items/[id]
@@ -15,7 +16,7 @@ import { createServerClient } from '@/lib/supabase-server'
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!['operaciones', 'administracion'].includes(session.user.rol)) {
+  if (!puede(session.user.rol, ['operaciones', 'administracion'])) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 

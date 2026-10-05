@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { puede } from '@/lib/auth/roles'
 import { X, Upload, Trash2, Play, FileText, Film, Loader2 } from 'lucide-react'
 
 interface SoporteInfo { id: string; nombre: string; tipo: string | null; es_digital: boolean | null }
@@ -145,10 +146,10 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
 
   // Vendedores solo pueden ver registros y comprobantes ya generados.
   // Operaciones / administración cargan los registros y generan los comprobantes.
-  const canUpload = ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'].includes(userRol)
+  const canUpload = puede(userRol, ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'])
   const canGenerateComprobante = canUpload
   const canDelete = (reg: Registro) =>
-    canUpload && (reg.subido_por === userId || ['administracion', 'operaciones'].includes(userRol))
+    canUpload && (reg.subido_por === userId || puede(userRol, ['administracion', 'operaciones']))
 
   const reservasFiltradas = useMemo(() => {
     let list = reservas

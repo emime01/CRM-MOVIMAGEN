@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   // Vendedores solo consultan; carga la hace operaciones / administración / ventas internas.
-  const canUpload = ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'].includes(session.user.rol)
+  const canUpload = puede(session.user.rol, ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'])
   if (!canUpload) return NextResponse.json({ error: 'Sin permisos para subir registros' }, { status: 403 })
 
   const body = await req.json()

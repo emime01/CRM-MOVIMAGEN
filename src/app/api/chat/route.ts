@@ -10,6 +10,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const ROL_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
   asistente_ventas: 'Asistente de Ventas',
+  asistente_ventas_ops: 'Asistente Ventas y Operaciones',
   gerente_comercial: 'Gerente Comercial',
   operaciones: 'Operaciones',
   arte: 'Arte',

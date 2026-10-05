@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +11,7 @@ const ROLES_PERMITIDOS = ['arte', 'operaciones', 'administracion']
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!ROLES_PERMITIDOS.includes(session.user.rol)) {
+  if (!puede(session.user.rol, ROLES_PERMITIDOS)) {
     return NextResponse.json({ error: 'Solo arte, operaciones o administración pueden registrar fechas reales' }, { status: 403 })
   }
 

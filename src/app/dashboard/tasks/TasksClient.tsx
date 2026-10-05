@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { puede } from '@/lib/auth/roles'
 import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react'
 
 interface Task {
@@ -75,14 +76,15 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [rolFilter, setRolFilter] = useState<'arte' | 'operaciones' | 'todas'>(
-    userRol === 'arte' ? 'arte' : userRol === 'operaciones' ? 'operaciones' : 'todas',
+    userRol === 'arte' ? 'arte' : puede(userRol, ['operaciones']) ? 'operaciones' : 'todas',
   )
   const [arrastrando, setArrastrando] = useState<string | null>(null)
   const [columnaActiva, setColumnaActiva] = useState<Estado | null>(null)
   const [moviendo, setMoviendo] = useState<string | null>(null)
 
   const canSwitchRol = ['administracion', 'gerente_comercial'].includes(userRol)
-  const canAct = ['arte', 'operaciones', 'administracion'].includes(userRol)
+  // El rol mixto trabaja las tareas de operaciones, así que también puede moverlas.
+  const canAct = puede(userRol, ['arte', 'operaciones', 'administracion'])
 
   const fetchTasks = useCallback(async () => {
     setLoading(true)
