@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { ESTADOS_BLOQUEO_VIVO } from '@/lib/ventas/asignar-buses'
+import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 /**
  * GET /api/disponibilidad/soporte/[id]?fecha=YYYY-MM-DD
  *
  * Devuelve quién ocupa este soporte en la fecha indicada:
- *   - campañas activas (orden_items aprobadas/en_oic/facturadas/cobradas)
+ *   - campañas activas (orden_items de ventas aprobadas)
  *   - reservas pendientes/aprobadas/confirmadas
  *
  * Lo usa el modal "Detalle de campaña" en /dashboard/disponibilidad.
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const campañas = (items ?? [])
     .map((it: any) => {
       const ord = first<any>(it.ordenes_venta)
-      if (!ord || !['aprobada', 'en_oic', 'facturada', 'cobrada'].includes(ord.estado)) return null
+      if (!ord || !(ESTADOS_VENTA_VIVA as unknown as string[]).includes(ord.estado)) return null
       const alta = it.fecha_alta_real ?? it.fecha_alta_prevista ?? ord.fecha_alta_real ?? ord.fecha_alta_prevista
       const baja = it.fecha_baja_real ?? it.fecha_baja_prevista ?? ord.fecha_baja_real ?? ord.fecha_baja_prevista
       if (!alta || !baja || alta > fecha || baja < fecha) return null

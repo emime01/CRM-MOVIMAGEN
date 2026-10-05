@@ -61,7 +61,7 @@ const handler = createMcpHandler(
         const f = fecha ?? today()
         const [{ data: soportes }, { data: ordenes }, { data: reservas }] = await Promise.all([
           supabase.from('soportes').select('id, nombre, categoria, tipo, seccion, ubicacion, cap').eq('activo', true).order('categoria').order('nombre'),
-          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id, cantidad, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)').in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
+          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id, cantidad, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)').in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
           supabase.from('reservas').select('clientes(nombre, empresa), reserva_items(soporte_id, cantidad)').in('estado', ['pendiente', 'aprobada', 'confirmada']).lte('fecha_desde', f).gte('fecha_hasta', f),
         ])
         // Acumular cantidades por soporte (mismo cálculo que el endpoint web).
@@ -751,7 +751,7 @@ const handler = createMcpHandler(
       'listar_ordenes',
       'Lista órdenes de venta (OIC) con estado, cliente, vendedor y monto. Útil para ver qué hay pendiente de aprobación.',
       {
-        estado: z.enum(['borrador', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'en_oic']).optional(),
+        estado: z.enum(['borrador', 'pendiente_aprobacion', 'aprobada', 'rechazada']).optional(),
         limite: z.number().int().min(1).max(50).optional(),
       },
       async ({ estado, limite }, extra) => {
@@ -1035,6 +1035,7 @@ const handler = createMcpHandler(
 //     sha256(token) y nunca el plain; comparamos hashes.
 
 import { createHash, timingSafeEqual } from 'node:crypto'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 function safeEq(a: string, b: string): boolean {
   // timingSafeEqual requiere longitudes iguales; si difieren igual queremos

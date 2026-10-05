@@ -31,7 +31,6 @@ const ESTADO_OPTIONS = [
   { value: 'pendiente_aprobacion', label: 'Pend. aprobación' },
   { value: 'aprobada', label: 'Aprobada' },
   { value: 'rechazada', label: 'Rechazada' },
-  { value: 'en_oic', label: 'En producción' },
   // Facturada y cobrada dejaron de ser estados: son fechas que lleva
   // administración en paralelo. Filtrar por ellas no devolvía nunca nada.
 ]

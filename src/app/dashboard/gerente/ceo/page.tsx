@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,7 +34,7 @@ export default async function CeoDashboardPage() {
     supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
   ])
 
-  const activeStates = ['aprobada', 'en_oic', 'facturada', 'cobrada']
+  const activeStates = ESTADOS_VENTA_VIVA as unknown as string[]
 
   // YTD metrics
   const facturadoYTD = ordenes?.filter(o => activeStates.includes(o.estado ?? '')).reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0

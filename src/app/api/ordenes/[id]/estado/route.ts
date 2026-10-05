@@ -4,29 +4,13 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
 import { generarTasksDeOrden } from '@/lib/tasks/generar-desde-orden'
-import { sincronizarReservaConOrden } from '@/lib/reservas/confirmar'
+import { cerrarBloqueoDeVenta } from '@/lib/reservas/confirmar'
+import { asignarBusesDeOrden } from '@/lib/ventas/asignar-buses'
 
-// Dónde está la campaña. Facturar y cobrar NO son estados: son fechas que
-// administración carga por /facturar y /cobrar, en paralelo y sin frenar la
-// producción. Mientras estuvieron acá, marcar una venta como facturada la
-// sacaba de producción y los dos carriles se pisaban.
-const ESTADOS_VALIDOS = ['aprobada', 'rechazada', 'en_oic', 'borrador', 'pendiente_aprobacion'] as const
-
-/** Lo que se intentaba hacer y adónde se hace ahora. */
-const MOVIDO_A_SU_ENDPOINT: Record<string, string> = {
-  facturada: 'POST /api/ordenes/[id]/facturar',
-  cobrada:   'POST /api/ordenes/[id]/cobrar',
-}
-
-// Quién puede pasar la OIC a cada estado.
-// 'self' significa "el vendedor dueño de la orden o cualquiera de los roles listados".
-const PERMISO_POR_ESTADO: Record<string, { roles: string[]; self?: boolean }> = {
-  borrador:             { roles: ['asistente_ventas', 'gerente_comercial', 'administracion'], self: true },
-  pendiente_aprobacion: { roles: ['asistente_ventas', 'gerente_comercial', 'administracion'], self: true },
-  aprobada:             { roles: ['gerente_comercial'] },
-  rechazada:            { roles: ['gerente_comercial'] },
-  en_oic:               { roles: ['administracion', 'gerente_comercial', 'operaciones'] },
-}
+import {
+  ESTADOS_VENTA, PERMISO_POR_ESTADO, MOVIDO_A_SU_ENDPOINT, estaCerrada,
+  type EstadoVenta,
+} from '@/lib/ventas/estados'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -40,26 +24,38 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
   }
 
-  if (!ESTADOS_VALIDOS.includes(body.estado as typeof ESTADOS_VALIDOS[number])) {
+  if (!ESTADOS_VENTA.includes(body.estado as EstadoVenta)) {
     const endpoint = MOVIDO_A_SU_ENDPOINT[body.estado]
     return NextResponse.json(
-      { error: endpoint ? `"${body.estado}" ya no es un estado de la venta: usá ${endpoint}` : 'Estado inválido' },
+      { error: endpoint ? `"${body.estado}": ${endpoint}` : 'Estado inválido' },
       { status: 400 },
     )
   }
 
   const supabase = createServerClient()
 
-  // Validar transición por rol/ownership
-  const permiso = PERMISO_POR_ESTADO[body.estado]
-  const tieneRol = puede(session.user.rol, permiso?.roles ?? [])
-  let esDueño = false
-  if (!tieneRol && permiso?.self) {
-    const { data: orden } = await supabase.from('ordenes_venta').select('vendedor_id').eq('id', params.id).maybeSingle()
-    esDueño = orden?.vendedor_id === session.user.id
+  const { data: actual } = await supabase
+    .from('ordenes_venta')
+    .select('estado, vendedor_id')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!actual) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+
+  // Una venta aprobada es un compromiso cerrado: no vuelve atrás ni se
+  // reabre. Si de verdad cambió lo vendido, se emite una venta nueva.
+  if (estaCerrada(actual.estado)) {
+    return NextResponse.json(
+      { error: 'La venta ya está aprobada y no se puede cambiar de estado. Si cambió lo vendido, hay que hacer una venta nueva.' },
+      { status: 409 },
+    )
   }
+
+  // Validar transición por rol/ownership
+  const permiso = PERMISO_POR_ESTADO[body.estado as EstadoVenta]
+  const tieneRol = puede(session.user.rol, permiso?.roles ?? [])
+  const esDueño = !tieneRol && !!permiso?.self && actual.vendedor_id === session.user.id
   if (!tieneRol && !esDueño) {
-    return NextResponse.json({ error: `Tu rol no puede pasar la OIC a "${body.estado}"` }, { status: 403 })
+    return NextResponse.json({ error: `Tu rol no puede pasar la venta a "${body.estado}"` }, { status: 403 })
   }
 
   // Setear campos específicos por estado destino
@@ -86,22 +82,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     comentario: body.comentario || null,
   })
 
-  // Al aprobar la OIC, generar tareas automáticas para arte / operaciones
+  // La aprobación es el único disparador de la producción: antes faltaba un
+  // paso más ("pasar a producción") que asignaba los buses, y si nadie lo daba
+  // la campaña no llegaba a Comprobantes y el espacio quedaba contado dos veces.
   let tasksCreated = 0
+  let busesAsignados = 0
+  let bloqueoCerrado: string | null = null
+  const warnings: string[] = []
   if (body.estado === 'aprobada') {
     const r = await generarTasksDeOrden(supabase, params.id)
     tasksCreated = r.created
-  }
 
-  // La reserva sigue a la venta: aprobar la OIC la aprueba, y ponerla en
-  // producción la confirma (asignando buses). Antes había que hacerlo aparte en
-  // otra pantalla, y si no se hacía la campaña no aparecía en Comprobantes.
-  let reservaSincronizada: string | null = null
-  const warnings: string[] = []
-  if (body.estado === 'aprobada' || body.estado === 'en_oic') {
-    const sync = await sincronizarReservaConOrden(supabase, params.id, body.estado, session.user.id)
-    reservaSincronizada = sync.estado
-    warnings.push(...sync.warnings)
+    const buses = await asignarBusesDeOrden(supabase, params.id)
+    busesAsignados = buses.asignados
+    warnings.push(...buses.warnings)
+
+    bloqueoCerrado = (await cerrarBloqueoDeVenta(supabase, params.id, session.user.id)).estado
   }
 
   // Aviso inmediato al gerente cuando una OIC queda esperando su aprobación
@@ -129,7 +125,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({
     ok: true,
     tasks_creadas: tasksCreated,
-    reserva_estado: reservaSincronizada,
+    buses_asignados: busesAsignados,
+    bloqueo_estado: bloqueoCerrado,
     warnings: warnings.length > 0 ? warnings : undefined,
   })
 }

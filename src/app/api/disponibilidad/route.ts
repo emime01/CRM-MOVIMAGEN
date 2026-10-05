@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { ESTADOS_BLOQUEO_VIVO } from '@/lib/ventas/asignar-buses'
+import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export interface SoporteOcupacion {
   id: string
@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
       supabase
         .from('ordenes_venta')
         .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, orden_items(${ORDEN_ITEMS_SELECT})`)
-        .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
+        .in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
     ])
 
     const capMap = new Map<string, number>((soportes ?? []).map((s: any) => [s.id, s.cap ?? 1]))
@@ -146,7 +146,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from('ordenes_venta')
       .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(${ORDEN_ITEMS_SELECT})`)
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
   ])
 
   const reservadoMap = new Map<string, number>()

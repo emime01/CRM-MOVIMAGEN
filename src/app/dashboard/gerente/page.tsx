@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +25,7 @@ export default async function GerentePage() {
   const [{ data: vendedores }, { data: ordenes }, { data: leads }, { data: objetivos }] = await Promise.all([
     supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
     supabase.from('ordenes_venta').select('vendedor_id, monto_total, estado, created_at')
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .gte('created_at', q.start).lte('created_at', q.end),
     supabase.from('leads').select('vendedor_id, estado, monto_potencial'),
     supabase.from('objetivos').select('vendedor_id, objetivo_monto').eq('cuatrimestre', q.label),

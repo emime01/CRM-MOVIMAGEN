@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, X } from 'lucide-react'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 const fmt = (n: number | null) =>
   n == null ? '—' : '$' + Number(n).toLocaleString('es-UY', { maximumFractionDigits: 0 })
@@ -118,7 +119,7 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
     [ordenes, cuatrimestre])
 
   const vendedor = jn(cliente.perfiles)?.nombre ?? '—'
-  const totalVentas = ordenes.filter(o => ['aprobada','en_oic','facturada','cobrada'].includes(o.estado)).reduce((s, o) => s + Number(o.monto_total ?? 0), 0)
+  const totalVentas = ordenes.filter(o => (ESTADOS_VENTA_VIVA as unknown as string[]).includes(o.estado)).reduce((s, o) => s + Number(o.monto_total ?? 0), 0)
   const leadsGanados = leads.filter(l => l.estado === 'ganado').length
 
   const tabBtn = (t: typeof tab): React.CSSProperties => ({

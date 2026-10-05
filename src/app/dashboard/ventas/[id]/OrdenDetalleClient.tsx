@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen, Receipt, DollarSign, Printer } from 'lucide-react'
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
+import { estaCerrada } from '@/lib/ventas/estados'
 
 type JoinedEntidad = { id?: string; nombre: string; empresa?: string | null; rut?: string | null; email?: string | null; telefono?: string | null }
 type JoinedNombre = JoinedEntidad | JoinedEntidad[] | null
@@ -221,7 +222,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   // Facturación y cobro son exclusivas de administracion
   // Facturación y cobro corren en paralelo a la producción: dependen de sus
   // propias fechas, no del estado de la venta.
-  const estaAprobada = ['aprobada', 'en_oic', 'facturada', 'cobrada'].includes(orden.estado)
+  const estaAprobada = estaCerrada(orden.estado)
   const estaFacturada = !!orden.fecha_facturacion
   const estaCobrada = !!orden.fecha_cobro
   const canFacturar = userRol === 'administracion' && estaAprobada && !estaFacturada

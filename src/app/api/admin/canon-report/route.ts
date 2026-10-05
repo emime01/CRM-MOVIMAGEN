@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
   const { data: ordenes } = await supabase
     .from('ordenes_venta')
     .select('id')
-    .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+    .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .gte('created_at', range.start)
     .lte('created_at', range.end)
 
