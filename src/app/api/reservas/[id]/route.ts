@@ -14,17 +14,33 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const canConfirm = puede(rol, ['operaciones', 'administracion'])
   const isManager = puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'])
 
-  let body: { estado: string; comentario?: string; busOverrides?: { itemId: string; busId: string }[] }
+  let body: {
+    estado?: string
+    comentario?: string
+    busOverrides?: { itemId: string; busId: string }[]
+    // Edición del bloqueo: fechas, vencimiento y motivo.
+    fechaDesde?: string
+    fechaHasta?: string
+    venceEl?: string
+    motivo?: string
+  }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
   }
 
   const VALID = ['aprobada', 'rechazada', 'pendiente', 'confirmada', 'vencida']
-  if (!VALID.includes(body.estado)) {
+  const cambiaEstado = body.estado !== undefined
+  if (cambiaEstado && !VALID.includes(body.estado!)) {
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
   }
 
-  if (['aprobada', 'rechazada'].includes(body.estado) && !canApprove) {
+  // Editar un bloqueo (fechas, vencimiento, motivo) lo puede hacer quien lo
+  // pidió o el equipo de ventas/operaciones: las campañas se atrasan y hay
+  // que poder corregir sin rehacer nada.
+  const editaBloqueo = body.fechaDesde !== undefined || body.fechaHasta !== undefined
+    || body.venceEl !== undefined || body.motivo !== undefined
+
+  if (cambiaEstado && ['aprobada', 'rechazada'].includes(body.estado!) && !canApprove) {
     return NextResponse.json({ error: 'Sin permisos para aprobar/rechazar' }, { status: 403 })
   }
 
@@ -48,13 +64,25 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  const updates: Record<string, unknown> = {
-    estado: body.estado,
-    updated_at: new Date().toISOString(),
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+
+  if (cambiaEstado) {
+    updates.estado = body.estado
+    if (['aprobada', 'rechazada'].includes(body.estado!)) updates.aprobada_por = session.user.id
   }
 
-  if (['aprobada', 'rechazada'].includes(body.estado)) {
-    updates.aprobada_por = session.user.id
+  if (editaBloqueo) {
+    if (!isManager) {
+      // Un vendedor sólo edita sus propios bloqueos (ya validado arriba).
+      const { data: duena } = await supabase.from('reservas').select('vendedor_id').eq('id', params.id).maybeSingle()
+      if (duena?.vendedor_id !== session.user.id) {
+        return NextResponse.json({ error: 'Ese bloqueo no es tuyo' }, { status: 403 })
+      }
+    }
+    if (body.fechaDesde !== undefined) updates.fecha_desde = body.fechaDesde
+    if (body.fechaHasta !== undefined) updates.fecha_hasta = body.fechaHasta
+    if (body.venceEl !== undefined)    updates.vence_el    = body.venceEl
+    if (body.motivo !== undefined)     updates.motivo      = body.motivo || null
   }
 
   const { error } = await supabase.from('reservas').update(updates).eq('id', params.id)

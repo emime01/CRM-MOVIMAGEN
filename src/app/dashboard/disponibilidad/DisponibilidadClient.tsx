@@ -19,6 +19,9 @@ interface ReservaRow {
   clientes: { nombre: string; empresa: string | null } | { nombre: string; empresa: string | null }[] | null
   vendedor: { nombre: string } | { nombre: string }[] | null
   reserva_items: { id: string; cantidad: number; soportes: { nombre: string } | null }[]
+  vence_el?: string | null
+  motivo?: string | null
+  orden_id?: string | null
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -360,11 +363,11 @@ function ReservasTab({ userRol }: { userRol: string }) {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#9a9895', fontSize: 13 }}>Cargando reservas…</div>
+  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#9a9895', fontSize: 13 }}>Cargando bloqueos…</div>
   if (!reservas?.length) return (
     <div style={{ padding: 60, textAlign: 'center', color: '#9a9895' }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: '#4a4845', marginBottom: 6 }}>Sin reservas</div>
-      <div style={{ fontSize: 13 }}>Las reservas que crees aparecerán aquí.</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: '#4a4845', marginBottom: 6 }}>Sin bloqueos activos</div>
+      <div style={{ fontSize: 13 }}>Un bloqueo retiene un espacio mientras llega la orden de compra del cliente.</div>
     </div>
   )
 
@@ -392,7 +395,7 @@ function ReservasTab({ userRol }: { userRol: string }) {
               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: '#f9f8f5', borderBottom: '1px solid #e5e3dc' }}>
-                    {['Cliente', 'Soportes', 'Período', 'Estado'].concat(isAdmin ? ['Vendedor'] : []).map(h => (
+                    {['Cliente', 'Soportes', 'Período', 'Vence', 'Motivo'].concat(isAdmin ? ['Vendedor'] : []).map(h => (
                       <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#9a9895', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{h}</th>
                     ))}
                   </tr>
@@ -403,19 +406,18 @@ function ReservasTab({ userRol }: { userRol: string }) {
                     const vendedor = getJoined(r.vendedor)
                     const clienteNombre = cli?.empresa ?? cli?.nombre ?? '—'
                     const soportes = (r.reserva_items ?? []).map(i => i.soportes?.nombre ?? '').filter(Boolean).join(', ') || '—'
-                    const dv = daysUntil(r.fecha_hasta)
+                    // Urge el vencimiento del bloqueo, no el fin de la campaña.
+                    const dv = daysUntil(r.vence_el ?? r.fecha_hasta)
 
-                    const estadoCfg = r.estado === 'confirmada'
-                      ? { bg: 'rgba(21,128,61,0.1)', color: '#15803d', label: 'Confirmada' }
-                      : r.estado === 'aprobada'
-                      ? { bg: 'rgba(37,99,235,0.1)', color: '#2563eb', label: 'Aprobada' }
+                    const estadoCfg = r.orden_id
+                      ? { bg: 'rgba(21,128,61,0.1)', color: '#15803d', label: 'Convertido en venta' }
                       : dv < 0
                       ? { bg: 'rgba(107,114,128,0.1)', color: '#6b7280', label: 'Vencida' }
                       : dv <= 7
                       ? { bg: 'rgba(220,38,38,0.1)', color: '#dc2626', label: `${dv}d` }
                       : dv <= 30
                       ? { bg: 'rgba(217,119,6,0.12)', color: '#b45309', label: `${dv}d` }
-                      : { bg: 'rgba(21,128,61,0.1)', color: '#15803d', label: 'Activa' }
+                      : { bg: 'rgba(21,128,61,0.1)', color: '#15803d', label: `vence en ${dv}d` }
 
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid #f0ede6' }}>
@@ -424,6 +426,12 @@ function ReservasTab({ userRol }: { userRol: string }) {
                         <td style={{ padding: '10px 14px', color: '#6e6a62', whiteSpace: 'nowrap' }}>{formatDate(r.fecha_desde)} — {formatDate(r.fecha_hasta)}</td>
                         <td style={{ padding: '10px 14px' }}>
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: estadoCfg.bg, color: estadoCfg.color }}>{estadoCfg.label}</span>
+                          {r.vence_el && !r.orden_id && (
+                            <span style={{ marginLeft: 6, fontSize: 10.5, color: '#9a9895', whiteSpace: 'nowrap' }}>{formatDate(r.vence_el)}</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#6e6a62', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.motivo || '—'}
                         </td>
                         {isAdmin && <td style={{ padding: '10px 14px', color: '#9a9895' }}>{vendedor?.nombre ?? '—'}</td>}
                       </tr>

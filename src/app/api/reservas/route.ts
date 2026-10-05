@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     .from('reservas')
     .select(`
       id, lead_id, fecha_desde, fecha_hasta, estado, notas, created_at,
+      vence_el, motivo, orden_id,
       clientes(nombre, empresa),
       vendedor:perfiles!reservas_vendedor_id_fkey(nombre),
       leads(descripcion),
@@ -48,6 +49,10 @@ export async function POST(req: NextRequest) {
     fechaDesde: string
     fechaHasta: string
     notas?: string
+    /** Hasta cuándo se retiene el espacio. Lo decide quien pide el bloqueo. */
+    venceEl: string
+    /** Por qué se bloquea (ej.: esperando la orden de compra). */
+    motivo?: string
   }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
@@ -55,6 +60,11 @@ export async function POST(req: NextRequest) {
 
   if (!body.soporteIds?.length || !body.clienteId || !body.fechaDesde || !body.fechaHasta) {
     return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
+  }
+  // Un bloqueo sin vencimiento retiene el espacio para siempre y nadie se
+  // entera: la fecha la decide quien lo pide, pero tiene que estar.
+  if (!body.venceEl) {
+    return NextResponse.json({ error: 'Indicá hasta cuándo se bloquea el espacio' }, { status: 400 })
   }
 
   const supabase = createServerClient()
@@ -70,6 +80,8 @@ export async function POST(req: NextRequest) {
       fecha_desde: body.fechaDesde,
       fecha_hasta: body.fechaHasta,
       notas: body.notas || null,
+      vence_el: body.venceEl,
+      motivo: body.motivo || null,
       estado: 'pendiente',
     })
     .select('id')
