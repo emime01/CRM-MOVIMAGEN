@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Upload, X, Edit2, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { puede } from '@/lib/auth/roles'
 
 interface Soporte {
   id: string
@@ -122,7 +123,7 @@ export default function BusesClient({ initialBuses, initialSoportesSinAsignar, c
   const [soportesSinAsignar, setSoportesSinAsignar] = useState(initialSoportesSinAsignar)
   const [reservas, setReservas] = useState(initialVentas)
 
-  const canManage = ['operaciones', 'administracion'].includes(userRol)
+  const canManage = puede(userRol, ['operaciones', 'administracion'])
   const clienteMap = useMemo(() => new Map(clientes.map(c => [c.id, c])), [clientes])
   const busByNumeroMap = useMemo(() => new Map(buses.map(b => [b.numero, b])), [buses])
 

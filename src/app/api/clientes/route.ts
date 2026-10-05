@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { recalcularObjetivos } from '@/lib/objetivos/recalcular'
 import { pickAllowed } from '@/lib/api/safe-patch'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Single — allowlist para evitar mass-assignment
-  if (!CREATE_ROLES.includes(session.user.rol)) {
+  if (!puede(session.user.rol, CREATE_ROLES)) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
   const insertData: Record<string, unknown> = pickAllowed(body, CREATE_FIELDS)

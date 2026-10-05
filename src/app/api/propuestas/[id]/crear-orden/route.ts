@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { crearOrdenDesdePropuesta } from '@/lib/ventas/crear-orden'
+import { puede } from '@/lib/auth/roles'
 
 /**
  * POST /api/propuestas/[id]/crear-orden
@@ -17,7 +18,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const canCreate = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(session.user.rol)
+  const canCreate = puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])
   if (!canCreate) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const supabase = createServerClient()

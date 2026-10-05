@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { TrendingUp, DollarSign, Target, Award, CheckCircle, XCircle } from 'lucide-react'
 import ApprovalButtons from '@/components/dashboard/ApprovalButtons'
 import SemaforoGestiones from '@/components/dashboard/SemaforoGestiones'
+import { puede } from '@/lib/auth/roles'
 
 type EstadoOrden =
   | 'borrador'
@@ -341,7 +342,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Semáforo de gestiones */}
-      {['vendedor', 'asistente_ventas', 'gerente_comercial'].includes(rol) && (
+      {puede(rol, ['vendedor', 'asistente_ventas', 'gerente_comercial']) && (
         <div style={{ marginTop: 24 }}>
           <SemaforoGestiones />
         </div>

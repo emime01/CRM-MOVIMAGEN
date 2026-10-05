@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import CalendarioClient from './CalendarioClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +12,7 @@ const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v)
 export default async function CalendarioPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!['operaciones', 'administracion', 'gerente_comercial'].includes(session.user.rol)) redirect('/dashboard')
+  if (!puede(session.user.rol, ['operaciones', 'administracion', 'gerente_comercial'])) redirect('/dashboard')
 
   const supabase = createServerClient()
 

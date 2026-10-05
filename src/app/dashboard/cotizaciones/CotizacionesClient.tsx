@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, FileText, Clock, CheckCircle, XCircle, Send, Trash2, ChevronRight, Copy } from 'lucide-react'
+import { puede } from '@/lib/auth/roles'
 
 interface Propuesta {
   id: string
@@ -69,7 +70,7 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
     return `${sym} ${Number(n).toLocaleString('es-UY', { maximumFractionDigits: 0 })}`
   }
 
-  const isManager = ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(rol)
+  const isManager = puede(rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1100, margin: '0 auto' }}>

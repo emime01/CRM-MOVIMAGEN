@@ -1,6 +1,7 @@
 import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede, atiendeTareasDe, areasDeTarea } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -274,7 +275,12 @@ const handler = createMcpHandler(
       },
       async (args, extra) => {
         const me = ident(extra)
-        if (['arte', 'operaciones'].includes(me.rol)) return text('Tu rol no permite crear clientes.')
+        // Mismo criterio que la web (CREATE_ROLES en /api/clientes): se mira
+        // quién sí puede, no quién no. Con un rol mixto el chequeo negativo
+        // daba vuelta el resultado y bloqueaba a quien debía poder.
+        if (!puede(me.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
+          return text('Tu rol no permite crear clientes.')
+        }
         const supabase = createServerClient()
         let agenciaId: string | null = null
         if (args.agencia_nombre) {
@@ -320,7 +326,10 @@ const handler = createMcpHandler(
       },
       async (args, extra) => {
         const me = ident(extra)
-        if (['arte', 'operaciones'].includes(me.rol)) return text('Tu rol no permite cargar objetivos.')
+        // Mismo criterio que la web (ALLOWED_ROLES en /api/objetivos).
+        if (!puede(me.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) {
+          return text('Tu rol no permite cargar objetivos.')
+        }
         const supabase = createServerClient()
         const year = args.año ?? new Date().getFullYear()
         const { data: cliente } = await supabase.from('clientes').select('id, nombre, vendedor_id').ilike('nombre', `%${args.cliente_nombre}%`).limit(2)
@@ -422,9 +431,11 @@ const handler = createMcpHandler(
         const supabase = createServerClient()
         let q = supabase.from('tasks').select('id, tipo, asignado_a_rol, estado, descripcion, fecha_limite, ordenes_venta(numero, clientes(nombre, empresa))').order('fecha_limite', { ascending: true, nullsFirst: false }).limit(limite ?? 20)
         q = q.eq('estado', estado ?? 'pendiente')
-        // arte y operaciones solo ven las de su rol, ignore el filtro pedido
-        const rolEfectivo = ['arte', 'operaciones'].includes(me.rol) ? me.rol : rol
-        if (rolEfectivo) q = q.eq('asignado_a_rol', rolEfectivo)
+        // Quien trabaja un área sólo ve las tareas de esa área, ignorando el
+        // filtro pedido. Un rol mixto atiende más de una.
+        const areas = areasDeTarea(me.rol)
+        if (areas.length) q = q.in('asignado_a_rol', rol && areas.includes(rol) ? [rol] : areas)
+        else if (rol) q = q.eq('asignado_a_rol', rol)
         const { data, error } = await q
         if (error) return text(`Error: ${error.message}`)
         if (!data?.length) return text('Sin tareas en ese filtro.')
@@ -448,7 +459,7 @@ const handler = createMcpHandler(
         const supabase = createServerClient()
         const { data: task } = await supabase.from('tasks').select('asignado_a_rol').eq('id', task_id).maybeSingle()
         if (!task) return text('No existe esa tarea.')
-        if (['arte', 'operaciones'].includes(me.rol) && task.asignado_a_rol !== me.rol) {
+        if (areasDeTarea(me.rol).length && !atiendeTareasDe(me.rol, task.asignado_a_rol)) {
           return text('Esa tarea pertenece a otra área.')
         }
         const updates: Record<string, unknown> = { estado: 'completada', completed_at: new Date().toISOString() }
@@ -544,7 +555,7 @@ const handler = createMcpHandler(
       },
       async (args, extra) => {
         const me = ident(extra)
-        if (!['vendedor', 'asistente_ventas'].includes(me.rol)) {
+        if (!puede(me.rol, ['vendedor', 'asistente_ventas'])) {
           return text('Solo vendedores y asistente de ventas pueden crear cotizaciones (igual que en la web).')
         }
         const supabase = createServerClient()
@@ -638,7 +649,7 @@ const handler = createMcpHandler(
       },
       async (args, extra) => {
         const me = ident(extra)
-        if (!['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(me.rol)) {
+        if (!puede(me.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
           return text('Tu rol no permite modificar cotizaciones.')
         }
         const supabase = createServerClient()
@@ -710,7 +721,7 @@ const handler = createMcpHandler(
       },
       async (args, extra) => {
         const me = ident(extra)
-        if (!['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(me.rol)) {
+        if (!puede(me.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
           return text('Tu rol no permite marcar cotizaciones como aceptadas.')
         }
         const supabase = createServerClient()
@@ -815,7 +826,7 @@ const handler = createMcpHandler(
       },
       async (args, extra) => {
         const me = ident(extra)
-        if (!['operaciones', 'administracion'].includes(me.rol)) return text('Solo operaciones y administración pueden cargar fechas reales.')
+        if (!puede(me.rol, ['operaciones', 'administracion'])) return text('Solo operaciones y administración pueden cargar fechas reales.')
         if (!args.fecha_alta_real && !args.fecha_baja_real) return text('Indicá fecha_alta_real y/o fecha_baja_real.')
         const supabase = createServerClient()
         const { data: orden } = await supabase.from('ordenes_venta').select('id').eq('numero', args.oic_numero).maybeSingle()
@@ -950,7 +961,7 @@ const handler = createMcpHandler(
       { numero: z.string().describe('Número de cotización (ej COT-0007).') },
       async ({ numero }, extra) => {
         const me = ident(extra)
-        if (!['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(me.rol)) {
+        if (!puede(me.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
           return text('Tu rol no permite marcar cotizaciones ganadoras.')
         }
         const supabase = createServerClient()

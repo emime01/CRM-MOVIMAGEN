@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { pickAllowed } from '@/lib/api/safe-patch'
+import { puede } from '@/lib/auth/roles'
 
 // Campos editables por cualquier rol con permisos.
 const EDITABLE_FIELDS = [
@@ -26,7 +27,7 @@ const ADMIN_ROLES = ['asistente_ventas', 'gerente_comercial', 'administracion']
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!EDIT_ROLES.includes(session.user.rol)) {
+  if (!puede(session.user.rol, EDIT_ROLES)) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
@@ -56,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   // Solo administracion / gerencia puede reasignar dueño.
-  if (ADMIN_ROLES.includes(session.user.rol)) {
+  if (puede(session.user.rol, ADMIN_ROLES)) {
     Object.assign(updates, pickAllowed(body, ADMIN_FIELDS))
   }
 
@@ -68,7 +69,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!ADMIN_ROLES.includes(session.user.rol)) {
+  if (!puede(session.user.rol, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
   const supabase = createServerClient()

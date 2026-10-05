@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 // GET /api/propuestas?lead_id=&estado=
 export async function GET(req: NextRequest) {
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   const leadId = searchParams.get('lead_id')
   const estado = searchParams.get('estado')
 
-  const isManager = ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
+  const isManager = puede(session.user.rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
 
   let query = supabase
     .from('propuestas')
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!['vendedor', 'asistente_ventas'].includes(session.user.rol))
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas']))
     return NextResponse.json({ error: 'Sin permisos para crear cotizaciones' }, { status: 403 })
 
   const body = await req.json()

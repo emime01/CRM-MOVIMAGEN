@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 import { timingSafeEqual } from 'node:crypto'
+import { ESTADOS_BLOQUEO_VIVO } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -330,6 +331,7 @@ export async function POST(req: NextRequest) {
     .select('id, vence_el, motivo, vendedor_id, clientes(nombre, empresa)')
     .not('vence_el', 'is', null)
     .is('orden_id', null)
+    .in('estado', ESTADOS_BLOQUEO_VIVO as unknown as string[])
     .lte('vence_el', en2dias)
 
   for (const b of bloqueos ?? []) {

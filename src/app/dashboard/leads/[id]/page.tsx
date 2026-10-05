@@ -3,13 +3,14 @@ import { authOptions } from '@/lib/auth'
 import { redirect, notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import LeadDetalleClient from './LeadDetalleClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LeadDetallePage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'].includes(session.user.rol)) {
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
     redirect('/dashboard')
   }
 

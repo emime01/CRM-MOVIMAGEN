@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ObjetivosClient from './ObjetivosClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,7 @@ const CUATRIMESTRES = [`Q1-${y}`, `Q2-${y}`, `Q3-${y}`]
 export default async function ObjetivosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!['asistente_ventas', 'gerente_comercial', 'administracion'].includes(session.user.rol)) redirect('/dashboard')
+  if (!puede(session.user.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) redirect('/dashboard')
 
   const supabase = createServerClient()
 
