@@ -6,14 +6,15 @@ import { puede } from '@/lib/auth/roles'
 import { X, Upload, Trash2, Play, FileText, Film, Loader2 } from 'lucide-react'
 
 interface SoporteInfo { id: string; nombre: string; tipo: string | null; es_digital: boolean | null }
-interface ReservaItem { id: string; soporte_id: string; soportes: SoporteInfo | null }
-interface Reserva {
+interface VentaItem { id: string; soporte_id: string; soportes: SoporteInfo | null }
+interface Venta {
   id: string
+  numero: number | null
   fecha_desde: string
   fecha_hasta: string
   estado: string
   clientes: { id: string; nombre: string; empresa: string | null } | null
-  reserva_items: ReservaItem[]
+  items: VentaItem[]
 }
 interface Registro {
   id: string
@@ -28,7 +29,7 @@ interface Registro {
 }
 
 interface Props {
-  reservas: Reserva[]
+  ventas: Venta[]
   soportes: SoporteInfo[]
   userId: string
   userRol: string
@@ -41,25 +42,33 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13, fontFamily: 'Montserrat, sans-serif', outline: 'none', boxSizing: 'border-box',
 }
 
+/** Los estados de la venta se mostraban crudos ("en_oic") en el encabezado. */
+const ESTADO_LABEL: Record<string, string> = {
+  aprobada: 'Aprobada',
+  en_oic: 'En producción',
+  facturada: 'Facturada',
+  cobrada: 'Cobrada',
+}
+
 function fmtFecha(iso: string) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
-export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl, supabaseAnonKey }: Props) {
+export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, supabaseAnonKey }: Props) {
   const supabase = useMemo(() => createClient(supabaseUrl, supabaseAnonKey), [supabaseUrl, supabaseAnonKey])
   const storageUrl = `${supabaseUrl}/storage/v1/object/public/registros`
 
   const [filterCliente, setFilterCliente] = useState('')
   const [filterTipo, setFilterTipo] = useState<'todos' | 'digital' | 'estatico'>('todos')
 
-  // registros keyed by soporte_id+reserva_id
+  // registros keyed by soporte_id+venta_id
   const [registrosMap, setRegistrosMap] = useState<Record<string, Registro[]>>({})
   const [loadedKeys, setLoadedKeys] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
   const [lightbox, setLightbox] = useState<{ url: string; tipo: 'foto' | 'video' } | null>(null)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
-  // Comprobante generation state (keyed by reserva_id)
+  // Comprobante generation state (keyed by venta_id)
   const [generando, setGenerando] = useState<Record<string, boolean>>({})
   const [comprobantesMap, setComprobantesMap] = useState<Record<string, Array<{ tipo: string; url: string }>>>({})
 
@@ -67,10 +76,10 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
   // mostrar el avance: puede tardar un par de minutos según cuántos clips haya.
   const [videoProgreso, setVideoProgreso] = useState<Record<string, { ratio: number; detalle: string }>>({})
 
-  async function handleGenerarVideo(reservaId: string) {
-    setVideoProgreso(prev => ({ ...prev, [reservaId]: { ratio: 0, detalle: 'Buscando los videos…' } }))
+  async function handleGenerarVideo(ventaId: string) {
+    setVideoProgreso(prev => ({ ...prev, [ventaId]: { ratio: 0, detalle: 'Buscando los videos…' } }))
     try {
-      const resDatos = await fetch(`/api/comprobantes/video-data?orden_id=${reservaId}`)
+      const resDatos = await fetch(`/api/comprobantes/video-data?orden_id=${ventaId}`)
       if (!resDatos.ok) {
         const err = await resDatos.json().catch(() => ({ error: 'Error desconocido' }))
         alert(err.error ?? 'No se pudieron traer los datos del video')
@@ -78,7 +87,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
       }
       const datos = await resDatos.json()
       if (!datos.clips?.length) {
-        alert('Esta reserva no tiene videos subidos en soportes LED/digitales.\n\nLos buses y estáticos se documentan con fotos y salen en el comprobante PDF.')
+        alert('Esta venta no tiene videos subidos en soportes LED/digitales.\n\nLos buses y estáticos se documentan con fotos y salen en el comprobante PDF.')
         return
       }
 
@@ -86,14 +95,14 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
       const blob = await generarVideoComprobante({
         intro: { cliente: datos.cliente, campana: '', periodo: datos.periodo },
         clips: datos.clips,
-        onProgreso: p => setVideoProgreso(prev => ({ ...prev, [reservaId]: p })),
+        onProgreso: p => setVideoProgreso(prev => ({ ...prev, [ventaId]: p })),
       })
 
-      setVideoProgreso(prev => ({ ...prev, [reservaId]: { ratio: 1, detalle: 'Subiendo…' } }))
+      setVideoProgreso(prev => ({ ...prev, [ventaId]: { ratio: 1, detalle: 'Subiendo…' } }))
       const resUp = await fetch('/api/comprobantes/video-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orden_id: reservaId }),
+        body: JSON.stringify({ orden_id: ventaId }),
       })
       if (!resUp.ok) {
         const err = await resUp.json().catch(() => ({ error: 'Error desconocido' }))
@@ -111,26 +120,26 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
 
       setComprobantesMap(prev => ({
         ...prev,
-        [reservaId]: [...(prev[reservaId] ?? []).filter(c => c.tipo !== 'video'), { tipo: 'video', url }],
+        [ventaId]: [...(prev[ventaId] ?? []).filter(c => c.tipo !== 'video'), { tipo: 'video', url }],
       }))
     } catch (err) {
       console.error('Error generando el video comprobante:', err)
       alert(`No se pudo generar el video: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setVideoProgreso(prev => {
-        const { [reservaId]: _, ...resto } = prev
+        const { [ventaId]: _, ...resto } = prev
         return resto
       })
     }
   }
 
-  async function handleGenerarComprobante(reservaId: string) {
-    setGenerando(prev => ({ ...prev, [reservaId]: true }))
+  async function handleGenerarComprobante(ventaId: string) {
+    setGenerando(prev => ({ ...prev, [ventaId]: true }))
     try {
       const res = await fetch('/api/comprobantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orden_id: reservaId }),
+        body: JSON.stringify({ orden_id: ventaId }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Error desconocido' }))
@@ -138,9 +147,9 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
         return
       }
       const data = await res.json()
-      setComprobantesMap(prev => ({ ...prev, [reservaId]: data.comprobantes }))
+      setComprobantesMap(prev => ({ ...prev, [ventaId]: data.comprobantes }))
     } finally {
-      setGenerando(prev => ({ ...prev, [reservaId]: false }))
+      setGenerando(prev => ({ ...prev, [ventaId]: false }))
     }
   }
 
@@ -151,8 +160,8 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
   const canDelete = (reg: Registro) =>
     canUpload && (reg.subido_por === userId || puede(userRol, ['administracion', 'operaciones']))
 
-  const reservasFiltradas = useMemo(() => {
-    let list = reservas
+  const ventasFiltradas = useMemo(() => {
+    let list = ventas
     if (filterCliente) {
       const q = filterCliente.toLowerCase()
       list = list.filter(r => {
@@ -161,32 +170,32 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
       })
     }
     if (filterTipo !== 'todos') {
-      list = list.filter(r => r.reserva_items.some(it => {
+      list = list.filter(r => r.items.some(it => {
         const digital = it.soportes?.es_digital ?? false
         return filterTipo === 'digital' ? digital : !digital
       }))
     }
     return list
-  }, [reservas, filterCliente, filterTipo])
+  }, [ventas, filterCliente, filterTipo])
 
-  async function loadRegistros(soporteId: string, reservaId: string) {
-    const key = `${soporteId}__${reservaId}`
+  async function loadRegistros(soporteId: string, ventaId: string) {
+    const key = `${soporteId}__${ventaId}`
     if (loadedKeys.has(key)) return
     setLoadedKeys(prev => new Set(prev).add(key))
-    const res = await fetch(`/api/registros?soporte_id=${soporteId}&orden_id=${reservaId}`)
+    const res = await fetch(`/api/registros?soporte_id=${soporteId}&orden_id=${ventaId}`)
     if (!res.ok) return
     const data: Registro[] = await res.json()
     setRegistrosMap(prev => ({ ...prev, [key]: data }))
   }
 
-  async function handleUpload(soporteId: string, reservaId: string, files: FileList | null) {
+  async function handleUpload(soporteId: string, ventaId: string, files: FileList | null) {
     if (!files || files.length === 0) return
-    const key = `${soporteId}__${reservaId}`
+    const key = `${soporteId}__${ventaId}`
     setUploading(prev => ({ ...prev, [key]: true }))
 
     for (const file of Array.from(files)) {
       const ext = file.name.split('.').pop() ?? 'bin'
-      const path = `${reservaId}/${soporteId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+      const path = `${ventaId}/${soporteId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
       const tipo: 'foto' | 'video' = file.type.startsWith('video/') ? 'video' : 'foto'
 
       const { error: storageErr } = await supabase.storage.from('registros').upload(path, file, { upsert: false })
@@ -195,7 +204,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
       const res = await fetch('/api/registros', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soporte_id: soporteId, orden_id: reservaId, tipo, storage_path: path, nombre_archivo: file.name }),
+        body: JSON.stringify({ soporte_id: soporteId, orden_id: ventaId, tipo, storage_path: path, nombre_archivo: file.name }),
       })
       if (!res.ok) { alert('Error guardando registro'); continue }
       const created: Registro = await res.json()
@@ -227,35 +236,35 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
           style={{ ...inputStyle, width: 220 }}
         />
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          {reservasFiltradas.length} reserva{reservasFiltradas.length !== 1 ? 's' : ''}
+          {ventasFiltradas.length} venta{ventasFiltradas.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Reserva cards */}
+      {/* Venta cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {reservasFiltradas.map(reserva => {
-          const cli = reserva.clientes
-          const items = reserva.reserva_items.filter(it => {
+        {ventasFiltradas.map(venta => {
+          const cli = venta.clientes
+          const items = venta.items.filter(it => {
             if (filterTipo === 'todos') return true
             const digital = it.soportes?.es_digital ?? false
             return filterTipo === 'digital' ? digital : !digital
           })
 
           return (
-            <div key={reserva.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-              {/* Reserva header */}
+            <div key={venta.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              {/* Venta header */}
               <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fafafa', flexWrap: 'wrap', gap: 8 }}>
                 <div>
                   <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
-                    {reserva.id.slice(0, 8).toUpperCase()}
+                    {venta.numero ? `#${venta.numero}` : venta.id.slice(0, 8).toUpperCase()}
                   </span>
                   <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-muted)' }}>
-                    {fmtFecha(reserva.fecha_desde)} → {fmtFecha(reserva.fecha_hasta)}
+                    {fmtFecha(venta.fecha_desde)} → {fmtFecha(venta.fecha_hasta)}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {/* Comprobante download links if already generated */}
-                  {(comprobantesMap[reserva.id] ?? []).map(c => (
+                  {(comprobantesMap[venta.id] ?? []).map(c => (
                     <a
                       key={c.tipo}
                       href={c.url}
@@ -270,22 +279,22 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                   {/* Generate comprobante button (oculto para vendedores) */}
                   {canGenerateComprobante && (
                     <button
-                      onClick={() => handleGenerarComprobante(reserva.id)}
-                      disabled={generando[reserva.id]}
+                      onClick={() => handleGenerarComprobante(venta.id)}
+                      disabled={generando[venta.id]}
                       title="Generar comprobante"
-                      style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: generando[reserva.id] ? '#e5e7eb' : '#1a1a2e', color: generando[reserva.id] ? 'var(--text-muted)' : '#fff', cursor: generando[reserva.id] ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Montserrat, sans-serif' }}
+                      style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: generando[venta.id] ? '#e5e7eb' : '#1a1a2e', color: generando[venta.id] ? 'var(--text-muted)' : '#fff', cursor: generando[venta.id] ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Montserrat, sans-serif' }}
                     >
-                      {generando[reserva.id] ? <Loader2 size={12} /> : <FileText size={12} />}
-                      {generando[reserva.id] ? 'Generando...' : 'Comprobante'}
+                      {generando[venta.id] ? <Loader2 size={12} /> : <FileText size={12} />}
+                      {generando[venta.id] ? 'Generando...' : 'Comprobante'}
                     </button>
                   )}
                   {/* Video comprobante (LED/digitales) — se arma en el navegador */}
                   {canGenerateComprobante && (() => {
-                    const prog = videoProgreso[reserva.id]
+                    const prog = videoProgreso[venta.id]
                     const enCurso = prog != null
                     return (
                       <button
-                        onClick={() => handleGenerarVideo(reserva.id)}
+                        onClick={() => handleGenerarVideo(venta.id)}
                         disabled={enCurso}
                         title="Generar video comprobante de pantallas LED"
                         style={{ fontSize: 12, padding: '4px 10px', border: 'none', borderRadius: 6, background: enCurso ? '#e5e7eb' : '#EB691C', color: enCurso ? 'var(--text-muted)' : '#fff', cursor: enCurso ? 'progress' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'Montserrat, sans-serif', minWidth: enCurso ? 190 : undefined }}
@@ -299,8 +308,8 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                   })()}
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{cli?.empresa ?? cli?.nombre ?? '—'}</div>
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: reserva.estado === 'confirmada' ? '#f0fdf4' : '#fef9ec', color: reserva.estado === 'confirmada' ? '#15803d' : '#b45309' }}>
-                      {reserva.estado}
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: venta.estado === 'en_oic' ? '#f0fdf4' : '#fef9ec', color: venta.estado === 'en_oic' ? '#15803d' : '#b45309' }}>
+                      {ESTADO_LABEL[venta.estado] ?? venta.estado}
                     </span>
                   </div>
                 </div>
@@ -310,7 +319,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
               {items.map(item => {
                 if (!item.soportes) return null
                 const soporte = item.soportes
-                const key = `${soporte.id}__${reserva.id}`
+                const key = `${soporte.id}__${venta.id}`
                 const regs = registrosMap[key]
                 const isLoaded = loadedKeys.has(key)
                 const isUploading = uploading[key]
@@ -328,7 +337,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                       <div style={{ display: 'flex', gap: 6 }}>
                         {!isLoaded && (
                           <button
-                            onClick={() => loadRegistros(soporte.id, reserva.id)}
+                            onClick={() => loadRegistros(soporte.id, venta.id)}
                             style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', cursor: 'pointer', color: 'var(--text-secondary)', fontFamily: 'Montserrat, sans-serif' }}
                           >
                             Ver registros
@@ -349,7 +358,7 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
                               accept="image/*,video/*"
                               multiple
                               style={{ display: 'none' }}
-                              onChange={e => handleUpload(soporte.id, reserva.id, e.target.files)}
+                              onChange={e => handleUpload(soporte.id, venta.id, e.target.files)}
                             />
                           </>
                         )}
@@ -407,9 +416,9 @@ export default function RegistrosClient({ reservas, userId, userRol, supabaseUrl
           )
         })}
 
-        {reservasFiltradas.length === 0 && (
+        {ventasFiltradas.length === 0 && (
           <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)', fontSize: 13 }}>
-            No hay reservas que coincidan con los filtros.
+            No hay ventas que coincidan con los filtros.
           </div>
         )}
       </div>

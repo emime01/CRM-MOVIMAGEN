@@ -36,19 +36,19 @@ export default async function RegistrosPage() {
   ])
 
   // Se aplana a la forma que usa la pantalla; la fecha real manda cuando existe.
-  const reservas = (ventasRes.data ?? []).map((v: any) => ({
+  const ventas: Parameters<typeof RegistrosClient>[0]['ventas'] = (ventasRes.data ?? []).map((v: any) => ({
     id: v.id,
     numero: v.numero,
     estado: v.estado,
     fecha_desde: v.fecha_alta_real ?? v.fecha_alta_prevista ?? '',
     fecha_hasta: v.fecha_baja_real ?? v.fecha_baja_prevista ?? '',
     clientes: Array.isArray(v.clientes) ? (v.clientes[0] ?? null) : v.clientes,
-    reserva_items: v.orden_items ?? [],
+    items: v.orden_items ?? [],
   }))
 
   return (
     <RegistrosClient
-      reservas={reservas as unknown as Parameters<typeof RegistrosClient>[0]['reservas']}
+      ventas={ventas}
       soportes={soportesRes.data ?? []}
       userId={session.user.id}
       userRol={session.user.rol}
