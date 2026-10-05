@@ -253,7 +253,8 @@ export async function POST(req: NextRequest) {
   const { data: deudasAntiguas } = await supabase
     .from('ordenes_venta')
     .select('id, numero, monto_total, moneda, clientes(nombre, empresa)')
-    .eq('estado', 'facturada')
+    .not('fecha_facturacion', 'is', null)
+    .is('fecha_cobro', null)
     .lt('updated_at', cutoff30)
 
   if ((deudasAntiguas?.length ?? 0) > 0) {
