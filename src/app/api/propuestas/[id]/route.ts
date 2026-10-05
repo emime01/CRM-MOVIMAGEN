@@ -148,8 +148,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     .single()
 
   if (!existing) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
+  // Mismo criterio que para editar (más arriba en este archivo) y que el que
+  // usa la pantalla para mostrar el tacho: el asistente de ventas estaba en
+  // los otros dos y faltaba acá, así que el botón aparecía y no borraba.
   const canDelete = existing.vendedor_id === session.user.id ||
-    ['gerente_comercial', 'administracion'].includes(session.user.rol)
+    puede(session.user.rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
   if (!canDelete) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   await supabase.from('propuesta_items').delete().eq('propuesta_id', params.id)

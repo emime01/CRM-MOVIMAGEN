@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import { fetchRecentMessages, refreshAccessToken } from '@/lib/gmail'
 import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -57,8 +58,14 @@ export async function POST() {
   // Load CRM context: clients + leads + orders for Claude to match against
   const [{ data: clientes }, { data: leads }, { data: ordenes }] = await Promise.all([
     supabase.from('clientes').select('id, nombre, empresa, email').limit(200),
-    supabase.from('leads').select('id, descripcion, estado, cliente_id, clientes(nombre, empresa)').eq('estado', 'activo').limit(100),
-    supabase.from('ordenes_venta').select('id, numero, estado, marca, cliente_id, clientes(nombre, empresa)').in('estado', ['en_negociacion', 'en_oic', 'aprobada']).limit(100),
+    // 'activo' no es un estado de lead (el CHECK son nuevo / en_conversacion /
+    // propuesta_enviada / negociacion / ganado / perdido), así que el bloque de
+    // leads del prompt salía siempre vacío y las sugerencias de mail nunca se
+    // ataban a un lead en curso.
+    supabase.from('leads').select('id, descripcion, estado, cliente_id, clientes(nombre, empresa)')
+      .in('estado', ['nuevo', 'en_conversacion', 'propuesta_enviada', 'negociacion']).limit(100),
+    supabase.from('ordenes_venta').select('id, numero, estado, marca, cliente_id, clientes(nombre, empresa)')
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[]).limit(100),
   ])
 
   const crmContext = `

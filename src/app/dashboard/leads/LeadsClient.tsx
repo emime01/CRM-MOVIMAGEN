@@ -1199,6 +1199,7 @@ function CalendarioTab({ leads }: { leads: LeadRow[] }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function LeadsClient({ leads, isGerente, userId, userRol, clientes, vendedores, clienteObjetivos }: Props) {
+  const puedeCrearLeads = puede(userRol, ['vendedor', 'gerente_comercial'])
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<'leads' | 'mis_clientes' | 'calendario'>('leads')
@@ -1393,7 +1394,10 @@ export default function LeadsClient({ leads, isGerente, userId, userRol, cliente
             </select>
           )}
 
-          {/* New lead button */}
+          {/* New lead button — sólo para quien la API deja crear leads
+              (LEADS_ROLES en /api/leads). Antes aparecía para todos y el
+              formulario terminaba en "Sin permisos". */}
+          {puedeCrearLeads && (
           <button
             onClick={openCreate}
             style={{
@@ -1409,6 +1413,7 @@ export default function LeadsClient({ leads, isGerente, userId, userRol, cliente
             <Plus size={15} />
             Nuevo lead
           </button>
+          )}
         </div>
       </div>
 

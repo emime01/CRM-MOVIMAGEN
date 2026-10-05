@@ -7,6 +7,7 @@ import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, Fol
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
+import { puede } from '@/lib/auth/roles'
 import { formatMoney as fmtMoneda } from '@/lib/money'
 
 function formatMoney(amount: number | null, moneda?: string | null) {
@@ -219,7 +220,11 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   // La aprobación de OIC es exclusiva del gerente comercial
   const canApprove = userRol === 'gerente_comercial' && orden.estado === 'pendiente_aprobacion'
   const canUploadDoc = true
-  const canSendToApproval = orden.estado === 'borrador' && (userRol === 'vendedor' || userRol === 'gerente_comercial' || userRol === 'administracion') && (Array.isArray(orden.perfiles) ? orden.perfiles[0]?.id === userId : orden.perfiles?.id === userId || userRol === 'gerente_comercial' || userRol === 'administracion')
+  const vendedorDeLaOrden = (Array.isArray(orden.perfiles) ? orden.perfiles[0] : orden.perfiles)?.id
+  const canSendToApproval = orden.estado === 'borrador' && (
+    vendedorDeLaOrden === userId ||
+    puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
+  )
   // Facturación y cobro son exclusivas de administracion
   // Facturación y cobro corren en paralelo a la producción: dependen de sus
   // propias fechas, no del estado de la venta.
@@ -493,7 +498,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               <DollarSign size={15} /> Registrar cobro
             </button>
           )}
-          {['facturada', 'cobrada'].includes(orden.estado) && (
+          {estaFacturada && (
             <button
               onClick={() => generarFactura()}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
