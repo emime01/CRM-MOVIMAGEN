@@ -7,6 +7,7 @@ import ApprovalButtons from '@/components/dashboard/ApprovalButtons'
 import SemaforoGestiones from '@/components/dashboard/SemaforoGestiones'
 import { puede } from '@/lib/auth/roles'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda } from '@/lib/money'
 
 type EstadoOrden =
   | 'borrador'
@@ -43,15 +44,6 @@ function getCurrentQuarter(): { label: string; displayLabel: string; start: stri
   if (month <= 4) return { label: `Q1-${year}`, displayLabel: 'Q1', start: `${year}-01-01`, end: `${year}-04-30` }
   if (month <= 8) return { label: `Q2-${year}`, displayLabel: 'Q2', start: `${year}-05-01`, end: `${year}-08-31` }
   return { label: `Q3-${year}`, displayLabel: 'Q3', start: `${year}-09-01`, end: `${year}-12-31` }
-}
-
-function formatMoney(amount: number, currency: string = 'USD') {
-  return new Intl.NumberFormat('es-UY', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
 }
 
 function formatDate(dateStr: string) {
@@ -105,11 +97,15 @@ export default async function DashboardPage() {
   const activeLeads = leadsRes.data ?? []
   const objetivo = Number(objetivoRes.data?.objetivo_monto ?? 0)
   const facturadoItems = facturadoRes.data ?? []
-  const facturado = facturadoItems.reduce((sum, o) => sum + Number(o.monto_total ?? 0), 0)
-  const avance = objetivo > 0 ? Math.min((facturado / objetivo) * 100, 100) : 0
+  const facturado = sumarPorMoneda(facturadoItems)
+  // Los objetivos vienen de la planilla en pesos, así que el avance se mide
+  // contra lo vendido en pesos. Lo vendido en dólares se avisa aparte: sin
+  // tipo de cambio en el sistema, convertirlo sería inventar un número.
+  const facturadoPesos = montoEnPesos(facturado)
+  const avance = objetivo > 0 ? Math.min((facturadoPesos / objetivo) * 100, 100) : 0
 
   // Manager-specific queries
-  let teamData: { id: string; nombre: string; facturado: number; objetivo: number }[] = []
+  let teamData: { id: string; nombre: string; facturado: ReturnType<typeof sumarPorMoneda>; objetivo: number }[] = []
   let pendingApprovals: any[] = []
 
   if (rol === 'gerente_comercial') {
@@ -135,7 +131,7 @@ export default async function DashboardPage() {
       const [teamOrdersRes, teamObjetivosRes] = await Promise.all([
         supabase
           .from('ordenes_venta')
-          .select('vendedor_id, monto_total')
+          .select('vendedor_id, monto_total, moneda')
           .in('vendedor_id', teamIds)
           .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
           .gte('created_at', quarter.start)
@@ -152,9 +148,7 @@ export default async function DashboardPage() {
       const teamObjetivos = teamObjetivosRes.data ?? []
 
       teamData = team.map(member => {
-        const memberFact = teamOrders
-          .filter(o => o.vendedor_id === member.id)
-          .reduce((s, o) => s + Number(o.monto_total ?? 0), 0)
+        const memberFact = sumarPorMoneda(teamOrders.filter(o => o.vendedor_id === member.id))
         const memberObj = Number(teamObjetivos.find(o => o.vendedor_id === member.id)?.objetivo_monto ?? 0)
         return { id: member.id, nombre: member.nombre, facturado: memberFact, objetivo: memberObj }
       })
@@ -191,8 +185,13 @@ export default async function DashboardPage() {
             <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Facturado {quarter.displayLabel}</span>
           </div>
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>
-            {formatMoney(facturado)}
+            {formatTotales(facturado)}
           </div>
+          {hayOtraMoneda(facturado) && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              El avance sólo cuenta los pesos: no hay tipo de cambio cargado.
+            </div>
+          )}
         </div>
 
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 20 }}>
@@ -203,7 +202,7 @@ export default async function DashboardPage() {
             <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Objetivo {quarter.displayLabel}</span>
           </div>
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>
-            {objetivo > 0 ? formatMoney(objetivo) : <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Sin objetivo</span>}
+            {objetivo > 0 ? formatMoney(objetivo, 'UYU') : <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Sin objetivo</span>}
           </div>
         </div>
 
@@ -278,7 +277,7 @@ export default async function DashboardPage() {
                         {(order.clientes as any)?.nombre ?? '—'}
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {order.monto_total != null ? formatMoney(Number(order.monto_total), order.moneda ?? 'USD') : '—'}
+                        {order.monto_total != null ? formatMoney(Number(order.monto_total), order.moneda) : '—'}
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: badge.bg, color: badge.color }}>
@@ -330,7 +329,7 @@ export default async function DashboardPage() {
                       </span>
                       {lead.monto_potencial != null && (
                         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)' }}>
-                          {formatMoney(Number(lead.monto_potencial))}
+                          {formatMoney(Number(lead.monto_potencial), 'UYU')}
                         </span>
                       )}
                     </div>
@@ -375,12 +374,12 @@ export default async function DashboardPage() {
                 </thead>
                 <tbody>
                   {teamData.map((member, i) => {
-                    const pct = member.objetivo > 0 ? Math.min((member.facturado / member.objetivo) * 100, 100) : 0
+                    const pct = member.objetivo > 0 ? Math.min((montoEnPesos(member.facturado) / member.objetivo) * 100, 100) : 0
                     return (
                       <tr key={member.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                         <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{member.nombre}</td>
-                        <td style={{ padding: '10px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{formatMoney(member.facturado)}</td>
-                        <td style={{ padding: '10px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{member.objetivo > 0 ? formatMoney(member.objetivo) : '—'}</td>
+                        <td style={{ padding: '10px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{formatTotales(member.facturado)}</td>
+                        <td style={{ padding: '10px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{member.objetivo > 0 ? formatMoney(member.objetivo, 'UYU') : '—'}</td>
                         <td style={{ padding: '10px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{ flex: 1, height: 6, background: 'var(--gray-100)', borderRadius: 3, overflow: 'hidden' }}>
@@ -428,7 +427,7 @@ export default async function DashboardPage() {
                         {order.numero ?? `#${String(order.id).slice(0, 6)}`} · {(order.clientes as any)?.nombre ?? '—'}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {(order.perfiles as any)?.nombre ?? '—'} · {order.monto_total != null ? formatMoney(Number(order.monto_total), order.moneda ?? 'USD') : '—'}
+                        {(order.perfiles as any)?.nombre ?? '—'} · {order.monto_total != null ? formatMoney(Number(order.monto_total), order.moneda) : '—'}
                       </div>
                     </div>
                     <ApprovalButtons

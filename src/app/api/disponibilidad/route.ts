@@ -17,7 +17,9 @@ export interface SoporteOcupacion {
   pct: number
   disponible: number
   clientes: string[]
-  estado: 'libre' | 'parcial' | 'ocupado'
+  /** Cuánto se vendió por encima de la capacidad. 0 si está todo bien. */
+  sobreventa: number
+  estado: 'libre' | 'parcial' | 'ocupado' | 'sobrevendido'
 }
 
 export interface DiaStats {
@@ -44,13 +46,17 @@ function buildOcupacion(
     const reservado = reservadoMap.get(s.id) ?? 0
     const pct = Math.min(100, Math.round((reservado / cap) * 100))
     const disponible = Math.max(0, cap - reservado)
+    // Vender más de lo que entra quedaba invisible: `disponible` se recortaba
+    // en 0 y `pct` en 100, así que dos ventas sobre un espacio de uno se veían
+    // idénticas a uno bien vendido. Se expone el excedente aparte.
+    const sobreventa = Math.max(0, reservado - cap)
     const estado: SoporteOcupacion['estado'] =
-      reservado >= cap ? 'ocupado' : reservado > 0 ? 'parcial' : 'libre'
+      sobreventa > 0 ? 'sobrevendido' : reservado >= cap ? 'ocupado' : reservado > 0 ? 'parcial' : 'libre'
     return {
       id: s.id, nombre: s.nombre, tipo: s.tipo,
       tipo_cotizador: s.tipo_cotizador ?? null,
       seccion: s.seccion, ubicacion: s.ubicacion, categoria: s.categoria,
-      cap, reservado, pct, disponible,
+      cap, reservado, pct, disponible, sobreventa,
       clientes: clientesMap.get(s.id) ?? [],
       estado,
     }

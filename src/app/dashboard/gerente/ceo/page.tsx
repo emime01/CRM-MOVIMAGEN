@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +16,6 @@ function getQuarters() {
   ]
 }
 
-const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigits: 0 })
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0
 
 export default async function CeoDashboardPage() {
@@ -28,7 +28,7 @@ export default async function CeoDashboardPage() {
   const yearEnd = `${new Date().getFullYear()}-12-31`
 
   const [{ data: ordenes }, { data: leads }, { data: objetivos }, { data: vendedores }] = await Promise.all([
-    supabase.from('ordenes_venta').select('monto_total, estado, created_at, vendedor_id').gte('created_at', yearStart).lte('created_at', yearEnd),
+    supabase.from('ordenes_venta').select('monto_total, moneda, estado, created_at, fecha_cobro, vendedor_id').gte('created_at', yearStart).lte('created_at', `${yearEnd}T23:59:59`),
     supabase.from('leads').select('estado, monto_potencial, vendedor_id'),
     supabase.from('objetivos').select('objetivo_monto, cuatrimestre, vendedor_id').in('cuatrimestre', quarters.map(q => q.label)),
     supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
@@ -37,8 +37,8 @@ export default async function CeoDashboardPage() {
   const activeStates = ESTADOS_VENTA_VIVA as unknown as string[]
 
   // YTD metrics
-  const facturadoYTD = ordenes?.filter(o => activeStates.includes(o.estado ?? '')).reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0
-  const cobradoYTD = ordenes?.filter(o => o.estado === 'cobrada').reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0
+  const facturadoYTD = sumarPorMoneda(ordenes?.filter(o => activeStates.includes(o.estado ?? '')) ?? [])
+  const cobradoYTD = sumarPorMoneda(ordenes?.filter(o => o.fecha_cobro) ?? [])
   const pipeline = leads?.filter(l => !['ganado', 'perdido'].includes(l.estado ?? '')).reduce((s, l) => s + Number(l.monto_potencial ?? 0), 0) ?? 0
   const leadsTotal = leads?.length ?? 0
   const leadsGanados = leads?.filter(l => l.estado === 'ganado').length ?? 0
@@ -50,14 +50,16 @@ export default async function CeoDashboardPage() {
     const s = o.estado ?? 'sin_estado'
     if (!stateGroups[s]) stateGroups[s] = { count: 0, total: 0 }
     stateGroups[s].count++
-    stateGroups[s].total += Number(o.monto_total ?? 0)
+    stateGroups[s].total += Number(o.monto_total ?? 0)   // mismo estado, misma lectura: acá sólo se cuenta
   })
 
   // Revenue vs objective per quarter
   const qStats = quarters.map(q => {
-    const rev = ordenes?.filter(o => activeStates.includes(o.estado ?? '') && o.created_at && o.created_at >= q.start && o.created_at <= q.end).reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0
+    const delQ = ordenes?.filter(o => activeStates.includes(o.estado ?? '') && o.created_at && o.created_at >= q.start && o.created_at <= `${q.end}T23:59:59`) ?? []
+    const porMoneda = sumarPorMoneda(delQ)
+    const rev = montoEnPesos(porMoneda)
     const obj = objetivos?.filter(o => o.cuatrimestre === q.label).reduce((s, o) => s + Number(o.objetivo_monto ?? 0), 0) ?? 0
-    return { ...q, rev, obj, avance: pct(rev, obj) }
+    return { ...q, porMoneda, rev, obj, avance: pct(rev, obj) }
   })
 
   const maxQRev = Math.max(...qStats.map(q => Math.max(q.rev, q.obj)), 1)
@@ -65,9 +67,10 @@ export default async function CeoDashboardPage() {
   // Vendor performance
   const vendorStats = vendedores?.map(v => {
     const myOrds = ordenes?.filter(o => o.vendedor_id === v.id && activeStates.includes(o.estado ?? '')) ?? []
-    const facturado = myOrds.reduce((s, o) => s + Number(o.monto_total ?? 0), 0)
+    const porMoneda = sumarPorMoneda(myOrds)
+    const facturado = montoEnPesos(porMoneda)
     const obj = objetivos?.filter(o => o.vendedor_id === v.id).reduce((s, o) => s + Number(o.objetivo_monto ?? 0), 0) ?? 0
-    return { ...v, facturado, obj, avance: pct(facturado, obj) }
+    return { ...v, porMoneda, facturado, obj, avance: pct(facturado, obj) }
   }).sort((a, b) => b.facturado - a.facturado) ?? []
 
   const STATE_LABELS: Record<string, string> = {
@@ -86,9 +89,9 @@ export default async function CeoDashboardPage() {
       {/* KPI cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
         {[
-          { label: `Facturado ${new Date().getFullYear()}`, value: fmt(facturadoYTD), sub: 'Año en curso' },
-          { label: 'Cobrado YTD', value: fmt(cobradoYTD), sub: 'Efectivamente cobrado' },
-          { label: 'Pipeline activo', value: fmt(pipeline), sub: 'Leads en curso' },
+          { label: `Vendido ${new Date().getFullYear()}`, value: formatTotales(facturadoYTD), sub: 'Año en curso' },
+          { label: 'Cobrado YTD', value: formatTotales(cobradoYTD), sub: 'Efectivamente cobrado' },
+          { label: 'Pipeline activo', value: formatMoney(pipeline, 'UYU'), sub: 'Leads en curso' },
           { label: 'Tasa de cierre', value: `${convRate}%`, sub: `${leadsGanados} de ${leadsTotal} leads` },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
@@ -108,7 +111,7 @@ export default async function CeoDashboardPage() {
               <div key={q.label}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
                   <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{q.label}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{fmt(q.rev)} / {q.obj > 0 ? fmt(q.obj) : 'Sin obj.'} — <strong style={{ color: 'var(--orange)' }}>{q.avance}%</strong></span>
+                  <span style={{ color: 'var(--text-muted)' }}>{formatTotales(q.porMoneda)} / {q.obj > 0 ? formatMoney(q.obj, 'UYU') : 'Sin obj.'} — <strong style={{ color: 'var(--orange)' }}>{q.avance}%</strong></span>
                 </div>
                 <div style={{ height: 8, background: 'var(--bg-app)', borderRadius: 4, overflow: 'hidden', marginBottom: 2 }}>
                   <div style={{ height: '100%', width: `${Math.round((q.rev / maxQRev) * 100)}%`, background: 'var(--orange)', borderRadius: 4 }} />
@@ -138,7 +141,7 @@ export default async function CeoDashboardPage() {
                   <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{STATE_LABELS[state] ?? state}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({data.count})</span>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(data.total)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{formatMoney(data.total, 'UYU')}</span>
               </div>
             ))}
           </div>
@@ -160,8 +163,8 @@ export default async function CeoDashboardPage() {
             {vendorStats.map(v => (
               <tr key={v.id} style={{ borderBottom: '1px solid var(--border)' }}>
                 <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>{v.nombre}</td>
-                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(v.facturado)}</td>
-                <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-muted)' }}>{v.obj > 0 ? fmt(v.obj) : '—'}</td>
+                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>{formatTotales(v.porMoneda)}</td>
+                <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-muted)' }}>{v.obj > 0 ? formatMoney(v.obj, 'UYU') : '—'}</td>
                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
                     <div style={{ width: 80, height: 6, background: 'var(--bg-app)', borderRadius: 3, overflow: 'hidden' }}>

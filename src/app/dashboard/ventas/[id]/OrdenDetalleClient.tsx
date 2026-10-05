@@ -234,13 +234,24 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   async function handleChangeEstado(nuevoEstado: string, comentario?: string, extra: Record<string, unknown> = {}) {
     setActionLoading(true)
     try {
-      // El endpoint /estado ya setea aprobado_at/por, fecha_facturacion, fecha_cobro, etc.
-      // No hace falta un segundo PATCH (que además sería bloqueado por el allowlist).
-      await fetch(`/api/ordenes/${orden.id}/estado`, {
+      // El endpoint /estado ya setea aprobado_at/por, asigna los buses y cierra
+      // el bloqueo. No hace falta un segundo PATCH (que además sería bloqueado
+      // por el allowlist).
+      const res = await fetch(`/api/ordenes/${orden.id}/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: nuevoEstado, comentario, ...extra }),
       })
+      // La respuesta se descartaba, así que ni los errores ni los avisos de
+      // sobreventa llegaban a la pantalla.
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        alert(data?.error ?? 'No se pudo cambiar el estado de la venta')
+        return
+      }
+      if (data?.warnings?.length) {
+        alert(`Atención:\n\n${data.warnings.join('\n')}`)
+      }
       router.refresh()
     } finally {
       setActionLoading(false)

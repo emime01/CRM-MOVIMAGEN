@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,6 @@ function getCurrentQuarter() {
   return { label: `Q3-${y}`, start: `${y}-09-01`, end: `${y}-12-31` }
 }
 
-const fmt = (n: number) => n.toLocaleString('es-UY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 
 export default async function ReportesPage() {
   const session = await getServerSession(authOptions)
@@ -22,7 +22,7 @@ export default async function ReportesPage() {
   const q = getCurrentQuarter()
   const isGerente = ['gerente_comercial', 'administracion'].includes(session.user.rol)
 
-  let ordQuery = supabase.from('ordenes_venta').select('monto_total, estado, created_at, clientes(nombre, empresa)')
+  let ordQuery = supabase.from('ordenes_venta').select('monto_total, moneda, estado, created_at, fecha_facturacion, clientes(nombre, empresa)')
     .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
   if (!isGerente) ordQuery = ordQuery.eq('vendedor_id', session.user.id)
 
@@ -43,16 +43,18 @@ export default async function ReportesPage() {
     label: MONTH_NAMES[m],
     key: `${qYear}-${String(m).padStart(2, '0')}`,
   }))
-  const monthlyRev = months.map(m => ({
-    ...m,
-    total: ordenes?.filter(o => o.created_at?.startsWith(m.key) && ['facturada', 'cobrada'].includes(o.estado ?? '')).reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0,
-  }))
+  const monthlyRev = months.map(m => {
+    const delMes = ordenes?.filter(o => o.fecha_facturacion?.startsWith(m.key)) ?? []
+    return { ...m, porMoneda: sumarPorMoneda(delMes), total: montoEnPesos(sumarPorMoneda(delMes)) }
+  })
   const maxMonthly = Math.max(...monthlyRev.map(m => m.total), 1)
 
   // Q metrics
-  const facturadoQ = ordenes?.filter(o => o.created_at && o.created_at >= q.start && o.created_at <= q.end).reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0
+  const delQ = ordenes?.filter(o => o.created_at && o.created_at >= q.start && o.created_at <= `${q.end}T23:59:59`) ?? []
+  const facturadoQ = sumarPorMoneda(delQ)
   const objetivoQ = Number(objetivo?.objetivo_monto ?? 0)
-  const avancePct = objetivoQ > 0 ? Math.min(Math.round((facturadoQ / objetivoQ) * 100), 100) : 0
+  // Los objetivos están en pesos; el avance se mide contra los pesos.
+  const avancePct = objetivoQ > 0 ? Math.min(Math.round((montoEnPesos(facturadoQ) / objetivoQ) * 100), 100) : 0
   const pipeline = leads?.filter(l => !['ganado', 'perdido'].includes(l.estado ?? '')).reduce((s, l) => s + Number(l.monto_potencial ?? 0), 0) ?? 0
 
   // Leads by stage
@@ -68,15 +70,20 @@ export default async function ReportesPage() {
   const maxLeads = Math.max(...leadsCount.map(e => e.count), 1)
 
   // Top clients
-  const clientMap: Record<string, { nombre: string; total: number; count: number }> = {}
+  // El ranking se ordena por pesos: mezclar monedas para ordenar daría un
+  // orden inventado. Cada cliente muestra sus totales por separado.
+  const clientMap: Record<string, { nombre: string; ventas: typeof ordenes; count: number }> = {}
   ordenes?.forEach(o => {
     const cli = Array.isArray(o.clientes) ? o.clientes[0] : o.clientes
     const nombre = (cli as any)?.empresa ?? (cli as any)?.nombre ?? 'Sin cliente'
-    if (!clientMap[nombre]) clientMap[nombre] = { nombre, total: 0, count: 0 }
-    clientMap[nombre].total += Number(o.monto_total ?? 0)
+    if (!clientMap[nombre]) clientMap[nombre] = { nombre, ventas: [], count: 0 }
+    clientMap[nombre].ventas!.push(o)
     clientMap[nombre].count++
   })
-  const topClientes = Object.values(clientMap).sort((a, b) => b.total - a.total).slice(0, 5)
+  const topClientes = Object.values(clientMap)
+    .map(c => { const porMoneda = sumarPorMoneda(c.ventas ?? []); return { ...c, porMoneda, total: montoEnPesos(porMoneda) } })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5)
   const maxClient = Math.max(...topClientes.map(c => c.total), 1)
 
   return (
@@ -84,10 +91,10 @@ export default async function ReportesPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
         {[
-          { label: `Facturado ${q.label}`, value: `$${fmt(facturadoQ)}`, sub: 'USD' },
-          { label: 'Objetivo Q', value: objetivoQ > 0 ? `$${fmt(objetivoQ)}` : 'Sin objetivo', sub: objetivoQ > 0 ? 'USD' : '' },
+          { label: `Vendido ${q.label}`, value: formatTotales(facturadoQ), sub: hayOtraMoneda(facturadoQ) ? 'el avance sólo cuenta los pesos' : '' },
+          { label: 'Objetivo Q', value: objetivoQ > 0 ? formatMoney(objetivoQ, 'UYU') : 'Sin objetivo', sub: '' },
           { label: 'Avance', value: `${avancePct}%`, sub: 'del objetivo', bar: avancePct },
-          { label: 'Pipeline activo', value: `$${fmt(pipeline)}`, sub: 'leads en curso' },
+          { label: 'Pipeline activo', value: formatMoney(pipeline, 'UYU'), sub: 'leads en curso' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>{s.label}</div>
@@ -113,7 +120,7 @@ export default async function ReportesPage() {
                 <div style={{ flex: 1, height: 24, background: 'var(--bg-app)', borderRadius: 4, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${Math.round((m.total / maxMonthly) * 100)}%`, background: 'var(--orange)', borderRadius: 4, minWidth: m.total > 0 ? 4 : 0 }} />
                 </div>
-                <div style={{ width: 80, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right' }}>{m.total > 0 ? `$${fmt(m.total)}` : '—'}</div>
+                <div style={{ width: 80, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right' }}>{m.total > 0 ? formatTotales(m.porMoneda) : '—'}</div>
               </div>
             ))}
           </div>
@@ -150,7 +157,7 @@ export default async function ReportesPage() {
                 <div style={{ flex: 1, height: 20, background: 'var(--bg-app)', borderRadius: 4, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${Math.round((c.total / maxClient) * 100)}%`, background: 'var(--orange)', borderRadius: 4, opacity: 0.7 }} />
                 </div>
-                <div style={{ width: 90, fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textAlign: 'right' }}>${fmt(c.total)}</div>
+                <div style={{ width: 90, fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textAlign: 'right' }}>{formatTotales(c.porMoneda)}</div>
                 <div style={{ width: 60, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>{c.count} órdenes</div>
               </div>
             ))}
