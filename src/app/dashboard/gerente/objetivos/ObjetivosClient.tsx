@@ -1,5 +1,7 @@
 'use client'
 
+import { parsearHoja, type FilaObjetivo } from '@/lib/objetivos/parse-excel'
+
 import { useState, useRef } from 'react'
 import { ChevronDown, ChevronRight, Upload, Download, X } from 'lucide-react'
 
@@ -42,18 +44,6 @@ function clienteNombre(co: ClienteObjetivo): string {
 
 // ─── Import Modal ──────────────────────────────────────────────────────────
 
-interface ImportRow {
-  agencia?: string
-  contacto_agencia?: string
-  contacto_cliente?: string
-  cliente: string
-  ejec_vtas?: string
-  ponderacion_pct: number
-  c1: number
-  c2: number
-  c3: number
-}
-
 async function downloadTemplate() {
   const XLSX = await import('xlsx')
   const ws = XLSX.utils.aoa_to_sheet([
@@ -86,7 +76,7 @@ function parsePercent(v: unknown): number {
 
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const [rows, setRows] = useState<ImportRow[] | null>(null)
+  const [rows, setRows] = useState<FilaObjetivo[] | null>(null)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -100,28 +90,14 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       const XLSX = await import('xlsx')
       const ab = await file.arrayBuffer()
       const wb = XLSX.read(ab, { type: 'array' })
+      // La hoja se lee como matriz: los encabezados de esta planilla no están
+      // en la primera fila, así que el parser los ubica solo.
       const ws = wb.Sheets[wb.SheetNames[0]]
-      const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
-
-      const parsed: ImportRow[] = []
-      for (const row of data) {
-        const cliente = String(row['CLIENTE'] ?? row['Cliente'] ?? row['cliente'] ?? '').trim()
-        if (!cliente) continue
-        parsed.push({
-          agencia: String(row['AGENCIA'] ?? row['Agencia'] ?? row['agencia'] ?? '').trim() || undefined,
-          contacto_agencia: String(row['CONTACTO AGENCIA'] ?? row['Contacto Agencia'] ?? row['contacto_agencia'] ?? '').trim() || undefined,
-          contacto_cliente: String(row['CONTACTO CLIENTE'] ?? row['Contacto Cliente'] ?? row['contacto_cliente'] ?? '').trim() || undefined,
-          cliente,
-          ejec_vtas: String(row['EJEC VTAS'] ?? row['Ejec Vtas'] ?? row['ejec_vtas'] ?? '').trim() || undefined,
-          ponderacion_pct: parsePercent(row['PORCENTAJE PONDERACIÓN PARA OBJETIVO TOTAL'] ?? row['PORCENTAJE'] ?? row['Ponderacion'] ?? row['ponderacion_pct']),
-          c1: parseNumber(row['C1'] ?? row['c1']),
-          c2: parseNumber(row['C2'] ?? row['c2']),
-          c3: parseNumber(row['C3'] ?? row['c3']),
-        })
-      }
+      const matriz = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' })
+      const parsed = parsearHoja(matriz)
 
       if (parsed.length === 0) {
-        setError('No se encontraron filas con cliente. Verificá que la columna CLIENTE tenga datos.')
+        setError('No se encontraron clientes. Verificá que la planilla tenga una columna CLIENTE.')
         return
       }
       setRows(parsed)
