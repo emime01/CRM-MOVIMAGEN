@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { pickAllowed } from '@/lib/api/safe-patch'
+import { estaCerrada } from '@/lib/ventas/estados'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,13 +78,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const supabase = createServerClient()
 
+  const { data: orden } = await supabase
+    .from('ordenes_venta')
+    .select('estado, vendedor_id')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!orden) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+
+  // Una venta aprobada es un compromiso cerrado con el cliente: lo que se
+  // vendió no se toca más. Lo operativo sigue abierto por sus propios
+  // endpoints —fechas reales e instalación en /api/orden-items/[id], buses en
+  // /asignar-buses, y factura y cobro en los suyos—, porque las campañas se
+  // atrasan en la instalación y eso no cambia lo vendido.
+  if (estaCerrada(orden.estado)) {
+    return NextResponse.json(
+      { error: 'La venta está aprobada y no se edita. Las fechas reales y la instalación se cargan desde Disponibilidad; si cambió lo vendido, hay que hacer una venta nueva.' },
+      { status: 409 },
+    )
+  }
+
   // Ownership: vendedor solo edita las suyas; resto puede tocar cualquiera.
-  if (session.user.rol === 'vendedor') {
-    const { data: orden } = await supabase.from('ordenes_venta').select('vendedor_id').eq('id', params.id).maybeSingle()
-    if (!orden) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
-    if (orden.vendedor_id !== session.user.id) {
-      return NextResponse.json({ error: 'Sin permisos sobre esta orden' }, { status: 403 })
-    }
+  if (session.user.rol === 'vendedor' && orden.vendedor_id !== session.user.id) {
+    return NextResponse.json({ error: 'Sin permisos sobre esta orden' }, { status: 403 })
   }
 
   const updates = pickAllowed(body, ALLOWED_FIELDS)

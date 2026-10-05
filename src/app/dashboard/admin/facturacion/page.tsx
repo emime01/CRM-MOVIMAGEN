@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,15 +22,21 @@ export default async function FacturacionPage() {
   if (session.user.rol !== 'administracion') redirect('/dashboard')
   const supabase = createServerClient()
 
+  // Lo que falta facturar se decide por la fecha de factura, no por el estado.
+  // Facturar dejó de ser un estado de la venta, así que filtrar por estado
+  // mostraba toda venta aprobada como pendiente para siempre —aun ya
+  // facturada— y la lista de recientes no traía nunca nada.
+  const CAMPOS = 'id, numero, monto_total, moneda, estado, created_at, fecha_facturacion, factura_numero, clientes(nombre, empresa), perfiles(nombre)'
   const [{ data: pendientes }, { data: recientes }] = await Promise.all([
     supabase.from('ordenes_venta')
-      .select('id, numero, monto_total, moneda, estado, created_at, clientes(nombre, empresa), perfiles(nombre)')
-      .in('estado', ['aprobada', 'en_oic'])
+      .select(CAMPOS)
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
+      .is('fecha_facturacion', null)
       .order('created_at', { ascending: false }),
     supabase.from('ordenes_venta')
-      .select('id, numero, monto_total, moneda, estado, created_at, clientes(nombre, empresa), perfiles(nombre)')
-      .in('estado', ['facturada', 'cobrada'])
-      .order('created_at', { ascending: false })
+      .select(CAMPOS)
+      .not('fecha_facturacion', 'is', null)
+      .order('fecha_facturacion', { ascending: false })
       .limit(10),
   ])
 
@@ -83,7 +90,7 @@ export default async function FacturacionPage() {
       {/* Pending to invoice */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-          Para facturar — Aprobadas y en producción
+          Para facturar — ventas aprobadas sin factura
         </div>
         {pendientes?.length === 0 ? (
           <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>No hay órdenes pendientes de facturar.</p>

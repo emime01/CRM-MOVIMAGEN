@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ArteClient from './ArteClient'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +33,7 @@ export default async function ArteDigitalPage() {
         clientes(nombre, empresa),
         orden_items(soporte_id, soportes(id, nombre, tipo))
       `)
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .order('fecha_alta_prevista', { ascending: false }),
   ])
 
@@ -49,7 +50,7 @@ export default async function ArteDigitalPage() {
   ;(items ?? []).forEach((item: any) => {
     if (!item.soporte_id) return
     const ord = Array.isArray(item.ordenes_venta) ? item.ordenes_venta[0] : item.ordenes_venta
-    if (!ord || !['aprobada', 'en_oic', 'facturada', 'cobrada'].includes(ord.estado)) return
+    if (!ord || !(ESTADOS_VENTA_VIVA as unknown as string[]).includes(ord.estado)) return
 
     const altaEf = (ord.fecha_alta_real ?? ord.fecha_alta_prevista) as string | null
     const bajaEf = (ord.fecha_baja_real ?? ord.fecha_baja_prevista) as string | null

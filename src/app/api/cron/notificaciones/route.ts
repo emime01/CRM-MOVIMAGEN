@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 import { timingSafeEqual } from 'node:crypto'
-import { ESTADOS_BLOQUEO_VIVO } from '@/lib/ventas/asignar-buses'
+import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   const { data: campanasManana } = await supabase
     .from('ordenes_venta')
     .select('id, numero, vendedor_id, clientes(nombre, empresa), fecha_alta_prevista, fecha_alta_real')
-    .in('estado', ['aprobada', 'en_oic', 'facturada'])
+    .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .not('vendedor_id', 'is', null)
 
   for (const orden of campanasManana ?? []) {
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
   const { data: campanasTerminan } = await supabase
     .from('ordenes_venta')
     .select('id, numero, vendedor_id, clientes(nombre, empresa), fecha_baja_prevista, fecha_baja_real')
-    .in('estado', ['aprobada', 'en_oic', 'facturada'])
+    .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .not('vendedor_id', 'is', null)
 
   for (const orden of campanasTerminan ?? []) {
@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
   const { data: campanasTerminadasAyer } = await supabase
     .from('ordenes_venta')
     .select('id, numero, vendedor_id, clientes(nombre, empresa), fecha_baja_prevista, fecha_baja_real')
-    .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+    .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .not('vendedor_id', 'is', null)
 
   for (const orden of campanasTerminadasAyer ?? []) {

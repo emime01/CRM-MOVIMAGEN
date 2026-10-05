@@ -6,6 +6,7 @@ import { TrendingUp, DollarSign, Target, Award, CheckCircle, XCircle } from 'luc
 import ApprovalButtons from '@/components/dashboard/ApprovalButtons'
 import SemaforoGestiones from '@/components/dashboard/SemaforoGestiones'
 import { puede } from '@/lib/auth/roles'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 type EstadoOrden =
   | 'borrador'
@@ -95,7 +96,7 @@ export default async function DashboardPage() {
       .from('ordenes_venta')
       .select('monto_total, moneda')
       .eq('vendedor_id', vendedorId)
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .gte('created_at', quarter.start)
       .lte('created_at', `${quarter.end}T23:59:59`),
   ])
@@ -136,7 +137,7 @@ export default async function DashboardPage() {
           .from('ordenes_venta')
           .select('vendedor_id, monto_total')
           .in('vendedor_id', teamIds)
-          .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+          .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
           .gte('created_at', quarter.start)
           .lte('created_at', `${quarter.end}T23:59:59`),
 

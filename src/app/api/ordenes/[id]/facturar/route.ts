@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   // Se factura una venta aprobada. Antes de la aprobación del gerente no hay
   // nada que facturar.
-  const APROBADAS = ['aprobada', 'en_oic', 'facturada', 'cobrada']
+  const APROBADAS = ESTADOS_VENTA_VIVA as unknown as string[]
   if (!body.anular && !APROBADAS.includes(orden.estado)) {
     return NextResponse.json({ error: 'La venta tiene que estar aprobada para facturarla' }, { status: 400 })
   }

@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +23,7 @@ export default async function ReportesPage() {
   const isGerente = ['gerente_comercial', 'administracion'].includes(session.user.rol)
 
   let ordQuery = supabase.from('ordenes_venta').select('monto_total, estado, created_at, clientes(nombre, empresa)')
-    .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+    .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
   if (!isGerente) ordQuery = ordQuery.eq('vendedor_id', session.user.id)
 
   let leadsQuery = supabase.from('leads').select('estado, monto_potencial')

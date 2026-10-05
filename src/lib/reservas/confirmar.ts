@@ -85,16 +85,15 @@ export async function asignarBusesYDetectarConflictos(
  * Sólo avanza (pendiente → aprobada → confirmada); nunca retrocede ni toca
  * reservas rechazadas o vencidas.
  */
-export async function sincronizarReservaConOrden(
+export async function cerrarBloqueoDeVenta(
   supabase: SupabaseClient,
   ordenId: string,
-  estadoOrden: 'aprobada' | 'en_oic',
   userId: string,
-): Promise<{ reservaId: string | null; estado: string | null; warnings: string[] }> {
-  const vacio = { reservaId: null, estado: null, warnings: [] as string[] }
+): Promise<{ reservaId: string | null; estado: string | null }> {
+  const vacio = { reservaId: null, estado: null }
 
-  // La columna orden_id puede no existir si v26 no corrió: no debe romper el
-  // cambio de estado de la OIC.
+  // El bloqueo es opcional: la mayoría de las ventas no tienen uno. Tampoco
+  // debe romper la aprobación si la columna orden_id no existe (v26 sin correr).
   const { data: reserva, error } = await supabase
     .from('reservas')
     .select('id, estado')
@@ -102,28 +101,22 @@ export async function sincronizarReservaConOrden(
     .maybeSingle()
   if (error || !reserva) return vacio
 
-  const destino = estadoOrden === 'aprobada' ? 'aprobada' : 'confirmada'
-
-  // Sólo avanzar. 'rechazada'/'vencida' se dejan como están: son decisiones
-  // explícitas que la venta no debería pisar.
-  const avance: Record<string, string[]> = {
-    aprobada:   ['pendiente'],
-    confirmada: ['pendiente', 'aprobada'],
+  // Aprobada la venta, el bloqueo cumplió: el espacio ya está vendido y pasa a
+  // ocuparlo la venta. Antes esto iba en dos pasos —aprobar lo dejaba
+  // "aprobado" y recién pasarlo a producción lo confirmaba—, y si el segundo
+  // paso no se daba el espacio quedaba contado dos veces.
+  //
+  // 'rechazada' y 'vencida' se dejan como están: son decisiones explícitas que
+  // la venta no debería pisar.
+  if (!['pendiente', 'aprobada'].includes(reserva.estado)) {
+    return { reservaId: reserva.id, estado: reserva.estado }
   }
-  if (!avance[destino].includes(reserva.estado)) {
-    return { reservaId: reserva.id, estado: reserva.estado, warnings: [] }
-  }
 
-  const updates: Record<string, unknown> = { estado: destino, updated_at: new Date().toISOString() }
-  if (destino === 'aprobada') updates.aprobada_por = userId
+  const { error: updErr } = await supabase
+    .from('reservas')
+    .update({ estado: 'confirmada', aprobada_por: userId, updated_at: new Date().toISOString() })
+    .eq('id', reserva.id)
+  if (updErr) return { reservaId: reserva.id, estado: reserva.estado }
 
-  const { error: updErr } = await supabase.from('reservas').update(updates).eq('id', reserva.id)
-  if (updErr) return { reservaId: reserva.id, estado: reserva.estado, warnings: [] }
-
-  // Al confirmar hay que asignar buses, igual que desde la pantalla de reservas.
-  const warnings = destino === 'confirmada'
-    ? (await asignarBusesYDetectarConflictos(supabase, reserva.id)).warnings
-    : []
-
-  return { reservaId: reserva.id, estado: destino, warnings }
+  return { reservaId: reserva.id, estado: 'confirmada' }
 }

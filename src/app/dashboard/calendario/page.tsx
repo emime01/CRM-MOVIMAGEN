@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import CalendarioClient from './CalendarioClient'
 import { puede } from '@/lib/auth/roles'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +25,7 @@ export default async function CalendarioPage() {
         fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
         clientes(nombre, empresa)
       `)
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada']),
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
     supabase
       .from('tasks')
       .select(`

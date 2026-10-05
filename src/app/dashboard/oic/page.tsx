@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ItemEstadoControl from './ItemEstadoControl'
 import { puede } from '@/lib/auth/roles'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,7 +108,7 @@ export default async function OicPage() {
         clientes(nombre, empresa)
       )
     `)
-    .eq('ordenes_venta.estado', 'en_oic')
+    .in('ordenes_venta.estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .order('created_at', { ascending: true })
 
   const rows = (items ?? []) as unknown as OrdenItem[]

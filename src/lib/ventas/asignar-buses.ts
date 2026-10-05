@@ -10,7 +10,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * así que vive en la venta.
  */
 
-/** Estados de una venta que ocupan el espacio de verdad. */
+/**
+ * Estados de una venta que ocupan el espacio de verdad.
+ *
+ * Hoy la única que ocupa es `aprobada`: la máquina de estados termina ahí
+ * (ver lib/ventas/estados.ts). Los otros tres son filas viejas, de cuando
+ * pasar a producción, facturar y cobrar eran estados; se siguen contando para
+ * no perder historia.
+ */
 export const ESTADOS_VENTA_VIVA = ['aprobada', 'en_oic', 'facturada', 'cobrada'] as const
 
 /** Estados de un bloqueo que todavía retiene el espacio. */

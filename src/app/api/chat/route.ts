@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { searchMessages, refreshAccessToken } from '@/lib/gmail'
 import { puede } from '@/lib/auth/roles'
+import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -41,7 +42,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        estado:       { type: 'string', description: 'Estado a filtrar: borrador, enviada, aprobada, en_oic, facturada, cobrada, rechazada, cancelada. Omitir para todos.' },
+        estado:       { type: 'string', description: 'Estado a filtrar: borrador, pendiente_aprobacion, aprobada, rechazada. Omitir para todos.' },
         fecha_desde:  { type: 'string', description: 'Filtrar órdenes creadas desde esta fecha YYYY-MM-DD' },
         fecha_hasta:  { type: 'string', description: 'Filtrar órdenes creadas hasta esta fecha YYYY-MM-DD' },
         cliente:      { type: 'string', description: 'Texto para buscar por nombre de cliente o empresa' },
@@ -132,7 +133,7 @@ async function runDisponibilidad(supabase: ReturnType<typeof createServerClient>
     // Fetch all active-state orders and apply COALESCE(real, prevista) in JS
     supabase.from('ordenes_venta')
       .select('id, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id)')
-      .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .not('fecha_alta_prevista', 'is', null),
     supabase.from('reservas')
       .select('id, soporte_id, fecha_desde, fecha_hasta, clientes(nombre, empresa)')
@@ -324,7 +325,7 @@ async function runBuscarCliente(supabase: ReturnType<typeof createServerClient>,
       .limit(5)
 
     const totalRevenue = (ordenes ?? [])
-      .filter((o: any) => ['aprobada', 'en_oic', 'facturada', 'cobrada'].includes(o.estado))
+      .filter((o: any) => (ESTADOS_VENTA_VIVA as unknown as string[]).includes(o.estado))
       .reduce((s: number, o: any) => s + Number(o.monto_total ?? 0), 0)
 
     const ordenesStr = (ordenes ?? []).length > 0
@@ -351,7 +352,7 @@ async function runResumenVentas(supabase: ReturnType<typeof createServerClient>,
 
   let q = supabase.from('ordenes_venta')
     .select('id, estado, monto_total, moneda, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)')
-    .in('estado', ['aprobada', 'en_oic', 'facturada', 'cobrada'])
+    .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .gte('created_at', fecha_desde)
     .lte('created_at', fecha_hasta + 'T23:59:59')
 
