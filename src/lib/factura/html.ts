@@ -48,6 +48,7 @@ export interface FacturaData {
   fecha_facturacion: string | null
   moneda: string
   monto_total: number | null
+  monto_neto: number | null
   marca: string | null
   campana: string | null
   referencia: string | null
@@ -88,8 +89,14 @@ export function facturaHTML(d: FacturaData, emisor: Emisor = EMISOR): string {
       </tr>`
   }).join('')
 
+  // Las líneas se imprimen con esta suma y el cuadro de abajo con
+  // `monto_total`, que incluye IVA, producción e impuestos municipales. Sin
+  // una fila que explique la diferencia, la factura no cerraba: las líneas
+  // decían 40.000 y el TOTAL 97.600, sin nada en el medio.
   const sumaLineas = d.items.reduce((s, it) => s + it.precio_unitario * it.cantidad * it.semanas * (1 - (it.descuento_pct ?? 0) / 100), 0)
+  const neto = d.monto_neto ?? sumaLineas
   const total = d.monto_total ?? sumaLineas
+  const otros = total - neto
 
   const numeroFactura = d.factura_numero || (d.numero ? `s/factura · OIC #${String(d.numero).padStart(5, '0')}` : '—')
   const receptorNombre = d.receptor.empresa || d.receptor.nombre || '—'
@@ -124,7 +131,8 @@ export function facturaHTML(d: FacturaData, emisor: Emisor = EMISOR): string {
     td{padding:7px 8px;border-bottom:1px solid #f3f4f6;vertical-align:top}
     .totals{display:flex;justify-content:flex-end;margin-top:16px}
     .totals .box{background:#111827;color:#fff;padding:12px 24px;border-radius:8px;text-align:right}
-    .totals .t-label{font-size:10px;opacity:.6}
+    .totals .t-line{display:flex;justify-content:space-between;gap:24px;font-size:11px;opacity:.75;padding:1px 0}
+    .totals .t-label{font-size:10px;opacity:.6;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.25)}
     .totals .t-value{font-size:18px;font-weight:700;margin-top:2px}
     .nota{margin-top:18px;font-size:11px;color:#374151}
     .disclaimer{margin-top:24px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;font-size:10px;color:#92400e}
@@ -175,6 +183,8 @@ export function facturaHTML(d: FacturaData, emisor: Emisor = EMISOR): string {
 
   <div class="totals">
     <div class="box">
+      <div class="t-line"><span>Neto</span><span>${money(neto)}</span></div>
+      ${Math.abs(otros) >= 1 ? `<div class="t-line"><span>IVA e impuestos</span><span>${money(otros)}</span></div>` : ''}
       <div class="t-label">TOTAL ${esc(d.moneda)}</div>
       <div class="t-value">${money(total)}</div>
     </div>

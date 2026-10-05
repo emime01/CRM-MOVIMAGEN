@@ -26,6 +26,8 @@ export async function POST(req: NextRequest) {
       vendedor_id: vendedorId,
       cuatrimestre,
       objetivo_monto: monto,
+      // Marcado como manual para que el recálculo de la planilla no lo pise.
+      origen: 'manual',
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }

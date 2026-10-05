@@ -33,15 +33,31 @@ export async function recalcularObjetivos(
     porQ[`Q3-${year}`] = (porQ[`Q3-${year}`] ?? 0) + Number(f.objetivo_c3 ?? 0)
   }
 
-  // Se reescribe el año entero: si un vendedor se quedó sin clientes, su
-  // objetivo tiene que desaparecer, no quedar con el total anterior.
   const cuatrimestres = [`Q1-${year}`, `Q2-${year}`, `Q3-${year}`]
-  await supabase.from('objetivos').delete().in('cuatrimestre', cuatrimestres)
 
-  const aInsertar: { vendedor_id: string; cuatrimestre: string; objetivo_monto: number }[] = []
+  // Los objetivos escritos a mano no los maneja esta función. Antes se
+  // borraban junto con el resto y el vendedor quedaba sin objetivo de un día
+  // para el otro, sin que nadie tocara el suyo.
+  const { data: manuales } = await supabase
+    .from('objetivos')
+    .select('vendedor_id, cuatrimestre')
+    .in('cuatrimestre', cuatrimestres)
+    .eq('origen', 'manual')
+
+  const esManual = new Set((manuales ?? []).map(m => `${m.vendedor_id}|${m.cuatrimestre}`))
+
+  // Se reescribe el año entero salvo los manuales: si un vendedor se quedó sin
+  // clientes, su objetivo tiene que desaparecer, no quedar con el total
+  // anterior.
+  await supabase.from('objetivos').delete().in('cuatrimestre', cuatrimestres).eq('origen', 'planilla')
+
+  const aInsertar: { vendedor_id: string; cuatrimestre: string; objetivo_monto: number; origen: string }[] = []
   for (const [vendedorId, porQ] of Object.entries(totales)) {
     for (const [cuatrimestre, monto] of Object.entries(porQ)) {
-      if (monto > 0) aInsertar.push({ vendedor_id: vendedorId, cuatrimestre, objetivo_monto: monto })
+      // El objetivo escrito a mano gana sobre la suma de la planilla: quien lo
+      // escribió sabe algo que la planilla no dice.
+      if (esManual.has(`${vendedorId}|${cuatrimestre}`)) continue
+      if (monto > 0) aInsertar.push({ vendedor_id: vendedorId, cuatrimestre, objetivo_monto: monto, origen: 'planilla' })
     }
   }
   if (aInsertar.length > 0) {

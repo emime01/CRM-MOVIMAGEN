@@ -7,6 +7,11 @@ import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, Fol
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
+import { formatMoney as fmtMoneda } from '@/lib/money'
+
+function formatMoney(amount: number | null, moneda?: string | null) {
+  return amount == null ? '—' : fmtMoneda(amount, moneda)
+}
 
 type JoinedEntidad = { id?: string; nombre: string; empresa?: string | null; rut?: string | null; email?: string | null; telefono?: string | null }
 type JoinedNombre = JoinedEntidad | JoinedEntidad[] | null
@@ -56,6 +61,7 @@ interface Orden {
   estado: string
   moneda: string | null
   monto_total: number | null
+  monto_neto: number | null
   created_at: string
   contacto: string | null
   facturar_a: string | null
@@ -148,11 +154,6 @@ function joinedEmpresa(val: JoinedNombre): string | null {
 function joinedEntidad(val: JoinedNombre): JoinedEntidad | null {
   if (!val) return null
   return Array.isArray(val) ? (val[0] ?? null) : val
-}
-
-function formatMoney(amount: number | null, currency: string = 'USD') {
-  if (amount == null) return '—'
-  return new Intl.NumberFormat('es-UY', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
 }
 
 function formatDate(dateStr: string | null) {
@@ -283,6 +284,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
       fecha_facturacion: overrides?.fecha_facturacion ?? orden.fecha_facturacion,
       moneda: orden.moneda ?? 'UYU',
       monto_total: orden.monto_total,
+      monto_neto: orden.monto_neto,
       marca: orden.marca,
       campana: orden.campana,
       referencia: orden.referencia,
@@ -419,9 +421,15 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     return bruto * (1 - (item.descuento_pct ?? 0) / 100)
   }
 
-  const subtotal = orden.orden_items.reduce((sum, item) => sum + itemTotal(item), 0)
-  const iva = subtotal * 0.22
-  const totalCalc = subtotal + iva
+  // El total es el que tiene guardado la venta: es el que se factura y el que
+  // se comisiona. Antes esta pantalla lo recalculaba sumando las líneas y
+  // agregándoles 22% fijo, ignorando `tiene_iva`, el multiplicador por salidas,
+  // la producción y los impuestos municipales: mostraba 60.512 sobre una venta
+  // de 49.600, y el gerente aprobaba mirando eso.
+  const sumaLineas = orden.orden_items.reduce((sum, item) => sum + itemTotal(item), 0)
+  const neto = orden.monto_neto ?? sumaLineas
+  const total = orden.monto_total ?? sumaLineas
+  const otros = total - neto
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', maxWidth: 1100, margin: '0 auto' }}>
@@ -696,11 +704,13 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
               <div style={{ width: 260, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-secondary)' }}><span>Subtotal</span><span>{formatMoney(subtotal, orden.moneda ?? 'USD')}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-muted)' }}><span>IVA (22%)</span><span>{formatMoney(iva, orden.moneda ?? 'USD')}</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-secondary)' }}><span>Neto</span><span>{formatMoney(neto, orden.moneda)}</span></div>
+                {Math.abs(otros) >= 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-muted)' }}><span>IVA e impuestos</span><span>{formatMoney(otros, orden.moneda)}</span></div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', marginTop: 4, borderTop: '2px solid var(--border)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
                   <span>Total</span>
-                  <span style={{ color: 'var(--orange)' }}>{formatMoney(totalCalc, orden.moneda ?? 'USD')}</span>
+                  <span style={{ color: 'var(--orange)' }}>{formatMoney(total, orden.moneda)}</span>
                 </div>
               </div>
             </div>
