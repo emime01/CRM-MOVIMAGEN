@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ItemEstadoControl from './ItemEstadoControl'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,7 +91,7 @@ function SummaryCard({ label, value, accent }: { label: string; value: number; a
 export default async function OicPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if ((session.user as { rol?: string }).rol !== 'operaciones') redirect('/dashboard')
+  if (!puede((session.user as { rol?: string }).rol, ['operaciones'])) redirect('/dashboard')
 
   const supabase = createServerClient()
 

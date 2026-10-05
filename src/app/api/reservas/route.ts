@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const supabase = createServerClient()
   const rol = session.user.rol
-  const isAsistente = rol === 'asistente_ventas' || rol === 'gerente_comercial' || rol === 'administracion'
+  const isAsistente = puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
 
   let query = supabase
     .from('reservas')

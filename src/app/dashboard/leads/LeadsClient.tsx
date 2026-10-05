@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, X, Pencil, ShoppingCart, Gift, Check, XCircle, ChevronLeft, ChevronRight, CalendarPlus, ClipboardList } from 'lucide-react'
+import { puede } from '@/lib/auth/roles'
 
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 const DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -32,7 +33,7 @@ function BirthdayPanel({ userRol }: { userRol: string }) {
   const [regalos, setRegalos] = useState<Regalo[]>([])
   const [regalosMap, setRegalosMap] = useState<Record<string, Regalo>>({})
   const [loadingGift, setLoadingGift] = useState<Record<string, boolean>>({})
-  const isAsistente = userRol === 'asistente_ventas'
+  const isAsistente = puede(userRol, ['asistente_ventas'])
 
   useEffect(() => {
     Promise.all([

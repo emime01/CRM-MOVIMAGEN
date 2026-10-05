@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +19,7 @@ export async function GET(_req: NextRequest) {
     .order('created_at', { ascending: false })
 
   // Asistente sees ALL pending; vendedor sees only their own
-  if (rol !== 'asistente_ventas' && rol !== 'administracion' && rol !== 'gerente_comercial') {
+  if (!puede(rol, ['asistente_ventas', 'administracion', 'gerente_comercial'])) {
     query = query.eq('solicitado_por', session.user.id) as typeof query
   }
 
