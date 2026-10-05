@@ -218,8 +218,13 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const canUploadDoc = true
   const canSendToApproval = orden.estado === 'borrador' && (userRol === 'vendedor' || userRol === 'gerente_comercial' || userRol === 'administracion') && (Array.isArray(orden.perfiles) ? orden.perfiles[0]?.id === userId : orden.perfiles?.id === userId || userRol === 'gerente_comercial' || userRol === 'administracion')
   // Facturación y cobro son exclusivas de administracion
-  const canFacturar = userRol === 'administracion' && ['aprobada', 'en_oic'].includes(orden.estado)
-  const canCobrar = userRol === 'administracion' && orden.estado === 'facturada'
+  // Facturación y cobro corren en paralelo a la producción: dependen de sus
+  // propias fechas, no del estado de la venta.
+  const estaAprobada = ['aprobada', 'en_oic', 'facturada', 'cobrada'].includes(orden.estado)
+  const estaFacturada = !!orden.fecha_facturacion
+  const estaCobrada = !!orden.fecha_cobro
+  const canFacturar = userRol === 'administracion' && estaAprobada && !estaFacturada
+  const canCobrar = userRol === 'administracion' && estaFacturada && !estaCobrada
 
   const badge = ESTADO_BADGE[orden.estado] ?? { bg: '#f1f1ef', color: '#6e6a62', label: orden.estado }
   const numero = orden.numero ? `#${String(orden.numero).padStart(5, '0')}` : `#${orden.id.slice(0, 6)}`
@@ -299,10 +304,13 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   }
 
   async function handleFacturar() {
-    await handleChangeEstado('facturada', 'Factura emitida', {
-      fecha_facturacion: fechaFacturacion,
-      factura_numero: facturaNumero.trim() || undefined,
+    // Facturar no cambia el estado de la venta: la producción sigue su curso.
+    await fetch(`/api/ordenes/${orden.id}/facturar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha: fechaFacturacion, numero: facturaNumero.trim() || undefined }),
     })
+    router.refresh()
     setShowFacturar(false)
     // Abrir la factura recién emitida (usa los valores recién ingresados,
     // ya que orden.* todavía no refleja el refresh).
@@ -311,10 +319,13 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   }
 
   async function handleCobrar() {
-    await handleChangeEstado('cobrada', 'Pago registrado', {
-      fecha_cobro: fechaCobro,
-      metodo_pago: metodoPago.trim() || undefined,
+    // El cobro tampoco toca el estado; genera el pago y la comisión.
+    await fetch(`/api/ordenes/${orden.id}/cobrar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha: fechaCobro, metodo: metodoPago.trim() || undefined }),
     })
+    router.refresh()
     setShowCobrar(false)
     setMetodoPago('')
   }

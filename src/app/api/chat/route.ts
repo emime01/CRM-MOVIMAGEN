@@ -400,7 +400,8 @@ async function runDeudores(supabase: ReturnType<typeof createServerClient>, inpu
   const { data: facturadas } = await supabase
     .from('ordenes_venta')
     .select('id, numero, monto_total, moneda, created_at, clientes(nombre, empresa), perfiles!ordenes_venta_vendedor_id_fkey(nombre)')
-    .eq('estado', 'facturada')
+    .not('fecha_facturacion', 'is', null)
+    .is('fecha_cobro', null)
     .order('created_at', { ascending: true })
 
   const rows = ((facturadas ?? []) as any[]).map(o => ({
