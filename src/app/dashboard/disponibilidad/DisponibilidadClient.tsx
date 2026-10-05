@@ -132,7 +132,7 @@ function SoporteCard({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; onR
       {s.estado !== 'ocupado' && (
         <div style={{ padding: '0 14px 12px' }}>
           <button onClick={(e) => { e.stopPropagation(); onReservar() }} style={{ width: '100%', padding: '6px 0', border: '1px solid #eb691c', borderRadius: 7, background: 'rgba(235,105,28,0.06)', color: '#eb691c', fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer' }}>
-            Reservar
+            Bloquear
           </button>
         </div>
       )}
@@ -182,7 +182,7 @@ function SoporteListRow({ s, onReservar, onShowDetail }: { s: SoporteOcupacion; 
       <td style={{ padding: '10px 14px' }}>
         {s.estado !== 'ocupado' && (
           <button onClick={(e) => { e.stopPropagation(); onReservar() }} style={{ padding: '5px 12px', border: '1px solid #eb691c', borderRadius: 6, background: 'transparent', color: '#eb691c', fontSize: 11, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            Reservar
+            Bloquear
           </button>
         )}
       </td>
@@ -553,10 +553,15 @@ function ReservaModal({
   preselectedId: string | null; onClose: () => void; onSaved: () => void
 }) {
   const today = new Date().toISOString().split('T')[0]
+  // Una semana es el arranque razonable para esperar la orden de compra; el
+  // vendedor la cambia según el caso, que es como lo deciden ellos.
+  const enUnaSemana = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
   const [selectedIds, setSelectedIds] = useState<Set<string>>(preselectedId ? new Set([preselectedId]) : new Set())
   const [clienteId, setClienteId] = useState('')
   const [desde, setDesde] = useState(today)
   const [hasta, setHasta] = useState(today)
+  const [venceEl, setVenceEl] = useState(enUnaSemana)
+  const [motivo, setMotivo] = useState('Esperando la orden de compra')
   const [notas, setNotas] = useState('')
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
@@ -570,16 +575,17 @@ function ReservaModal({
     e.preventDefault()
     if (!selectedIds.size || !clienteId) { setError('Seleccioná al menos un soporte y un cliente'); return }
     if (hasta < desde) { setError('La fecha de fin debe ser mayor o igual a la de inicio'); return }
+    if (!venceEl) { setError('Indicá hasta cuándo se mantiene el bloqueo'); return }
     setSaving(true); setError(null)
     const res = await fetch('/api/reservas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ soporteIds: Array.from(selectedIds), clienteId, fechaDesde: desde, fechaHasta: hasta, notas: notas || undefined }),
+      body: JSON.stringify({ soporteIds: Array.from(selectedIds), clienteId, fechaDesde: desde, fechaHasta: hasta, venceEl, motivo: motivo || undefined, notas: notas || undefined }),
     })
     setSaving(false)
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
-      setError(d.error ?? 'Error al crear reserva'); return
+      setError(d.error ?? 'Error al crear el bloqueo'); return
     }
     onSaved()
   }
@@ -592,7 +598,7 @@ function ReservaModal({
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 14px', borderBottom: '1px solid #e5e3dc' }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1a1915' }}>Nueva reserva</h2>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1a1915' }}>Bloquear espacio</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9895' }}><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} style={{ padding: '20px 20px 24px' }}>
@@ -634,6 +640,20 @@ function ReservaModal({
             <div style={{ flex: 1 }}><label style={lbl}>Hasta</label><input type="date" value={hasta} min={desde} onChange={e => setHasta(e.target.value)} style={inp} /></div>
           </div>
 
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Mantener el bloqueo hasta</label>
+              <input type="date" value={venceEl} min={today} onChange={e => setVenceEl(e.target.value)} style={inp} />
+              <div style={{ fontSize: 10.5, color: '#9a9895', marginTop: 4 }}>
+                Al vencer se te avisa para que decidas.
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Motivo</label>
+              <input type="text" value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ej.: esperando la orden de compra" style={inp} />
+            </div>
+          </div>
+
           <div style={{ marginBottom: 16 }}>
             <label style={lbl}>Notas</label>
             <textarea value={notas} onChange={e => setNotas(e.target.value)} placeholder="Observaciones…" rows={2} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
@@ -644,7 +664,7 @@ function ReservaModal({
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button type="button" onClick={onClose} style={{ padding: '9px 18px', border: '1px solid #e5e3dc', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: '#4a4845' }}>Cancelar</button>
             <button type="submit" disabled={saving} style={{ padding: '9px 20px', border: 'none', borderRadius: 8, background: saving ? '#c45a10' : '#eb691c', cursor: saving ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: '#fff', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Guardando…' : 'Crear reserva'}
+              {saving ? 'Guardando…' : 'Bloquear espacio'}
             </button>
           </div>
         </form>
@@ -983,7 +1003,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
           <p style={{ color: '#9a9895', fontSize: 13, marginTop: 3 }}>{soportes.length} soportes · {formatDate(fecha)}</p>
         </div>
         <button onClick={() => openReservar(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: '#eb691c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer' }}>
-          <Plus size={15} /> Nueva reserva
+          <Plus size={15} /> Bloquear espacio
         </button>
       </div>
 
@@ -996,7 +1016,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
           <BarChart2 size={13} /> Estadísticas
         </button>
         <button style={tabStyle(tab === 'reservas')} onClick={() => setTab('reservas')}>
-          Reservas
+          Bloqueos
         </button>
         {isAdmin && (
           <button style={tabStyle(tab === 'aprobaciones')} onClick={() => setTab('aprobaciones')}>
