@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
     const firstDay = `${mes}-01`
     const lastDay = `${mes}-${String(daysInMonth).padStart(2, '0')}`
 
-    const [{ data: reservas }, { data: ordenes }] = await Promise.all([
+    const [{ data: reservas, error: errBloqMes }, { data: ordenes, error: errVentasMes }] = await Promise.all([
       supabase
         .from('reservas')
         .select('fecha_desde, fecha_hasta, reserva_items(soporte_id, cantidad, fecha_alta_real, fecha_baja_real)')
@@ -98,6 +98,9 @@ export async function GET(req: NextRequest) {
         .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, orden_items(${ORDEN_ITEMS_SELECT})`)
         .in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
     ])
+    if (errBloqMes || errVentasMes) {
+      return NextResponse.json({ error: (errBloqMes ?? errVentasMes)!.message }, { status: 500 })
+    }
 
     const capMap = new Map<string, number>((soportes ?? []).map((s: any) => [s.id, s.cap ?? 1]))
     const total = (soportes ?? []).length
@@ -137,7 +140,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Single day mode
-  const [{ data: reservas }, { data: ordenes }] = await Promise.all([
+  const [{ data: reservas, error: errBloq }, { data: ordenes, error: errVentas }] = await Promise.all([
     supabase
       .from('reservas')
       .select('fecha_desde, fecha_hasta, clientes(nombre, empresa), reserva_items(soporte_id, cantidad, fecha_alta_real, fecha_baja_real)')
@@ -148,6 +151,13 @@ export async function GET(req: NextRequest) {
       .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(${ORDEN_ITEMS_SELECT})`)
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
   ])
+
+  // Si cualquiera de las dos consultas falla hay que cortar acá. Siguiendo, el
+  // mapa de ocupación queda vacío y TODOS los soportes aparecen libres: la
+  // pantalla no se ve rota, se ve vendible, y alguien vende algo ya ocupado.
+  if (errBloq || errVentas) {
+    return NextResponse.json({ error: (errBloq ?? errVentas)!.message }, { status: 500 })
+  }
 
   const reservadoMap = new Map<string, number>()
   const clientesMap = new Map<string, string[]>()

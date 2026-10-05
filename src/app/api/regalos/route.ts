@@ -15,7 +15,7 @@ export async function GET(_req: NextRequest) {
 
   let query = supabase
     .from('regalos')
-    .select('id, estado, notas, created_at, contacto_id, contactos(nombres, apellidos, cumple_dia, cumple_mes, cuenta_id, tipo_cuenta), perfiles!solicitado_por(nombre)')
+    .select('id, estado, notas, created_at, contacto_id, contactos(nombres, apellidos, cumple_dia, cumple_mes, cuenta_id, tipo_cuenta), vendedor:perfiles!solicitado_por(nombre)')
     .order('created_at', { ascending: false })
 
   // Asistente sees ALL pending; vendedor sees only their own
