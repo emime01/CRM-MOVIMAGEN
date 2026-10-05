@@ -34,6 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     clienteId?: string
     agenciaId?: string
     descripcion?: string
+    campana?: string
     montoPotencial?: number | null
     cuatrimestre?: string
     estado?: string
@@ -51,6 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.clienteId !== undefined) updates.cliente_id = body.clienteId || null
   if (body.agenciaId !== undefined) updates.agencia_id = body.agenciaId || null
   if (body.descripcion !== undefined) updates.descripcion = body.descripcion || null
+  if (body.campana !== undefined) updates.campana = body.campana || null
   if (body.montoPotencial !== undefined) updates.monto_potencial = body.montoPotencial
   if (body.cuatrimestre !== undefined) updates.cuatrimestre = body.cuatrimestre || null
   if (body.estado !== undefined) updates.estado = body.estado

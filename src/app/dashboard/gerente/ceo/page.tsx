@@ -71,7 +71,7 @@ export default async function CeoDashboardPage() {
 
   const STATE_LABELS: Record<string, string> = {
     cobrada: 'Cobrada', facturada: 'Facturada', aprobada: 'Aprobada',
-    en_oic: 'En OIC', pendiente_aprobacion: 'Pend. Aprobación',
+    en_oic: 'En producción', pendiente_aprobacion: 'Pend. Aprobación',
     borrador: 'Borrador', rechazada: 'Rechazada',
   }
   const STATE_COLORS: Record<string, string> = {

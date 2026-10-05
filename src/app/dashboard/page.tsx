@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { TrendingUp, DollarSign, Target, Award, CheckCircle, XCircle } from 'lucide-react'
 import ApprovalButtons from '@/components/dashboard/ApprovalButtons'
 import SemaforoGestiones from '@/components/dashboard/SemaforoGestiones'
+import { puede } from '@/lib/auth/roles'
 
 type EstadoOrden =
   | 'borrador'
@@ -20,7 +21,7 @@ const ESTADO_BADGE: Record<EstadoOrden, { bg: string; color: string; label: stri
   pendiente_aprobacion: { bg: 'var(--amber-pale)', color: 'var(--amber)', label: 'Pend. aprobación' },
   aprobada:             { bg: 'var(--green-pale)', color: 'var(--green)', label: 'Aprobada' },
   rechazada:            { bg: 'var(--red-pale)', color: 'var(--red)', label: 'Rechazada' },
-  en_oic:               { bg: 'var(--orange-pale)', color: 'var(--orange)', label: 'En OIC' },
+  en_oic:               { bg: 'var(--orange-pale)', color: 'var(--orange)', label: 'En producción' },
   facturada:            { bg: 'var(--green-pale)', color: 'var(--green)', label: 'Facturada' },
   cobrada:              { bg: 'var(--green-pale)', color: 'var(--green)', label: 'Cobrada' },
 }
@@ -341,7 +342,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Semáforo de gestiones */}
-      {['vendedor', 'asistente_ventas', 'gerente_comercial'].includes(rol) && (
+      {puede(rol, ['vendedor', 'asistente_ventas', 'gerente_comercial']) && (
         <div style={{ marginTop: 24 }}>
           <SemaforoGestiones />
         </div>

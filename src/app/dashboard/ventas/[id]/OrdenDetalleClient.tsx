@@ -59,6 +59,7 @@ interface Orden {
   contacto: string | null
   facturar_a: string | null
   marca: string | null
+  campana: string | null
   referencia: string | null
   validez: string | null
   fecha_alta_prevista: string | null
@@ -117,7 +118,7 @@ const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }>
   pendiente_aprobacion: { bg: '#fff7e5', color: '#b87900', label: 'Pend. aprobación' },
   aprobada:             { bg: '#e8f5ec', color: '#2f7d3f', label: 'Aprobada' },
   rechazada:            { bg: '#fdecec', color: '#c82f2f', label: 'Rechazada' },
-  en_oic:               { bg: '#fff0e3', color: '#d1620e', label: 'En OIC' },
+  en_oic:               { bg: '#fff0e3', color: '#d1620e', label: 'En producción' },
   facturada:            { bg: '#e8f5ec', color: '#2f7d3f', label: 'Facturada' },
   cobrada:              { bg: '#e8f5ec', color: '#2f7d3f', label: 'Cobrada' },
 }
@@ -271,6 +272,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
       moneda: orden.moneda ?? 'UYU',
       monto_total: orden.monto_total,
       marca: orden.marca,
+      campana: orden.campana,
       referencia: orden.referencia,
       facturar_a: orden.facturar_a,
       fecha_alta: orden.fecha_alta_real ?? orden.fecha_alta_prevista,
@@ -573,6 +575,10 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               <div>
                 <div style={fieldLabel}>Marca</div>
                 <div style={fieldValue}>{orden.marca ?? '—'}</div>
+              </div>
+              <div>
+                <div style={fieldLabel}>Campaña</div>
+                <div style={fieldValue}>{orden.campana ?? '—'}</div>
               </div>
               <div>
                 <div style={fieldLabel}>Referencia</div>

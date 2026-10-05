@@ -11,6 +11,7 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   Tooltip, LineChart, Line, Legend, CartesianGrid,
 } from 'recharts'
+import { puede } from '@/lib/auth/roles'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,7 +188,7 @@ export default function CotizadorClient({
 }) {
   const router = useRouter()
   const isNew = propuestaId === null
-  const canApprove = ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(rol)
+  const canApprove = puede(rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
 
   // Header state
   const [propuesta, setPropuesta] = useState<PropuestaHeader | null>(null)

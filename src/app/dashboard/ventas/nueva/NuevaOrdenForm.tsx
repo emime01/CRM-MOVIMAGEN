@@ -129,6 +129,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   const [agenciaId, setAgenciaId] = useState('')
   const [facturarA, setFacturarA] = useState<'agencia' | 'cliente_final'>('cliente_final')
   const [marca, setMarca] = useState('')
+  const [campana, setCampana] = useState('')
   const [referencia, setReferencia] = useState('')
   const [validez, setValidez] = useState('')
   const [esCanje, setEsCanje] = useState(false)
@@ -249,6 +250,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
           agenciaId: agenciaId || undefined,
           facturarA: agenciaId ? facturarA : undefined,
           marca,
+          campana,
           referencia,
           validez: validez || undefined,
           fechaAltaPrevista: fechaAltaPrevista || undefined,
@@ -564,7 +566,12 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
           <div>
             <label style={labelStyle}>Marca</label>
-            <input type="text" value={marca} onChange={e => setMarca(e.target.value)} placeholder="Marca o campaña" style={inputStyle} />
+            <input type="text" value={marca} onChange={e => setMarca(e.target.value)} placeholder="Coca Cola, Sprite..." style={inputStyle} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Campaña</label>
+            <input type="text" value={campana} onChange={e => setCampana(e.target.value)} placeholder="Verano, Lanzamiento..." style={inputStyle} />
           </div>
 
           <div>

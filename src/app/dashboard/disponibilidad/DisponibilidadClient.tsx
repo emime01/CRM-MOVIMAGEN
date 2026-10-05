@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { X, Plus, Check, XCircle, ChevronLeft, ChevronRight, Grid3X3, List, BarChart2 } from 'lucide-react'
 import type { SoporteOcupacion, DiaStats } from '@/app/api/disponibilidad/route'
+import { puede } from '@/lib/auth/roles'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -354,7 +355,7 @@ function EstadisticasTab({ soportes }: { soportes: SoporteOcupacion[] }) {
 function ReservasTab({ userRol }: { userRol: string }) {
   const [reservas, setReservas] = useState<ReservaRow[] | null>(null)
   const [loading, setLoading] = useState(true)
-  const isAdmin = ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'].includes(userRol)
+  const isAdmin = puede(userRol, ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'])
 
   useEffect(() => {
     fetch('/api/reservas')
@@ -720,7 +721,7 @@ function DetalleCampañaModal({
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const canEditDates = ['operaciones', 'administracion'].includes(userRol)
+  const canEditDates = puede(userRol, ['operaciones', 'administracion'])
 
   async function load() {
     setLoading(true); setError(null)
@@ -898,7 +899,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
   const [preselectedId, setPreselectedId] = useState<string | null>(null)
   const [detalle, setDetalle] = useState<{ id: string; nombre: string } | null>(null)
 
-  const isAdmin = ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'].includes(userRol)
+  const isAdmin = puede(userRol, ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'])
 
   const fetchDay = useCallback(async (d: string) => {
     setLoadingDay(true)

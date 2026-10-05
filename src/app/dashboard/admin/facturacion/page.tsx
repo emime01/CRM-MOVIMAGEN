@@ -9,7 +9,7 @@ const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigi
 
 const BADGE: Record<string, { bg: string; color: string; label: string }> = {
   aprobada:              { bg: 'rgba(21,128,61,0.12)',  color: '#15803d', label: 'Aprobada' },
-  en_oic:                { bg: 'rgba(235,105,28,0.12)', color: '#eb691c', label: 'En OIC' },
+  en_oic:                { bg: 'rgba(235,105,28,0.12)', color: '#eb691c', label: 'En producción' },
   facturada:             { bg: 'rgba(2,132,199,0.12)',  color: '#0284c7', label: 'Facturada' },
   cobrada:               { bg: 'rgba(21,128,61,0.12)',  color: '#15803d', label: 'Cobrada' },
   pendiente_aprobacion:  { bg: 'rgba(217,119,6,0.12)',  color: '#d97706', label: 'Pend. Aprobación' },
@@ -83,7 +83,7 @@ export default async function FacturacionPage() {
       {/* Pending to invoice */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-          Para facturar — Aprobadas / En OIC
+          Para facturar — Aprobadas y en producción
         </div>
         {pendientes?.length === 0 ? (
           <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>No hay órdenes pendientes de facturar.</p>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 const LEADS_ROLES = ['vendedor', 'gerente_comercial']
 
@@ -15,6 +16,7 @@ export async function POST(req: NextRequest) {
     agenciaId?: string
     vendedorId?: string
     descripcion?: string
+    campana?: string
     montoPotencial?: number
     cuatrimestre?: string
     estado?: string
@@ -27,7 +29,7 @@ export async function POST(req: NextRequest) {
   const supabase = createServerClient()
   // El vendedor solo puede crear leads a su nombre. Gerencia/administración
   // pueden asignar el lead a otro vendedor vía body.vendedorId.
-  const puedeAsignar = ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
+  const puedeAsignar = puede(session.user.rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
   const vendedorId = puedeAsignar ? (body.vendedorId || session.user.id) : session.user.id
 
   const { data, error } = await supabase
@@ -37,6 +39,7 @@ export async function POST(req: NextRequest) {
       cliente_id: body.clienteId || null,
       agencia_id: body.agenciaId || null,
       descripcion: body.descripcion || null,
+      campana: body.campana || null,
       monto_potencial: body.montoPotencial ?? null,
       cuatrimestre: body.cuatrimestre || null,
       estado: body.estado || 'nuevo',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 /**
  * POST /api/propuestas/[id]/duplicar
@@ -17,7 +18,7 @@ import { createServerClient } from '@/lib/supabase-server'
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!['vendedor', 'asistente_ventas', 'gerente_comercial'].includes(session.user.rol)) {
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial'])) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 

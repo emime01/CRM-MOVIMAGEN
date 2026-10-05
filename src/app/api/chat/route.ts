@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { searchMessages, refreshAccessToken } from '@/lib/gmail'
+import { puede } from '@/lib/auth/roles'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -198,7 +199,7 @@ async function runOrdenes(supabase: ReturnType<typeof createServerClient>, userI
   estado?: string; fecha_desde?: string; fecha_hasta?: string; cliente?: string; limite?: number
 }): Promise<string> {
   const { estado, fecha_desde, fecha_hasta, cliente, limite = 20 } = input
-  const esVendedor = ['vendedor', 'asistente_ventas'].includes(rol)
+  const esVendedor = puede(rol, ['vendedor', 'asistente_ventas'])
 
   let q = supabase.from('ordenes_venta')
     .select('id, numero, estado, monto_total, moneda, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, created_at, clientes(nombre, empresa), perfiles!ordenes_venta_vendedor_id_fkey(nombre)')
@@ -226,7 +227,7 @@ async function runOrdenes(supabase: ReturnType<typeof createServerClient>, userI
   const fmt = (n: number, mon: string) => `${mon === 'USD' ? 'U$S' : '$'} ${n.toLocaleString('es-UY', { maximumFractionDigits: 0 })}`
   const estadoLabels: Record<string, string> = {
     borrador: 'Borrador', enviada: 'Enviada', aprobada: 'Aprobada',
-    en_oic: 'En OIC', facturada: 'Facturada', cobrada: 'Cobrada',
+    en_oic: 'En producción', facturada: 'Facturada', cobrada: 'Cobrada',
     rechazada: 'Rechazada', cancelada: 'Cancelada',
   }
 
@@ -252,7 +253,7 @@ async function runLeads(supabase: ReturnType<typeof createServerClient>, userId:
   estado?: string; sin_gestion_dias?: number; cliente?: string
 }): Promise<string> {
   const { estado, sin_gestion_dias, cliente } = input
-  const esVendedor = ['vendedor', 'asistente_ventas'].includes(rol)
+  const esVendedor = puede(rol, ['vendedor', 'asistente_ventas'])
 
   let q = supabase.from('leads')
     .select('id, descripcion, monto_potencial, estado, proxima_gestion, nota_gestion, created_at, clientes(nombre, empresa), perfiles!leads_vendedor_id_fkey(nombre)')
@@ -346,7 +347,7 @@ async function runResumenVentas(supabase: ReturnType<typeof createServerClient>,
   fecha_desde: string; fecha_hasta: string; agrupar_por?: string
 }): Promise<string> {
   const { fecha_desde, fecha_hasta, agrupar_por } = input
-  const esVendedor = ['vendedor', 'asistente_ventas'].includes(rol)
+  const esVendedor = puede(rol, ['vendedor', 'asistente_ventas'])
 
   let q = supabase.from('ordenes_venta')
     .select('id, estado, monto_total, moneda, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)')

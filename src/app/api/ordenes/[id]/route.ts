@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .from('ordenes_venta')
     .select(`
       id, numero, estado, moneda, monto_total, created_at, updated_at,
-      contacto, facturar_a, marca, referencia, validez,
+      contacto, facturar_a, marca, campana, referencia, validez,
       fecha_alta_prevista, fecha_baja_prevista,
       es_canje, incluir_reportes, es_mensualizada,
       tiene_produccion, tiene_digital,
@@ -56,7 +56,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
  * (se gestiona desde el flujo de cotización → crear-orden y el de aprobar).
  */
 const ALLOWED_FIELDS = [
-  'contacto', 'facturar_a', 'marca', 'referencia', 'validez',
+  'contacto', 'facturar_a', 'marca', 'campana', 'referencia', 'validez',
   'fecha_alta_prevista', 'fecha_baja_prevista',
   'es_canje', 'incluir_reportes', 'es_mensualizada',
   'tiene_produccion', 'tiene_digital',

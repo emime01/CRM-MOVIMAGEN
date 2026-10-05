@@ -63,7 +63,7 @@ const ESTADO_ORDEN: Record<string, { color: string; bg: string; label: string }>
   borrador:             { color: '#6b7280', bg: '#f3f4f6', label: 'Borrador' },
   pendiente_aprobacion: { color: '#d97706', bg: '#fffbeb', label: 'Pend. aprobación' },
   aprobada:             { color: '#16a34a', bg: '#f0fdf4', label: 'Aprobada' },
-  en_oic:               { color: '#c45a10', bg: '#fef3ec', label: 'En OIC' },
+  en_oic:               { color: '#c45a10', bg: '#fef3ec', label: 'En producción' },
   facturada:            { color: '#0284c7', bg: '#eff6ff', label: 'Facturada' },
   cobrada:              { color: '#15803d', bg: '#dcfce7', label: 'Cobrada' },
   rechazada:            { color: '#dc2626', bg: '#fef2f2', label: 'Rechazada' },

@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import SoportesClient from './SoportesClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +25,7 @@ export interface SoporteRow {
 export default async function SoportesPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!['asistente_ventas', 'administracion'].includes(session.user.rol)) redirect('/dashboard')
+  if (!puede(session.user.rol, ['asistente_ventas', 'administracion'])) redirect('/dashboard')
 
   const supabase = createServerClient()
   const { data: soportes } = await supabase

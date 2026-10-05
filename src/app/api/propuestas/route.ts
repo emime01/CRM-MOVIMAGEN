@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 // GET /api/propuestas?lead_id=&estado=
 export async function GET(req: NextRequest) {
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   const leadId = searchParams.get('lead_id')
   const estado = searchParams.get('estado')
 
-  const isManager = ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
+  const isManager = puede(session.user.rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
 
   let query = supabase
     .from('propuestas')
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!['vendedor', 'asistente_ventas'].includes(session.user.rol))
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas']))
     return NextResponse.json({ error: 'Sin permisos para crear cotizaciones' }, { status: 403 })
 
   const body = await req.json()
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   const { data: lead } = await supabase
     .from('leads')
-    .select('id, cliente_id, agencia_id, vendedor_id')
+    .select('id, cliente_id, agencia_id, vendedor_id, campana')
     .eq('id', leadId)
     .maybeSingle()
 
@@ -85,6 +86,8 @@ export async function POST(req: NextRequest) {
       lead_id:        leadId,
       cliente_id:     lead.cliente_id,
       agencia_id:     lead.agencia_id ?? null,
+      // La campaña se declara en el lead y viaja sola hasta el comprobante.
+      campana:        lead.campana ?? null,
       vendedor_id:    session.user.id,
       numero,
       nombre:         body.nombre ?? null,

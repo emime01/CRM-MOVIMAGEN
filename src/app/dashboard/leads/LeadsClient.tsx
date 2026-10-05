@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, X, Pencil, ShoppingCart, Gift, Check, XCircle, ChevronLeft, ChevronRight, CalendarPlus, ClipboardList } from 'lucide-react'
+import { puede } from '@/lib/auth/roles'
 
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 const DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -32,7 +33,7 @@ function BirthdayPanel({ userRol }: { userRol: string }) {
   const [regalos, setRegalos] = useState<Regalo[]>([])
   const [regalosMap, setRegalosMap] = useState<Record<string, Regalo>>({})
   const [loadingGift, setLoadingGift] = useState<Record<string, boolean>>({})
-  const isAsistente = userRol === 'asistente_ventas'
+  const isAsistente = puede(userRol, ['asistente_ventas'])
 
   useEffect(() => {
     Promise.all([
@@ -263,6 +264,7 @@ export interface LeadRow {
   cliente_id: string | null
   vendedor_id: string | null
   descripcion: string | null
+  campana: string | null
   monto_potencial: number | null
   cuatrimestre: string | null
   estado: string
@@ -383,6 +385,7 @@ interface ModalState {
 interface LeadFormValues {
   clienteId: string
   descripcion: string
+  campana: string
   montoPotencial: string
   cuatrimestre: string
   estado: EstadoLead
@@ -397,6 +400,7 @@ function emptyForm(userId: string): LeadFormValues {
   return {
     clienteId: '',
     descripcion: '',
+    campana: '',
     montoPotencial: '',
     cuatrimestre: `Q1-${new Date().getFullYear()}`,
     estado: 'nuevo',
@@ -412,6 +416,7 @@ function leadToForm(lead: LeadRow, userId: string): LeadFormValues {
   return {
     clienteId: lead.cliente_id ?? '',
     descripcion: lead.descripcion ?? '',
+    campana: lead.campana ?? '',
     montoPotencial: lead.monto_potencial != null ? String(lead.monto_potencial) : '',
     cuatrimestre: lead.cuatrimestre ?? `Q1-${new Date().getFullYear()}`,
     estado: (lead.estado as EstadoLead) ?? 'nuevo',
@@ -459,6 +464,7 @@ function LeadModal({
     const body: Record<string, unknown> = {
       clienteId: form.clienteId || undefined,
       descripcion: form.descripcion || undefined,
+      campana: form.campana || null,
       montoPotencial: form.montoPotencial !== '' ? Number(form.montoPotencial) : null,
       cuatrimestre: form.cuatrimestre || undefined,
       estado: form.estado,
@@ -583,6 +589,18 @@ function LeadModal({
               value={form.descripcion}
               onChange={e => set('descripcion', e.target.value)}
               placeholder="Descripción del lead..."
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Campaña — se declara acá y baja sola a la cotización, la venta y el comprobante */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Campaña</label>
+            <input
+              type="text"
+              value={form.campana}
+              onChange={e => set('campana', e.target.value)}
+              placeholder="Verano, Lanzamiento, Black Friday..."
               style={inputStyle}
             />
           </div>

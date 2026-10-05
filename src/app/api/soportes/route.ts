@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
   const tipo = searchParams.get('tipo')
   const categoria = searchParams.get('categoria')
 
-  const canSeeAll = ['asistente_ventas', 'administracion', 'gerente_comercial'].includes(session.user.rol)
+  const canSeeAll = puede(session.user.rol, ['asistente_ventas', 'administracion', 'gerente_comercial'])
   const all = searchParams.get('all')
 
   let query = supabase
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const canEdit = ['asistente_ventas', 'administracion', 'gerente_comercial'].includes(session.user.rol)
+  const canEdit = puede(session.user.rol, ['asistente_ventas', 'administracion', 'gerente_comercial'])
   if (!canEdit) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   let body: {

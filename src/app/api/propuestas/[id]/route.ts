@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 // GET /api/propuestas/[id]
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -32,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
 
   const isOwner = propuesta.vendedor_id === session.user.id
-  const canSeeAll = ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
+  const canSeeAll = puede(session.user.rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
   if (!isOwner && !canSeeAll) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const { data: items } = await supabase
@@ -61,7 +62,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (!existing) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
   const canEdit = existing.vendedor_id === session.user.id ||
-    ['gerente_comercial', 'administracion', 'asistente_ventas'].includes(session.user.rol)
+    puede(session.user.rol, ['gerente_comercial', 'administracion', 'asistente_ventas'])
   if (!canEdit) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   // Solo aplicar campos presentes en el body — un cliente que manda payload parcial
