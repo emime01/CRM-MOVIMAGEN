@@ -21,12 +21,18 @@ export default async function GastosPage() {
   if (session.user.rol !== 'administracion') redirect('/dashboard')
   const supabase = createServerClient()
 
-  const { data: gastos } = await supabase
+  // Los totales y los desgloses salían de los últimos 50 gastos nada más, pero
+  // el cartel decía "Total gastos registrados": con 120 gastos mostraba poco
+  // más de la mitad y nadie se enteraba. Se traen todos para contar, y la
+  // tabla de abajo sigue mostrando los últimos 50.
+  const { data: gastos, error: gastosErr } = await supabase
     .from('gastos_tarjeta')
     .select('id, vendedor_id, monto, categoria, descripcion, fecha, estado, perfiles(nombre)')
     .order('fecha', { ascending: false })
-    .limit(50)
 
+  if (gastosErr) throw new Error(`No se pudieron cargar los gastos: ${gastosErr.message}`)
+
+  const ultimos = (gastos ?? []).slice(0, 50)
   const totalMes = gastos?.reduce((s, g) => s + Number(g.monto ?? 0), 0) ?? 0
 
   // Aggregate by category
@@ -106,7 +112,9 @@ export default async function GastosPage() {
 
       {/* Transaction list */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Últimos gastos</div>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+          Últimos gastos{(gastos?.length ?? 0) > ultimos.length ? ` — ${ultimos.length} de ${gastos!.length}` : ''}
+        </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
@@ -116,7 +124,7 @@ export default async function GastosPage() {
             </tr>
           </thead>
           <tbody>
-            {gastos?.map(g => {
+            {ultimos.map(g => {
               const p = Array.isArray(g.perfiles) ? g.perfiles[0] : g.perfiles
               const badge = ESTADO_BADGE[g.estado ?? 'pendiente'] ?? ESTADO_BADGE['pendiente']
               return (

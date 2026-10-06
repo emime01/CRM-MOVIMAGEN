@@ -705,7 +705,13 @@ function PendientesTab({ reservas, buses, onConfirm }: {
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin soportes tipo bus</div>
               ) : (
                 busItems.map(it => {
-                  const busAsignado = it.soportes?.bus_id ? busById.get(it.soportes.bus_id) : null
+                  // `it.bus_id` es el bus que la venta tiene asignado;
+                  // `soportes.bus_id` es a qué bus pertenece el soporte en el
+                  // catálogo. Leer el segundo mostraba el mismo bus antes y
+                  // después de asignar, y sobre todo ignoraba el override
+                  // elegido al resolver un conflicto.
+                  const busId = it.bus_id ?? it.soportes?.bus_id ?? null
+                  const busAsignado = busId ? busById.get(busId) : null
                   return (
                     <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>

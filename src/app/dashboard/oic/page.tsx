@@ -56,7 +56,10 @@ interface OrdenItem {
   requiere_produccion: boolean | null
   estado_grabado: string | null
   estado_produccion: string | null
-  numero_bus: string | null
+  // `numero_bus` existe en el esquema pero no la escribe nadie: la
+  // asignación guarda `bus_id`, que apunta a la tabla buses.
+  bus_id: string | null
+  buses: { numero: string | null } | { numero: string | null }[] | null
   soportes: Soporte | null
   ordenes_venta: OrdenVenta | null
 }
@@ -87,6 +90,12 @@ function SummaryCard({ label, value, accent }: { label: string; value: number; a
   )
 }
 
+/** El número del bus que la venta tiene asignado. */
+function busNumero(item: OrdenItem): string | null {
+  const b = Array.isArray(item.buses) ? item.buses[0] : item.buses
+  return b?.numero ?? null
+}
+
 // ─── page ────────────────────────────────────────────────────────────────────
 
 export default async function OicPage() {
@@ -100,8 +109,9 @@ export default async function OicPage() {
     .from('orden_items')
     .select(`
       id, cantidad, semanas, requiere_grabado, requiere_produccion,
-      estado_grabado, estado_produccion, numero_bus,
+      estado_grabado, estado_produccion, bus_id,
       soportes(nombre, seccion, ubicacion),
+      buses(numero),
       ordenes_venta!inner(
         id, numero, estado, marca, referencia,
         fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real,
@@ -265,7 +275,7 @@ export default async function OicPage() {
 
                       {/* Bus asignado */}
                       <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
-                        {item.numero_bus ? (
+                        {busNumero(item) ? (
                           <span style={{
                             fontWeight: 700,
                             color: '#1a1915',
@@ -274,7 +284,7 @@ export default async function OicPage() {
                             borderRadius: 6,
                             fontSize: 12,
                           }}>
-                            #{item.numero_bus}
+                            #{busNumero(item)}
                           </span>
                         ) : (
                           <span style={{ color: '#9a9895' }}>—</span>

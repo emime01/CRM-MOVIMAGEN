@@ -8,7 +8,7 @@ import Link from 'next/link'
 import GlobalSearch from '@/components/dashboard/GlobalSearch'
 import {
   Home, FileText, Filter, Calendar, BarChart2,
-  Users, Target, Star, Wrench, Truck, Monitor,
+  Users, Target, Star, Wrench, Truck, Monitor, Factory,
   Palette, Receipt, AlertCircle, Percent, Building2,
   CreditCard, Settings, MessageCircle, X, Send,
   FlaskConical, Package, BookUser, Camera, Bell,
@@ -110,6 +110,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/gerente/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['asistente_ventas'] },
   { href: '/dashboard/tasks', label: 'Tareas', icon: <ClipboardList size={16} />, roles: ['arte', 'operaciones', 'administracion', 'gerente_comercial'] },
   { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['operaciones', 'administracion', 'gerente_comercial'] },
+  // La pantalla existía pero no estaba en el menú ni enlazada desde ningún
+  // lado: operaciones sólo llegaba escribiendo la URL.
+  { href: '/dashboard/oic', label: 'Producción', icon: <Factory size={16} />, roles: ['operaciones'] },
   { href: '/dashboard/buses', label: 'Buses', icon: <Truck size={16} />, roles: ['operaciones', 'administracion'] },
   { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/arte', label: 'Planilla digital', icon: <Monitor size={16} />, roles: ['arte'] },
@@ -138,6 +141,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/tasks': 'Tareas',
   '/dashboard/calendario': 'Calendario',
   '/dashboard/gerente/ceo': 'Dashboard CEO',
+  '/dashboard/oic': 'Producción',
   '/dashboard/buses': 'Buses',
   '/dashboard/registros': 'Registros',
   '/dashboard/arte': 'Arte',

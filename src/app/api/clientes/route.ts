@@ -44,6 +44,17 @@ export async function POST(req: NextRequest) {
 
   // Bulk import (from Excel: AGENCIA, CONTACTO AGENCIA, CONTACTO CLIENTE, CLIENTE, EJEC VTAS, PORCENTAJE, C1, C2, C3)
   if (body.items && Array.isArray(body.items)) {
+    // Esta rama corría ANTES del chequeo de rol de más abajo, así que
+    // cualquier usuario autenticado —arte, operaciones, un vendedor— podía
+    // crear clientes y agencias, reasignarse el vendedor de clientes
+    // existentes y reescribir los objetivos de todo el año, que es lo que
+    // hace recalcularObjetivos al final. En la web está detrás de Cuentas y
+    // de Objetivos, las dos con guarda de rol; el endpoint no la replicaba.
+    // Mismo criterio que /api/objetivos y /api/objetivos/asignar.
+    if (!puede(session.user.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) {
+      return NextResponse.json({ error: 'Sin permisos para importar clientes y objetivos' }, { status: 403 })
+    }
+
     const { data: perfiles } = await supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial'])
 
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()

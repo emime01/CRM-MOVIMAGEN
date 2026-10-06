@@ -87,6 +87,10 @@ export async function crearOrdenDesdePropuesta(
       estado:               ESTADO_INICIAL,
       moneda:               propuesta.moneda ?? 'UYU',
       monto_total:          propuesta.monto_total ?? null,
+      // La comisión sale del neto, no del total facturado: si no, el mismo
+      // negocio comisionaba distinto según si la venta vino de una cotización
+      // (con IVA) o se cargó a mano (sin IVA).
+      monto_neto:           propuesta.monto_neto ?? propuesta.monto_total ?? null,
       fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
       fecha_baja_prevista:  propuesta.fecha_fin ?? null,
       // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.

@@ -39,10 +39,14 @@ function ident(extra: any): Identity {
 }
 
 const esVendedor = (id: Identity) => id.rol === 'vendedor'
+// Estos dos quedaron comparando el rol crudo cuando el resto del archivo pasó
+// a `puede()`, así que el rol mixto no se expandía: Magaly no podía aprobar
+// bloqueos ni crear soportes desde el conector, cosas que en la web sí hace.
 const puedeGestionarReservas = (id: Identity) =>
-  ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'].includes(id.rol)
+  puede(id.rol, ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'])
+// Mismo criterio que POST /api/soportes, que también deja al gerente.
 const puedeEditarCatalogo = (id: Identity) =>
-  ['asistente_ventas', 'administracion'].includes(id.rol)
+  puede(id.rol, ['asistente_ventas', 'administracion', 'gerente_comercial'])
 
 // ─── MCP handler with read-only CRM tools ──────────────────────────────────────
 
@@ -778,7 +782,13 @@ const handler = createMcpHandler(
       if (!orden) return text(`No existe la OIC #${numero}.`)
       if (orden.estado !== 'pendiente_aprobacion') return text(`La OIC #${numero} está en estado "${orden.estado}", no en pendiente_aprobacion.`)
 
-      const { error } = await supabase.from('ordenes_venta').update({ estado: nuevoEstado }).eq('id', orden.id)
+      const { error } = await supabase.from('ordenes_venta').update({
+        estado: nuevoEstado,
+        // La web deja constancia de quién aprobó y cuándo; por acá no se
+        // guardaba nada.
+        ...(nuevoEstado === 'aprobada' ? { aprobado_at: new Date().toISOString(), aprobado_por: me.perfilId } : {}),
+        ...(nuevoEstado === 'rechazada' && motivo ? { motivo_rechazo: motivo } : {}),
+      }).eq('id', orden.id)
       if (error) return text(`Error: ${error.message}`)
       await supabase.from('orden_historial').insert({
         orden_id: orden.id,
@@ -787,11 +797,26 @@ const handler = createMcpHandler(
         comentario: motivo ?? `${nuevoEstado === 'aprobada' ? 'Aprobada' : 'Rechazada'} vía Claude`,
       })
 
+      // Aprobar es el único disparador de la producción, pero por acá sólo se
+      // generaban las tareas: la venta quedaba sin buses asignados y con el
+      // bloqueo previo todavía pendiente en la bandeja del gerente.
       let extraMsg = ''
       if (nuevoEstado === 'aprobada') {
-        const { generarTasksDeOrden } = await import('@/lib/tasks/generar-desde-orden')
+        const [{ generarTasksDeOrden }, { asignarBusesDeOrden }, { cerrarBloqueoDeVenta }, { detectarSobreventa, textoSobreventa }] = await Promise.all([
+          import('@/lib/tasks/generar-desde-orden'),
+          import('@/lib/ventas/asignar-buses'),
+          import('@/lib/reservas/confirmar'),
+          import('@/lib/ventas/sobreventa'),
+        ])
         const r = await generarTasksDeOrden(supabase, orden.id)
-        extraMsg = r.created ? `\n${r.created} tarea(s) generadas para arte/operaciones (ya notificados).` : ''
+        const buses = await asignarBusesDeOrden(supabase, orden.id)
+        if (me.perfilId) await cerrarBloqueoDeVenta(supabase, orden.id, me.perfilId)
+
+        const partes: string[] = []
+        if (r.created) partes.push(`${r.created} tarea(s) generadas para arte/operaciones (ya notificados).`)
+        if (buses.asignados) partes.push(`${buses.asignados} bus(es) asignados.`)
+        for (const s of await detectarSobreventa(supabase, orden.id)) partes.push(`⚠ ${textoSobreventa(s)}`)
+        extraMsg = partes.length ? '\n' + partes.join('\n') : ''
       }
       const cli = first<any>(orden.clientes)
       return text(`✓ OIC #${numero} (${cli?.empresa ?? cli?.nombre ?? '—'}) ${nuevoEstado === 'aprobada' ? 'APROBADA' : 'RECHAZADA'}.${extraMsg}`)

@@ -25,12 +25,16 @@ export async function registrarCobro(
   if (updErr) return { ok: false, error: updErr.message, comisionGenerada: false }
 
   // Si ya hay comisión para esta venta no se vuelve a generar.
-  const { data: ya } = await supabase.from('comisiones').select('id').eq('orden_id', ordenId).maybeSingle()
-  if (ya) return { ok: true, comisionGenerada: false }
+  // Con `maybeSingle()` dos filas devuelven error y `data` en null, así que el
+  // chequeo anti-duplicados dejaba de funcionar justo cuando ya había
+  // duplicado: cada cobro posterior agregaba otra comisión. Con `limit(1)` el
+  // conteo es correcto haya una fila o diez.
+  const { data: ya } = await supabase.from('comisiones').select('id').eq('orden_id', ordenId).limit(1)
+  if (ya?.length) return { ok: true, comisionGenerada: false }
 
   const { data: orden } = await supabase
     .from('ordenes_venta')
-    .select('vendedor_id, monto_total, factura_numero')
+    .select('vendedor_id, monto_total, monto_neto, factura_numero')
     .eq('id', ordenId)
     .maybeSingle()
   if (!orden?.vendedor_id || !orden.monto_total) return { ok: true, comisionGenerada: false }
@@ -41,7 +45,10 @@ export async function registrarCobro(
     .eq('id', orden.vendedor_id)
     .maybeSingle()
 
-  const monto = Number(orden.monto_total)
+  // La comisión va sobre el neto. Antes salía de `monto_total`, que según por
+  // dónde entró la venta venía con IVA o sin IVA: el mismo negocio liquidaba
+  // distinto según la pantalla que usó el vendedor.
+  const monto = Number(orden.monto_neto ?? orden.monto_total)
   const pct = Number(vendedor?.porcentaje_comision ?? 6)
   const montoComision = Math.round(monto * pct) / 100
 
@@ -49,7 +56,7 @@ export async function registrarCobro(
     .from('pagos')
     .insert({
       orden_id: ordenId,
-      monto,
+      monto: Number(orden.monto_total),
       fecha_pago: fechaCobro,
       numero_factura: orden.factura_numero ?? null,
       metodo: opts.metodo ?? null,

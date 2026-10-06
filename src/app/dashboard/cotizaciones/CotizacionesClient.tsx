@@ -52,7 +52,14 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
   async function deletePropuesta(id: string, e: React.MouseEvent) {
     e.stopPropagation()
     if (!confirm('¿Eliminar esta cotización?')) return
-    await fetch(`/api/propuestas/${id}`, { method: 'DELETE' })
+    // No se miraba la respuesta: la fila desaparecía de la pantalla aunque el
+    // borrado fallara, y al recargar seguía ahí.
+    const res = await fetch(`/api/propuestas/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const err = await res.json().catch(() => null)
+      alert(err?.error ?? 'No se pudo eliminar la cotización')
+      return
+    }
     setPropuestas(ps => ps.filter(p => p.id !== id))
   }
 

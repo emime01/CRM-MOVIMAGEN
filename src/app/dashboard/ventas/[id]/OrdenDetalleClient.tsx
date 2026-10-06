@@ -7,6 +7,12 @@ import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, Fol
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
+import { puede } from '@/lib/auth/roles'
+import { formatMoney as fmtMoneda } from '@/lib/money'
+
+function formatMoney(amount: number | null, moneda?: string | null) {
+  return amount == null ? '—' : fmtMoneda(amount, moneda)
+}
 
 type JoinedEntidad = { id?: string; nombre: string; empresa?: string | null; rut?: string | null; email?: string | null; telefono?: string | null }
 type JoinedNombre = JoinedEntidad | JoinedEntidad[] | null
@@ -56,6 +62,7 @@ interface Orden {
   estado: string
   moneda: string | null
   monto_total: number | null
+  monto_neto: number | null
   created_at: string
   contacto: string | null
   facturar_a: string | null
@@ -150,11 +157,6 @@ function joinedEntidad(val: JoinedNombre): JoinedEntidad | null {
   return Array.isArray(val) ? (val[0] ?? null) : val
 }
 
-function formatMoney(amount: number | null, currency: string = 'USD') {
-  if (amount == null) return '—'
-  return new Intl.NumberFormat('es-UY', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
-}
-
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -218,7 +220,11 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   // La aprobación de OIC es exclusiva del gerente comercial
   const canApprove = userRol === 'gerente_comercial' && orden.estado === 'pendiente_aprobacion'
   const canUploadDoc = true
-  const canSendToApproval = orden.estado === 'borrador' && (userRol === 'vendedor' || userRol === 'gerente_comercial' || userRol === 'administracion') && (Array.isArray(orden.perfiles) ? orden.perfiles[0]?.id === userId : orden.perfiles?.id === userId || userRol === 'gerente_comercial' || userRol === 'administracion')
+  const vendedorDeLaOrden = (Array.isArray(orden.perfiles) ? orden.perfiles[0] : orden.perfiles)?.id
+  const canSendToApproval = orden.estado === 'borrador' && (
+    vendedorDeLaOrden === userId ||
+    puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
+  )
   // Facturación y cobro son exclusivas de administracion
   // Facturación y cobro corren en paralelo a la producción: dependen de sus
   // propias fechas, no del estado de la venta.
@@ -283,6 +289,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
       fecha_facturacion: overrides?.fecha_facturacion ?? orden.fecha_facturacion,
       moneda: orden.moneda ?? 'UYU',
       monto_total: orden.monto_total,
+      monto_neto: orden.monto_neto,
       marca: orden.marca,
       campana: orden.campana,
       referencia: orden.referencia,
@@ -318,30 +325,54 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   }
 
   async function handleFacturar() {
-    // Facturar no cambia el estado de la venta: la producción sigue su curso.
-    await fetch(`/api/ordenes/${orden.id}/facturar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fecha: fechaFacturacion, numero: facturaNumero.trim() || undefined }),
-    })
-    router.refresh()
-    setShowFacturar(false)
-    // Abrir la factura recién emitida (usa los valores recién ingresados,
-    // ya que orden.* todavía no refleja el refresh).
-    generarFactura({ factura_numero: facturaNumero.trim() || undefined, fecha_facturacion: fechaFacturacion })
-    setFacturaNumero('')
+    if (actionLoading) return
+    setActionLoading(true)
+    try {
+      // Facturar no cambia el estado de la venta: la producción sigue su curso.
+      const res = await fetch(`/api/ordenes/${orden.id}/facturar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: fechaFacturacion, numero: facturaNumero.trim() || undefined }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        alert(err?.error ?? 'No se pudo registrar la factura')
+        return
+      }
+      router.refresh()
+      setShowFacturar(false)
+      // Abrir la factura recién emitida (usa los valores recién ingresados,
+      // ya que orden.* todavía no refleja el refresh).
+      generarFactura({ factura_numero: facturaNumero.trim() || undefined, fecha_facturacion: fechaFacturacion })
+      setFacturaNumero('')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   async function handleCobrar() {
-    // El cobro tampoco toca el estado; genera el pago y la comisión.
-    await fetch(`/api/ordenes/${orden.id}/cobrar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fecha: fechaCobro, metodo: metodoPago.trim() || undefined }),
-    })
-    router.refresh()
-    setShowCobrar(false)
-    setMetodoPago('')
+    // Sin este candado, un doble clic mandaba dos cobros y se generaban dos
+    // comisiones por la misma venta.
+    if (actionLoading) return
+    setActionLoading(true)
+    try {
+      // El cobro tampoco toca el estado; genera el pago y la comisión.
+      const res = await fetch(`/api/ordenes/${orden.id}/cobrar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: fechaCobro, metodo: metodoPago.trim() || undefined }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        alert(err?.error ?? 'No se pudo registrar el cobro')
+        return
+      }
+      router.refresh()
+      setShowCobrar(false)
+      setMetodoPago('')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   async function handleUploadDoc() {
@@ -395,9 +426,15 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     return bruto * (1 - (item.descuento_pct ?? 0) / 100)
   }
 
-  const subtotal = orden.orden_items.reduce((sum, item) => sum + itemTotal(item), 0)
-  const iva = subtotal * 0.22
-  const totalCalc = subtotal + iva
+  // El total es el que tiene guardado la venta: es el que se factura y el que
+  // se comisiona. Antes esta pantalla lo recalculaba sumando las líneas y
+  // agregándoles 22% fijo, ignorando `tiene_iva`, el multiplicador por salidas,
+  // la producción y los impuestos municipales: mostraba 60.512 sobre una venta
+  // de 49.600, y el gerente aprobaba mirando eso.
+  const sumaLineas = orden.orden_items.reduce((sum, item) => sum + itemTotal(item), 0)
+  const neto = orden.monto_neto ?? sumaLineas
+  const total = orden.monto_total ?? sumaLineas
+  const otros = total - neto
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', maxWidth: 1100, margin: '0 auto' }}>
@@ -461,7 +498,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               <DollarSign size={15} /> Registrar cobro
             </button>
           )}
-          {['facturada', 'cobrada'].includes(orden.estado) && (
+          {estaFacturada && (
             <button
               onClick={() => generarFactura()}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
@@ -672,11 +709,13 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
               <div style={{ width: 260, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-secondary)' }}><span>Subtotal</span><span>{formatMoney(subtotal, orden.moneda ?? 'USD')}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-muted)' }}><span>IVA (22%)</span><span>{formatMoney(iva, orden.moneda ?? 'USD')}</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-secondary)' }}><span>Neto</span><span>{formatMoney(neto, orden.moneda)}</span></div>
+                {Math.abs(otros) >= 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-muted)' }}><span>IVA e impuestos</span><span>{formatMoney(otros, orden.moneda)}</span></div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', marginTop: 4, borderTop: '2px solid var(--border)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
                   <span>Total</span>
-                  <span style={{ color: 'var(--orange)' }}>{formatMoney(totalCalc, orden.moneda ?? 'USD')}</span>
+                  <span style={{ color: 'var(--orange)' }}>{formatMoney(total, orden.moneda)}</span>
                 </div>
               </div>
             </div>

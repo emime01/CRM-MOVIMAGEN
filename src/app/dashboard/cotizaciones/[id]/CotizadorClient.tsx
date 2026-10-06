@@ -460,7 +460,11 @@ export default function CotizadorClient({
       fecha_fin:      fechaFin || null,
       estado:         newEstado ?? estado,
       moneda,
-      monto_neto:     totals.arr + totals.prod - (totals.prod * IVA_RATE / (1 + IVA_RATE)),  // rough net
+      // Neto = lo que se cobra sin IVA. En calcularItem el arrendamiento, la
+      // producción y los impuestos municipales ya vienen sin IVA (ivaArr e
+      // ivaProd se suman aparte), así que el neto es la suma de los tres. La
+      // fórmula anterior le restaba IVA a la producción, que no lo tenía.
+      monto_neto:     totals.arr + totals.prod + totals.mun,
       monto_total:    totals.tot,
       monto_impactos: totals.imp,
       items,

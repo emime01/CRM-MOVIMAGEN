@@ -57,7 +57,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        estado:              { type: 'string', description: 'Estado del lead: nuevo, en_proceso, ganado, perdido. Omitir para todos activos.' },
+        estado:              { type: 'string', description: 'Estado del lead: nuevo, en_conversacion, propuesta_enviada, negociacion, ganado, perdido. Omitir para todos los activos.' },
         sin_gestion_dias:    { type: 'number', description: 'Mostrar leads cuya proxima_gestion es anterior a hace N días (sin seguimiento reciente).' },
         cliente:             { type: 'string', description: 'Filtrar por nombre de cliente o empresa' },
       },
@@ -101,7 +101,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'estado_registros',
-    description: 'Muestra reservas activas (confirmadas/aprobadas) que todavía no tienen registros fotográficos o de video subidos. Útil para operaciones.',
+    description: 'Muestra campañas vendidas y en curso que todavía no tienen registros fotográficos o de video subidos. Útil para operaciones.',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -200,14 +200,17 @@ async function runOrdenes(supabase: ReturnType<typeof createServerClient>, userI
   estado?: string; fecha_desde?: string; fecha_hasta?: string; cliente?: string; limite?: number
 }): Promise<string> {
   const { estado, fecha_desde, fecha_hasta, cliente, limite = 20 } = input
-  const esVendedor = puede(rol, ['vendedor', 'asistente_ventas'])
+  // Sólo el vendedor ve nada más que lo suyo. asistente_ventas es un rol
+  // transversal en el resto de la app; acá quedaba filtrado a las ventas de
+  // las que es vendedor, o sea ninguna.
+  const soloLoSuyo = rol === 'vendedor'
 
   let q = supabase.from('ordenes_venta')
     .select('id, numero, estado, monto_total, moneda, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, created_at, clientes(nombre, empresa), perfiles!ordenes_venta_vendedor_id_fkey(nombre)')
     .order('created_at', { ascending: false })
     .limit(limite)
 
-  if (esVendedor) q = q.eq('vendedor_id', userId) as typeof q
+  if (soloLoSuyo) q = q.eq('vendedor_id', userId) as typeof q
   if (estado) q = q.eq('estado', estado) as typeof q
   if (fecha_desde) q = q.gte('created_at', fecha_desde) as typeof q
   if (fecha_hasta) q = q.lte('created_at', fecha_hasta + 'T23:59:59') as typeof q
@@ -254,16 +257,19 @@ async function runLeads(supabase: ReturnType<typeof createServerClient>, userId:
   estado?: string; sin_gestion_dias?: number; cliente?: string
 }): Promise<string> {
   const { estado, sin_gestion_dias, cliente } = input
-  const esVendedor = puede(rol, ['vendedor', 'asistente_ventas'])
+  // Sólo el vendedor ve nada más que lo suyo. asistente_ventas es un rol
+  // transversal en el resto de la app; acá quedaba filtrado a las ventas de
+  // las que es vendedor, o sea ninguna.
+  const soloLoSuyo = rol === 'vendedor'
 
   let q = supabase.from('leads')
     .select('id, descripcion, monto_potencial, estado, proxima_gestion, nota_gestion, created_at, clientes(nombre, empresa), perfiles!leads_vendedor_id_fkey(nombre)')
     .order('created_at', { ascending: false })
     .limit(50)
 
-  if (esVendedor) q = q.eq('vendedor_id', userId) as typeof q
+  if (soloLoSuyo) q = q.eq('vendedor_id', userId) as typeof q
   if (estado) q = q.eq('estado', estado) as typeof q
-  else q = q.in('estado', ['nuevo', 'en_proceso']) as typeof q
+  else q = q.in('estado', ['nuevo', 'en_conversacion', 'propuesta_enviada', 'negociacion']) as typeof q
 
   const { data: leads } = await q
 
@@ -348,7 +354,10 @@ async function runResumenVentas(supabase: ReturnType<typeof createServerClient>,
   fecha_desde: string; fecha_hasta: string; agrupar_por?: string
 }): Promise<string> {
   const { fecha_desde, fecha_hasta, agrupar_por } = input
-  const esVendedor = puede(rol, ['vendedor', 'asistente_ventas'])
+  // Sólo el vendedor ve nada más que lo suyo. asistente_ventas es un rol
+  // transversal en el resto de la app; acá quedaba filtrado a las ventas de
+  // las que es vendedor, o sea ninguna.
+  const soloLoSuyo = rol === 'vendedor'
 
   let q = supabase.from('ordenes_venta')
     .select('id, estado, monto_total, moneda, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)')
@@ -356,7 +365,7 @@ async function runResumenVentas(supabase: ReturnType<typeof createServerClient>,
     .gte('created_at', fecha_desde)
     .lte('created_at', fecha_hasta + 'T23:59:59')
 
-  if (esVendedor) q = q.eq('vendedor_id', userId) as typeof q
+  if (soloLoSuyo) q = q.eq('vendedor_id', userId) as typeof q
 
   const { data: ordenes } = await q
   const rows = (ordenes ?? []) as any[]
@@ -428,35 +437,44 @@ async function runDeudores(supabase: ReturnType<typeof createServerClient>, inpu
 }
 
 async function runEstadoRegistros(supabase: ReturnType<typeof createServerClient>): Promise<string> {
-  const { data: reservas } = await supabase
-    .from('reservas')
-    .select('id, fecha_desde, fecha_hasta, clientes(nombre, empresa), reserva_items(soporte_id, soportes(nombre))')
-    .in('estado', ['confirmada', 'aprobada'])
-    .gte('fecha_hasta', new Date().toISOString().slice(0, 10))
-    .order('fecha_desde')
+  // Listaba `reservas` esperando encontrar ahí lo vendido, y cruzaba contra
+  // `registros.reserva_id`. Hoy la mayoría de las ventas no tiene bloqueo y
+  // los registros se guardan con `orden_id`, así que respondía siempre "no
+  // hay reservas activas" — y en el caso raro de que hubiera un bloqueo vivo,
+  // lo reportaba sin registros aunque las fotos estuvieran subidas.
+  const { data: ventas } = await supabase
+    .from('ordenes_venta')
+    .select(`id, numero, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
+      clientes(nombre, empresa), orden_items(soporte_id, soportes(nombre))`)
+    .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
+    .order('fecha_alta_prevista')
     .limit(40)
 
-  if (!reservas?.length) return 'No hay reservas activas en el sistema.'
+  const hoy = new Date().toISOString().slice(0, 10)
+  const vivas = (ventas ?? []).filter((v: any) => (v.fecha_baja_real ?? v.fecha_baja_prevista ?? hoy) >= hoy)
+  if (!vivas.length) return 'No hay campañas activas en el sistema.'
 
-  const reservaIds = reservas.map((r: any) => r.id)
   const { data: registros } = await supabase
     .from('registros')
-    .select('reserva_id')
-    .in('reserva_id', reservaIds)
+    .select('orden_id')
+    .in('orden_id', vivas.map((v: any) => v.id))
 
-  const conRegistros = new Set((registros ?? []).map((r: any) => r.reserva_id))
-  const sinRegistros = (reservas as any[]).filter(r => !conRegistros.has(r.id))
+  const conRegistros = new Set((registros ?? []).map((r: any) => r.orden_id))
+  const sinRegistros = vivas.filter((v: any) => !conRegistros.has(v.id))
 
-  if (!sinRegistros.length) return 'Todas las reservas activas tienen registros subidos.'
+  if (!sinRegistros.length) return 'Todas las campañas activas tienen registros subidos.'
 
-  const lines = sinRegistros.map(r => {
-    const cli = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
-    const items = (r.reserva_items ?? []) as any[]
-    const soportes = items.map((it: any) => it.soportes?.nombre ?? it.soporte_id).filter(Boolean).join(', ')
-    return `- ${cli?.empresa ?? cli?.nombre ?? '—'} | ${r.fecha_desde} al ${r.fecha_hasta} | Soportes: ${soportes || '—'}`
+  const lines = sinRegistros.map((v: any) => {
+    const cli = Array.isArray(v.clientes) ? v.clientes[0] : v.clientes
+    const soportes = (v.orden_items ?? [])
+      .map((it: any) => (Array.isArray(it.soportes) ? it.soportes[0] : it.soportes)?.nombre ?? it.soporte_id)
+      .filter(Boolean).join(', ')
+    const desde = v.fecha_alta_real ?? v.fecha_alta_prevista ?? '—'
+    const hasta = v.fecha_baja_real ?? v.fecha_baja_prevista ?? '—'
+    return `- OIC #${v.numero} | ${cli?.empresa ?? cli?.nombre ?? '—'} | ${desde} al ${hasta} | Soportes: ${soportes || '—'}`
   })
 
-  return `Reservas activas SIN registros subidos: ${sinRegistros.length}\n${lines.join('\n')}`
+  return `Campañas activas SIN registros subidos: ${sinRegistros.length}\n${lines.join('\n')}`
 }
 
 async function runBuscarEmails(supabase: ReturnType<typeof createServerClient>, userId: string, input: { query: string }): Promise<string> {
@@ -507,7 +525,14 @@ async function executeTool(name: string, input: Record<string, any>, supabase: R
     case 'consultar_leads':          return runLeads(supabase, userId, rol, input as any)
     case 'buscar_cliente':           return runBuscarCliente(supabase, input as any)
     case 'resumen_ventas':           return runResumenVentas(supabase, userId, rol, input as any)
-    case 'consultar_deudores':       return runDeudores(supabase, input as any)
+    // La cartera morosa es de administración y gerencia: la pantalla de
+    // Deudores redirige a cualquier otro rol y /api/cobranza lo exige. El
+    // chat la entregaba a cualquiera que supiera preguntar.
+    case 'consultar_deudores':
+      if (!puede(rol, ['administracion', 'gerente_comercial'])) {
+        return 'La cartera de deudores es información de administración. Pedísela a Belén o a Gonzalo.'
+      }
+      return runDeudores(supabase, input as any)
     case 'estado_registros':         return runEstadoRegistros(supabase)
     case 'buscar_emails':            return runBuscarEmails(supabase, userId, input as any)
     default: return `Herramienta desconocida: ${name}`

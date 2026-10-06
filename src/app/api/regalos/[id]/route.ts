@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -13,6 +14,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const supabase = createServerClient()
+
+  // Sólo pedía sesión: cualquiera podía marcar entregado el regalo de otro.
+  // Quien no gestiona regalos sólo puede tocar los que pidió él.
+  if (!puede(session.user.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) {
+    const { data: propio } = await supabase
+      .from('regalos').select('solicitado_por').eq('id', params.id).maybeSingle()
+    if (!propio) return NextResponse.json({ error: 'Regalo no encontrado' }, { status: 404 })
+    if (propio.solicitado_por !== session.user.id) {
+      return NextResponse.json({ error: 'Sin permisos sobre este regalo' }, { status: 403 })
+    }
+  }
+
   const { error } = await supabase
     .from('regalos')
     .update({ estado, notas: notas || null, updated_at: new Date().toISOString() })
