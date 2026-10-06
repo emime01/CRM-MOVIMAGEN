@@ -74,10 +74,12 @@ function fmtFecha(iso: string) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
+// La categoría describe el bus, no lo que se le vende encima. Antes decía
+// "Full Bus" y "Lateral Full", que son soportes del catálogo, no tipos de bus.
 const CATEGORIAS: Record<string, string> = {
-  lateral_full: 'Lateral Full',
-  full_bus: 'Full Bus',
   urbano: 'Urbano',
+  suburbano: 'Suburbano',
+  diferencial: 'Diferencial',
 }
 
 const LADO: Record<string, { text: string; bg: string; color: string }> = {
@@ -1061,7 +1063,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
           cliente_actual
         </code>
         <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-          Categorías válidas: <code>lateral_full</code>, <code>full_bus</code>, <code>urbano</code>. Lados: <code>ambos</code>, <code>izquierdo</code>, <code>derecho</code>, <code>ninguno</code>.
+          Categorías válidas: <code>urbano</code>, <code>suburbano</code>, <code>diferencial</code>. Lados: <code>ambos</code>, <code>izquierdo</code>, <code>derecho</code>, <code>ninguno</code>.
           Los nombres de soportes se buscan por coincidencia (case-insensitive); si no existen, se crean con tipo &quot;bus&quot;.
         </div>
       </div>

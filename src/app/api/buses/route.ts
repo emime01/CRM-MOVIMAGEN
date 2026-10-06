@@ -61,8 +61,11 @@ export async function POST(req: NextRequest) {
       const numero = (row.numero_bus ?? row.numero ?? '').trim()
       if (!numero) continue
 
-      const categoria = (row.categoria ?? '').toLowerCase().trim() as 'lateral_full' | 'full_bus' | 'urbano' | ''
+      const categoria = (row.categoria ?? '').toLowerCase().trim() as 'urbano' | 'suburbano' | 'diferencial' | ''
       const modelo = (row.modelo ?? '').trim() || null
+      // La planilla trae anotaciones por bus —renumeraciones ("402-96"), "Roto",
+      // la matrícula— y la importación las descartaba en silencio.
+      const notas = (row.notas ?? '').trim() || null
       const ladoDisp = (row.lado_disponible ?? 'ambos').toLowerCase().trim()
       const clienteNombre = (row.cliente_actual ?? '').toLowerCase().trim()
       const clienteId = clienteNombre ? (clienteMap.get(clienteNombre) ?? null) : null
@@ -78,6 +81,9 @@ export async function POST(req: NextRequest) {
           categoria: categoria || null,
           lado_disponible: ladoDisp || 'ambos',
           cliente_actual_id: clienteId,
+          // Sólo se pisa si la planilla trae algo: una importación sin la
+          // columna no debería borrar lo que alguien anotó a mano.
+          ...(notas ? { notas } : {}),
           updated_at: new Date().toISOString(),
         }).eq('id', busId)
       } else {
@@ -87,6 +93,7 @@ export async function POST(req: NextRequest) {
           categoria: categoria || null,
           lado_disponible: ladoDisp || 'ambos',
           cliente_actual_id: clienteId,
+          notas,
         }).select('id').single()
         if (error || !newBus) { results.push({ numero, status: 'error', detail: error?.message }); continue }
         busId = newBus.id
