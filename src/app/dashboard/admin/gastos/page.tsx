@@ -15,6 +15,18 @@ const CATEGORIAS: Record<string, { color: string }> = {
   otros:          { color: '#6b7280' },
 }
 
+/** La venta a la que está imputado el gasto, si tiene. */
+function ventaDe(g: any): { numero: number | null; perfiles: any } | null {
+  return (Array.isArray(g.ordenes_venta) ? g.ordenes_venta[0] : g.ordenes_venta) ?? null
+}
+
+/** El vendedor de esa venta. gastos_tarjeta no guarda vendedor propio. */
+function vendedorDe(g: any): string | null {
+  const v = ventaDe(g)
+  const p = Array.isArray(v?.perfiles) ? v!.perfiles[0] : v?.perfiles
+  return p?.nombre ?? null
+}
+
 export default async function GastosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
@@ -27,7 +39,7 @@ export default async function GastosPage() {
   // tabla de abajo sigue mostrando los últimos 50.
   const { data: gastos, error: gastosErr } = await supabase
     .from('gastos_tarjeta')
-    .select('id, vendedor_id, monto, categoria, descripcion, fecha, estado, perfiles(nombre)')
+    .select('id, monto, categoria, descripcion, fecha, orden_id, ordenes_venta(numero, perfiles!vendedor_id(nombre))')
     .order('fecha', { ascending: false })
 
   if (gastosErr) throw new Error(`No se pudieron cargar los gastos: ${gastosErr.message}`)
@@ -44,21 +56,15 @@ export default async function GastosPage() {
   const catStats = Object.entries(catMap).sort((a, b) => b[1] - a[1])
   const maxCat = Math.max(...catStats.map(([, v]) => v), 1)
 
-  // Aggregate by vendor
+  // Aggregate by vendor — el gasto no guarda vendedor, así que sale de la
+  // venta a la que está imputado. Los que no tienen venta van aparte.
   const vendMap: Record<string, { nombre: string; total: number }> = {}
   gastos?.forEach(g => {
-    const p = Array.isArray(g.perfiles) ? g.perfiles[0] : g.perfiles
-    const nombre = (p as any)?.nombre ?? 'Desconocido'
-    if (!vendMap[g.vendedor_id]) vendMap[g.vendedor_id] = { nombre, total: 0 }
-    vendMap[g.vendedor_id].total += Number(g.monto ?? 0)
+    const nombre = vendedorDe(g) ?? 'Sin venta asociada'
+    if (!vendMap[nombre]) vendMap[nombre] = { nombre, total: 0 }
+    vendMap[nombre].total += Number(g.monto ?? 0)
   })
   const vendStats = Object.values(vendMap).sort((a, b) => b.total - a.total)
-
-  const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-    aprobado:  { bg: 'rgba(21,128,61,0.12)',  color: '#15803d', label: 'Aprobado' },
-    pendiente: { bg: 'rgba(217,119,6,0.12)',  color: '#d97706', label: 'Pendiente' },
-    rechazado: { bg: 'rgba(220,38,38,0.12)',  color: '#dc2626', label: 'Rechazado' },
-  }
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
@@ -67,7 +73,7 @@ export default async function GastosPage() {
         {[
           { label: 'Total gastos registrados', value: fmt(totalMes), color: 'var(--text-primary)' },
           { label: 'Transacciones', value: String(gastos?.length ?? 0), color: 'var(--text-primary)' },
-          { label: 'Pendientes aprobación', value: String(gastos?.filter(g => g.estado === 'pendiente').length ?? 0), color: '#d97706' },
+          { label: 'Sin venta asociada', value: String(gastos?.filter(g => !g.orden_id).length ?? 0), color: '#d97706' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
@@ -118,25 +124,21 @@ export default async function GastosPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-              {['Fecha', 'Vendedor', 'Categoría', 'Descripción', 'Monto', 'Estado'].map((h, i) => (
-                <th key={h} style={{ padding: '9px 14px', textAlign: i >= 4 ? 'right' : 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', ...(i === 5 ? { textAlign: 'center' } : {}) }}>{h}</th>
+              {['Fecha', 'Vendedor', 'Categoría', 'Descripción', 'Venta', 'Monto'].map((h, i) => (
+                <th key={h} style={{ padding: '9px 14px', textAlign: i >= 5 ? 'right' : 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {ultimos.map(g => {
-              const p = Array.isArray(g.perfiles) ? g.perfiles[0] : g.perfiles
-              const badge = ESTADO_BADGE[g.estado ?? 'pendiente'] ?? ESTADO_BADGE['pendiente']
               return (
                 <tr key={g.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{g.fecha ? new Date(g.fecha).toLocaleDateString('es-UY') : '—'}</td>
-                  <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>{(p as any)?.nombre ?? '—'}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>{vendedorDe(g) ?? '—'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{g.categoria ?? '—'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.descripcion ?? '—'}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{ventaDe(g)?.numero ? `#${ventaDe(g)!.numero}` : '—'}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(Number(g.monto ?? 0))}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                    <span style={{ background: badge.bg, color: badge.color, padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{badge.label}</span>
-                  </td>
                 </tr>
               )
             })}
