@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       const numero = (row.numero_bus ?? row.numero ?? '').trim()
       if (!numero) continue
 
-      const categoria = (row.categoria ?? '').toLowerCase().trim() as 'lateral_full' | 'full_bus' | 'urbano' | 'megabus' | ''
+      const categoria = (row.categoria ?? '').toLowerCase().trim() as 'urbano' | 'suburbano' | 'diferencial' | ''
       const modelo = (row.modelo ?? '').trim() || null
       // La planilla trae anotaciones por bus —renumeraciones ("402-96"), "Roto",
       // la matrícula— y la importación las descartaba en silencio.
