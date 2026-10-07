@@ -25,7 +25,15 @@ alter table perfiles add constraint perfiles_rol_check check (rol = any (array[
   'administracion','asistente_ventas_ops','admin_sistema'
 ]));
 
+-- El mail no está en `perfiles` sino en `auth.users`, ligado por user_id.
 update perfiles
    set rol        = 'admin_sistema',
        updated_at = now()
- where email = 'emiliano@movimagen.com.uy';
+ where user_id in (
+   select id from auth.users where lower(email) = 'emiliano@movimagen.com.uy'
+ );
+
+-- Control: tiene que devolver una fila, con rol admin_sistema.
+-- select p.nombre, p.rol, u.email
+--   from perfiles p join auth.users u on u.id = p.user_id
+--  where p.rol = 'admin_sistema';
