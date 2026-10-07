@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 // GET /api/propuestas?lead_id=&estado=
 export async function GET(req: NextRequest) {

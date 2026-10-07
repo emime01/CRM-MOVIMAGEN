@@ -88,7 +88,7 @@ function renderMarkdown(text: string): React.ReactNode {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion' | 'asistente_ventas_ops'
+type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion' | 'asistente_ventas_ops' | 'admin_sistema'
 
 interface NavItem {
   href: string
@@ -160,6 +160,7 @@ const ROL_LABELS: Record<Rol, string> = {
   vendedor: 'Vendedor',
   asistente_ventas: 'Asistente de Ventas',
   asistente_ventas_ops: 'Asistente Ventas y Operaciones',
+  admin_sistema: 'Administrador del sistema',
   gerente_comercial: 'Gerente Comercial',
   operaciones: 'Operaciones',
   arte: 'Arte',

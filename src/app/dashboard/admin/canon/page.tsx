@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import CanonClient from './CanonClient'
+import { es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +12,7 @@ const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigi
 export default async function CanonPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (session.user.rol !== 'administracion') redirect('/dashboard')
+  if (!es(session.user.rol, 'administracion')) redirect('/dashboard')
   const supabase = createServerClient()
 
   const [{ data: config }, { data: liquidaciones }] = await Promise.all([

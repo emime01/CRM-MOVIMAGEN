@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +20,7 @@ const BADGE: Record<string, { bg: string; color: string; label: string }> = {
 export default async function FacturacionPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (session.user.rol !== 'administracion') redirect('/dashboard')
+  if (!es(session.user.rol, 'administracion')) redirect('/dashboard')
   const supabase = createServerClient()
 
   // Lo que falta facturar se decide por la fecha de factura, no por el estado.

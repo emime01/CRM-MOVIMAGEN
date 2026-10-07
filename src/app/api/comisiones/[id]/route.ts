@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { es } from '@/lib/auth/roles'
 
 const ESTADOS_VALIDOS = ['pendiente', 'pagada', 'cancelada'] as const
 
@@ -9,7 +10,7 @@ const ESTADOS_VALIDOS = ['pendiente', 'pagada', 'cancelada'] as const
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (session.user.rol !== 'administracion') {
+  if (!es(session.user.rol, 'administracion')) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 

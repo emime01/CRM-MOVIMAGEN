@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect, notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import LeadDetalleClient from './LeadDetalleClient'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 

@@ -7,7 +7,7 @@ import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, Fol
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 import { formatMoney as fmtMoneda } from '@/lib/money'
 
 function formatMoney(amount: number | null, moneda?: string | null) {
@@ -218,7 +218,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const [metodoPago, setMetodoPago] = useState('')
 
   // La aprobación de OIC es exclusiva del gerente comercial
-  const canApprove = userRol === 'gerente_comercial' && orden.estado === 'pendiente_aprobacion'
+  const canApprove = es(userRol, 'gerente_comercial') && orden.estado === 'pendiente_aprobacion'
   const canUploadDoc = true
   const vendedorDeLaOrden = (Array.isArray(orden.perfiles) ? orden.perfiles[0] : orden.perfiles)?.id
   const canSendToApproval = orden.estado === 'borrador' && (
@@ -231,8 +231,8 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const estaAprobada = estaCerrada(orden.estado)
   const estaFacturada = !!orden.fecha_facturacion
   const estaCobrada = !!orden.fecha_cobro
-  const canFacturar = userRol === 'administracion' && estaAprobada && !estaFacturada
-  const canCobrar = userRol === 'administracion' && estaFacturada && !estaCobrada
+  const canFacturar = es(userRol, 'administracion') && estaAprobada && !estaFacturada
+  const canCobrar = es(userRol, 'administracion') && estaFacturada && !estaCobrada
 
   const badge = ESTADO_BADGE[orden.estado] ?? { bg: '#f1f1ef', color: '#6e6a62', label: orden.estado }
   const numero = orden.numero ? `#${String(orden.numero).padStart(5, '0')}` : `#${orden.id.slice(0, 6)}`

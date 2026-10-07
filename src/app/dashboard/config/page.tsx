@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import EmpresaConfigForm from './EmpresaConfigForm'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +13,7 @@ const ROL_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
   asistente_ventas: 'Asistente de Ventas',
   asistente_ventas_ops: 'Asistente Ventas y Operaciones',
+  admin_sistema: 'Administrador del sistema',
   gerente_comercial: 'Gerente Comercial',
   operaciones: 'Operaciones',
   arte: 'Arte',
@@ -36,7 +37,7 @@ export default async function ConfigPage() {
     supabase.from('config_empresa').select('nombre, razon_social, rut, direccion, telefono, email').eq('id', 1).maybeSingle(),
   ])
 
-  const canEditEmpresa = session.user.rol === 'administracion'
+  const canEditEmpresa = es(session.user.rol, 'administracion')
 
   const cy = new Date().getFullYear()
   const CUATRIMESTRES = [`Q1-${cy}`, `Q2-${cy}`, `Q3-${cy}`]

@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect, notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import CotizadorClient from '../../../cotizaciones/[id]/CotizadorClient'
+import { es } from '@/lib/auth/roles'
 
 /**
  * Cotizador dentro del lead: /dashboard/leads/[id]/cotizar

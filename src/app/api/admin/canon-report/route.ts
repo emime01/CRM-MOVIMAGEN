@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ function cuatrimestreRange(label: string): { start: string; end: string } | null
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (session.user.rol !== 'administracion') return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  if (!es(session.user.rol, 'administracion')) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const cuatrimestre = req.nextUrl.searchParams.get('cuatrimestre') ?? ''
   const range = cuatrimestreRange(cuatrimestre)
