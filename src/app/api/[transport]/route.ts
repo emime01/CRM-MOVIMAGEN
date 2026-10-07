@@ -1,7 +1,7 @@
 import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase-server'
-import { puede, atiendeTareasDe, areasDeTarea } from '@/lib/auth/roles'
+import { puede, atiendeTareasDe, areasDeTarea, es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -776,7 +776,7 @@ const handler = createMcpHandler(
 
     // 17 + 18. Aprobar / rechazar OIC (exclusivo del gerente comercial)
     const cambiarEstadoOrden = async (me: Identity, numero: number, nuevoEstado: 'aprobada' | 'rechazada', motivo?: string) => {
-      if (me.rol !== 'gerente_comercial') return text('Solo el gerente comercial puede aprobar o rechazar órdenes.')
+      if (!es(me.rol, 'gerente_comercial')) return text('Solo el gerente comercial puede aprobar o rechazar órdenes.')
       const supabase = createServerClient()
       const { data: orden } = await supabase.from('ordenes_venta').select('id, estado, clientes(nombre, empresa)').eq('numero', numero).maybeSingle()
       if (!orden) return text(`No existe la OIC #${numero}.`)

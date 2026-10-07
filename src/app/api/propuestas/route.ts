@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 // GET /api/propuestas?lead_id=&estado=
 export async function GET(req: NextRequest) {
@@ -67,11 +67,13 @@ export async function POST(req: NextRequest) {
 
   const { data: lead } = await supabase
     .from('leads')
-    .select('id, cliente_id, agencia_id, vendedor_id, campana')
+    .select('id, cliente_id, agencia_id, vendedor_id, campana, agencias(porcentaje_comision, porcentaje_comision_produccion)')
     .eq('id', leadId)
     .maybeSingle()
 
   if (!lead) return NextResponse.json({ error: 'El lead no existe' }, { status: 404 })
+  const agenciaDelLead = (Array.isArray(lead.agencias) ? lead.agencias[0] : lead.agencias) as
+    { porcentaje_comision: number | null; porcentaje_comision_produccion: number | null } | null
   if (session.user.rol === 'vendedor' && lead.vendedor_id !== session.user.id) {
     return NextResponse.json({ error: 'Ese lead no es tuyo' }, { status: 403 })
   }
@@ -99,6 +101,12 @@ export async function POST(req: NextRequest) {
       fecha_fin:      body.fecha_fin ?? null,
       moneda:         body.moneda ?? 'UYU',
       monto_neto:     body.monto_neto ?? null,
+      monto_arrendamiento: body.monto_arrendamiento ?? null,
+      // Lo pactado en esta venta; si el vendedor todavía no lo cargó, se
+      // precarga con lo recomendado de la agencia.
+      comision_agencia_pct:      lead.agencia_id ? (body.comision_agencia_pct ?? agenciaDelLead?.porcentaje_comision ?? null) : null,
+      comision_agencia_prod_pct: lead.agencia_id ? (body.comision_agencia_prod_pct ?? agenciaDelLead?.porcentaje_comision_produccion ?? null) : null,
+      monto_produccion:    body.monto_produccion ?? null,
       monto_total:    body.monto_total ?? null,
       monto_impactos: body.monto_impactos ?? null,
     })

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { pickAllowed } from '@/lib/api/safe-patch'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 // Campos editables por cualquier rol con permisos.
 const EDITABLE_FIELDS = [

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { escapePostgrestPattern } from '@/lib/api/safe-patch'
+import { es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 

@@ -5,12 +5,12 @@ import { createServerClient } from '@/lib/supabase-server'
 import { pickAllowed } from '@/lib/api/safe-patch'
 import { puede } from '@/lib/auth/roles'
 
-// Las mismas que deja editar el PATCH, más las que sólo se cargan al crear.
-// `porcentaje_comision` queda afuera a propósito: es plata, y el PATCH ya la
-// excluye — por el POST entraba igual.
+// Las comisiones de la agencia son lo recomendado: precargan cada venta,
+// donde el vendedor pone lo pactado, que es lo que vale para el canon.
 const CREATE_FIELDS = [
   'nombre', 'telefono', 'email', 'rut', 'direccion',
   'ejecutivo_cuenta', 'observaciones', 'notas', 'activo',
+  'porcentaje_comision', 'porcentaje_comision_produccion',
 ] as const
 
 const CREATE_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const all = searchParams.get('all') === 'true'
   const supabase = createServerClient()
-  let query = supabase.from('agencias').select('id, nombre, email, telefono, rut, ejecutivo_cuenta, porcentaje_comision, incluye_produccion, notas, activo').order('nombre')
+  let query = supabase.from('agencias').select('id, nombre, email, telefono, rut, ejecutivo_cuenta, porcentaje_comision, porcentaje_comision_produccion, incluye_produccion, notas, activo').order('nombre')
   if (!all) query = query.eq('activo', true) as typeof query
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

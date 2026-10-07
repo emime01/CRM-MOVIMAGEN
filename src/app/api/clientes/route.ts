@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { recalcularObjetivos } from '@/lib/objetivos/recalcular'
 import { pickAllowed } from '@/lib/api/safe-patch'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 

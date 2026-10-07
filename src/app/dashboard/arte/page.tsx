@@ -4,13 +4,14 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ArteClient from './ArteClient'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ArteDigitalPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (session.user.rol !== 'arte' && session.user.rol !== 'administracion') redirect('/dashboard')
+  if (!es(session.user.rol, 'arte') && !es(session.user.rol, 'administracion')) redirect('/dashboard')
 
   const supabase = createServerClient()
   const today = new Date().toISOString().split('T')[0]

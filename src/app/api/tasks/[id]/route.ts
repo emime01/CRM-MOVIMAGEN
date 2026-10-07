@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { atiendeTareasDe } from '@/lib/auth/roles'
+import { atiendeTareasDe, es } from '@/lib/auth/roles'
 
 /**
  * PATCH /api/tasks/[id]
@@ -28,7 +28,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { data: task } = await supabase.from('tasks').select('asignado_a_rol').eq('id', params.id).maybeSingle()
   if (!task) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
 
-  const allowed = session.user.rol === 'administracion' || atiendeTareasDe(session.user.rol, task.asignado_a_rol)
+  const allowed = es(session.user.rol, 'administracion') || atiendeTareasDe(session.user.rol, task.asignado_a_rol)
   if (!allowed) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const updates: Record<string, unknown> = {

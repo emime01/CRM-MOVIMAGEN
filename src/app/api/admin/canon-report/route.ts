@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ function cuatrimestreRange(label: string): { start: string; end: string } | null
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (session.user.rol !== 'administracion') return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  if (!es(session.user.rol, 'administracion')) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const cuatrimestre = req.nextUrl.searchParams.get('cuatrimestre') ?? ''
   const range = cuatrimestreRange(cuatrimestre)
@@ -47,17 +48,31 @@ export async function GET(req: NextRequest) {
   // Get approved ordenes in the period
   const { data: ordenes } = await supabase
     .from('ordenes_venta')
-    .select('id')
+    .select('id, comision_agencia_pct, agencias(porcentaje_comision)')
     .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .gte('created_at', range.start)
     .lte('created_at', range.end)
 
   // Get orden_items for those ordenes
   const revenueMap: Record<string, number> = {}
+
+  // El canon se calcula sobre lo neto de la comisión de la agencia: la
+  // planilla de Administración hace `$ Neto de Ag. = $ Total × (1 − % Ag)` y
+  // aplica el porcentaje del shopping sobre eso. Vale lo pactado en la venta;
+  // lo recomendado de la agencia es sólo para ventas viejas que no lo tengan.
+  // Sin agencia (venta directa), no hay nada que descontar.
+  const pctAgenciaPorOrden: Record<string, number> = {}
+  for (const o of ordenes ?? []) {
+    const ag = Array.isArray(o.agencias) ? o.agencias[0] : o.agencias
+    pctAgenciaPorOrden[o.id] = Number(
+      o.comision_agencia_pct ?? (ag as { porcentaje_comision?: number } | null)?.porcentaje_comision ?? 0,
+    )
+  }
+
   if (ordenes?.length) {
     const { data: items } = await supabase
       .from('orden_items')
-      .select('soporte_id, cantidad, semanas, precio_unitario, descuento_pct')
+      .select('orden_id, soporte_id, cantidad, semanas, precio_unitario, descuento_pct')
       .in('orden_id', ordenes.map(o => o.id))
 
     for (const item of items ?? []) {
@@ -68,7 +83,10 @@ export async function GET(req: NextRequest) {
       // lista, así que al shopping se le liquidaba de más. Se cobró lo
       // descontado, el canon va sobre eso.
       const descuento = 1 - (Number(item.descuento_pct ?? 0) / 100)
-      const revenue = Number(item.precio_unitario ?? 0) * Number(item.cantidad ?? 1) * Number(item.semanas ?? 1) * descuento
+      // Los ítems llevan sólo arrendamiento sin IVA (el precio sale de
+      // `precio_semanal` del soporte): la producción no entra al canon.
+      const netoDeAgencia = 1 - (pctAgenciaPorOrden[item.orden_id] ?? 0) / 100
+      const revenue = Number(item.precio_unitario ?? 0) * Number(item.cantidad ?? 1) * Number(item.semanas ?? 1) * descuento * netoDeAgencia
       revenueMap[shoppingId] = (revenueMap[shoppingId] ?? 0) + revenue
     }
   }

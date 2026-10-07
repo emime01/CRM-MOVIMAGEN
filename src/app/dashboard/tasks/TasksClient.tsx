@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { puede } from '@/lib/auth/roles'
+import { puede, es, areasDeTarea } from '@/lib/auth/roles'
 import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react'
 
 interface Task {
@@ -75,9 +75,13 @@ function iniciales(nombre: string | null | undefined): string {
 export default function TasksClient({ userRol }: { userRol: string; userId: string }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
-  const [rolFilter, setRolFilter] = useState<'arte' | 'operaciones' | 'todas'>(
-    userRol === 'arte' ? 'arte' : puede(userRol, ['operaciones']) ? 'operaciones' : 'todas',
-  )
+  // Quien trabaja un área arranca en la suya; gerencia y el administrador del
+  // sistema arrancan en todas, que es lo que `areasDeTarea` les devuelve.
+  const [rolFilter, setRolFilter] = useState<'arte' | 'operaciones' | 'todas'>(() => {
+    const areas = areasDeTarea(userRol)
+    if (areas.length !== 1) return 'todas'
+    return areas[0] as 'arte' | 'operaciones'
+  })
   const [arrastrando, setArrastrando] = useState<string | null>(null)
   const [columnaActiva, setColumnaActiva] = useState<Estado | null>(null)
   const [moviendo, setMoviendo] = useState<string | null>(null)

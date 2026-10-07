@@ -27,6 +27,7 @@ interface Agencia {
   telefono: string | null
   ejecutivo_cuenta: string | null
   porcentaje_comision: number | null
+  porcentaje_comision_produccion?: number | null
   activo: boolean
 }
 
@@ -372,7 +373,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
                   <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>{a.nombre}</td>
                   <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.email ?? '—'}</td>
                   <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-secondary)' }}>{a.ejecutivo_cuenta ?? '—'}</td>
-                  <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-secondary)' }}>{a.porcentaje_comision != null ? `${a.porcentaje_comision}%` : '—'}</td>
+                  <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-secondary)' }}>{a.porcentaje_comision != null ? `${a.porcentaje_comision}%` : '—'}{a.porcentaje_comision_produccion ? ` · ${a.porcentaje_comision_produccion}% prod.` : ''}</td>
                   <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                     <button onClick={() => setAgenciaModal({ open: true, data: a })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', marginRight: 4 }}><Edit2 size={14} /></button>
                     <button onClick={() => deleteAgencia(a.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: '#c82f2f' }}><Trash2 size={14} /></button>
@@ -657,8 +658,12 @@ function AgenciaModalForm({ data, onClose, onSave, saving, error }: {
           <input style={inputStyle} value={form.ejecutivo_cuenta ?? ''} onChange={e => set('ejecutivo_cuenta', e.target.value)} />
         </div>
         <div>
-          <label style={labelStyle}>% Comisión</label>
+          <label style={labelStyle}>% Comisión recomendada · arrend.</label>
           <input style={inputStyle} type="number" min={0} max={100} step={0.5} value={form.porcentaje_comision ?? 0} onChange={e => set('porcentaje_comision', parseFloat(e.target.value))} />
+        </div>
+        <div>
+          <label style={labelStyle}>% Comisión recomendada · prod.</label>
+          <input style={inputStyle} type="number" min={0} max={100} step={0.5} value={form.porcentaje_comision_produccion ?? 0} onChange={e => set('porcentaje_comision_produccion', parseFloat(e.target.value))} />
         </div>
       </div>
       {error && <div style={{ color: '#c82f2f', fontSize: 12, marginBottom: 12 }}>{error}</div>}

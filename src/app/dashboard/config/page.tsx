@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import EmpresaConfigForm from './EmpresaConfigForm'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +13,7 @@ const ROL_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
   asistente_ventas: 'Asistente de Ventas',
   asistente_ventas_ops: 'Asistente Ventas y Operaciones',
+  admin_sistema: 'Administrador del sistema',
   gerente_comercial: 'Gerente Comercial',
   operaciones: 'Operaciones',
   arte: 'Arte',
@@ -30,13 +31,20 @@ export default async function ConfigPage() {
   const supabase = createServerClient()
 
   const [{ data: perfiles }, { data: soportes }, { data: objetivos }, { data: empresa }] = await Promise.all([
-    supabase.from('perfiles').select('id, nombre, rol, activo, email').order('rol').order('nombre'),
+    // `perfiles` no tiene email: vive en auth.users, ligado por user_id. Pedirlo
+    // hacía fallar la consulta entera y la pantalla mostraba "0 usuarios".
+    supabase.from('perfiles').select('id, user_id, nombre, rol, activo').order('rol').order('nombre'),
     supabase.from('soportes').select('id, nombre, seccion, ubicacion, tipo, precio_base, activo').order('seccion').order('nombre'),
     supabase.from('objetivos').select('vendedor_id, cuatrimestre, objetivo_monto').order('cuatrimestre'),
     supabase.from('config_empresa').select('nombre, razon_social, rut, direccion, telefono, email').eq('id', 1).maybeSingle(),
   ])
 
-  const canEditEmpresa = session.user.rol === 'administracion'
+  // El mail de cada persona está en auth.users, no en `perfiles`. Se lee con
+  // la API de admin, que acá corre con la service role key.
+  const { data: usuarios } = await supabase.auth.admin.listUsers({ perPage: 200 })
+  const emailPorUserId = new Map((usuarios?.users ?? []).map(u => [u.id, u.email ?? null]))
+
+  const canEditEmpresa = es(session.user.rol, 'administracion')
 
   const cy = new Date().getFullYear()
   const CUATRIMESTRES = [`Q1-${cy}`, `Q2-${cy}`, `Q3-${cy}`]
@@ -70,7 +78,7 @@ export default async function ConfigPage() {
             {perfiles?.map(p => (
               <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
                 <td style={{ padding: '11px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>{p.nombre}</td>
-                <td style={{ padding: '11px 16px', color: 'var(--text-muted)', fontSize: 12 }}>{p.email ?? '—'}</td>
+                <td style={{ padding: '11px 16px', color: 'var(--text-muted)', fontSize: 12 }}>{emailPorUserId.get(p.user_id as string) ?? '—'}</td>
                 <td style={{ padding: '11px 16px', color: 'var(--text-secondary)' }}>{ROL_LABELS[p.rol] ?? p.rol}</td>
                 <td style={{ padding: '11px 16px' }}>
                   <span style={{

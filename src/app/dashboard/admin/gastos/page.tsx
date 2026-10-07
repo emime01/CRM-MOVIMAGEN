@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import { es } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,7 @@ function vendedorDe(g: any): string | null {
 export default async function GastosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (session.user.rol !== 'administracion') redirect('/dashboard')
+  if (!es(session.user.rol, 'administracion')) redirect('/dashboard')
   const supabase = createServerClient()
 
   // Los totales y los desgloses salían de los últimos 50 gastos nada más, pero

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, FileText, Plus, Trophy, MessageSquare, Calendar, AlertCircle } from 'lucide-react'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 
 interface Cliente { id: string; nombre: string; empresa: string | null }
 interface Vendedor { id: string; nombre: string }

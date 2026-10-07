@@ -82,7 +82,7 @@ async function main() {
       // Asegurar perfil
       const { data: perfil } = await supabase.from('perfiles').select('id, rol, nombre').eq('user_id', existing.id).maybeSingle()
       if (!perfil) {
-        await supabase.from('perfiles').insert({ user_id: existing.id, nombre: u.nombre, rol: u.rol, porcentaje_comision: 6 })
+        await supabase.from('perfiles').insert({ user_id: existing.id, nombre: u.nombre, rol: u.rol, porcentaje_comision: 6.75 })
       } else if (perfil.rol !== u.rol || perfil.nombre !== u.nombre) {
         await supabase.from('perfiles').update({ rol: u.rol, nombre: u.nombre }).eq('id', perfil.id)
       }
@@ -90,7 +90,7 @@ async function main() {
     } else {
       const { data, error } = await supabase.auth.admin.createUser({ email: u.email, password, email_confirm: true })
       if (error || !data.user) { resultados.push({ ...u, password: '—', status: `error: ${error?.message}` }); continue }
-      await supabase.from('perfiles').insert({ user_id: data.user.id, nombre: u.nombre, rol: u.rol, porcentaje_comision: 6 })
+      await supabase.from('perfiles').insert({ user_id: data.user.id, nombre: u.nombre, rol: u.rol, porcentaje_comision: 6.75 })
       status = 'creado'
     }
 
