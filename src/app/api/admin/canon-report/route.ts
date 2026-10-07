@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   // Get approved ordenes in the period
   const { data: ordenes } = await supabase
     .from('ordenes_venta')
-    .select('id, agencias(porcentaje_comision)')
+    .select('id, comision_agencia_pct, agencias(porcentaje_comision)')
     .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .gte('created_at', range.start)
     .lte('created_at', range.end)
@@ -58,12 +58,15 @@ export async function GET(req: NextRequest) {
 
   // El canon se calcula sobre lo neto de la comisión de la agencia: la
   // planilla de Administración hace `$ Neto de Ag. = $ Total × (1 − % Ag)` y
-  // aplica el porcentaje del shopping sobre eso. Sin agencia (venta directa),
-  // no hay nada que descontar.
+  // aplica el porcentaje del shopping sobre eso. Vale lo pactado en la venta;
+  // lo recomendado de la agencia es sólo para ventas viejas que no lo tengan.
+  // Sin agencia (venta directa), no hay nada que descontar.
   const pctAgenciaPorOrden: Record<string, number> = {}
   for (const o of ordenes ?? []) {
     const ag = Array.isArray(o.agencias) ? o.agencias[0] : o.agencias
-    pctAgenciaPorOrden[o.id] = Number((ag as { porcentaje_comision?: number } | null)?.porcentaje_comision ?? 0)
+    pctAgenciaPorOrden[o.id] = Number(
+      o.comision_agencia_pct ?? (ag as { porcentaje_comision?: number } | null)?.porcentaje_comision ?? 0,
+    )
   }
 
   if (ordenes?.length) {

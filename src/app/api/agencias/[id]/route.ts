@@ -12,6 +12,11 @@ const EDITABLE_FIELDS = [
   'direccion',
   'observaciones',
   'activo',
+  'ejecutivo_cuenta',
+  // Lo recomendado: sólo precarga la comisión de cada venta, que es la que
+  // vale. Por eso se puede editar acá (con los roles de este endpoint).
+  'porcentaje_comision',
+  'porcentaje_comision_produccion',
 ] as const
 
 const ADMIN_ROLES = ['asistente_ventas', 'gerente_comercial', 'administracion']

@@ -21,6 +21,8 @@ interface OrdenPayload {
   clienteId: string
   contacto?: string
   agenciaId?: string
+  comisionAgenciaPct?: number
+  comisionAgenciaProdPct?: number
   facturarA?: 'agencia' | 'cliente_final'
   marca?: string
   campana?: string
@@ -63,6 +65,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
   }
 
+  // Con agencia, la comisión pactada es obligatoria (0 vale: "no comisiona").
+  if (body.agenciaId) {
+    const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100
+    if (!ok(body.comisionAgenciaPct) || !ok(body.comisionAgenciaProdPct)) {
+      return NextResponse.json(
+        { error: 'Falta la comisión de la agencia, sobre arrendamiento y sobre producción, entre 0 y 100.' },
+        { status: 400 },
+      )
+    }
+  }
+
   if (!body.clienteId || !body.moneda) {
     return NextResponse.json({ error: 'Faltan campos requeridos: clienteId, moneda' }, { status: 400 })
   }
@@ -85,6 +98,8 @@ export async function POST(req: NextRequest) {
     .insert({
       cliente_id: body.clienteId,
       agencia_id: body.agenciaId || null,
+      comision_agencia_pct:      body.agenciaId ? body.comisionAgenciaPct : null,
+      comision_agencia_prod_pct: body.agenciaId ? body.comisionAgenciaProdPct : null,
       vendedor_id: vendedorId,
       contacto: body.contacto || null,
       facturar_a: body.facturarA || 'cliente_final',

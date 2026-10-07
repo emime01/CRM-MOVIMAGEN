@@ -63,6 +63,8 @@ interface Orden {
   moneda: string | null
   monto_total: number | null
   monto_neto: number | null
+  comision_agencia_pct?: number | null
+  comision_agencia_prod_pct?: number | null
   created_at: string
   contacto: string | null
   facturar_a: string | null
@@ -613,6 +615,16 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
                 <div style={fieldLabel}>Agencia</div>
                 <div style={fieldValue}>{joinedNombre(orden.agencias)}</div>
               </div>
+              {orden.agencias && (
+                <div>
+                  <div style={fieldLabel}>Comisión agencia</div>
+                  <div style={fieldValue}>
+                    {orden.comision_agencia_pct != null ? `${orden.comision_agencia_pct}% arrend.` : '—'}
+                    {' · '}
+                    {orden.comision_agencia_prod_pct != null ? `${orden.comision_agencia_prod_pct}% prod.` : '—'}
+                  </div>
+                </div>
+              )}
               <div>
                 <div style={fieldLabel}>Vendedor</div>
                 <div style={fieldValue}>{joinedNombre(orden.perfiles)}</div>

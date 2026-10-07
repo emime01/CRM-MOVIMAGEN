@@ -93,6 +93,9 @@ export async function crearOrdenDesdePropuesta(
       monto_neto:           propuesta.monto_neto ?? propuesta.monto_total ?? null,
       monto_arrendamiento:  propuesta.monto_arrendamiento ?? propuesta.monto_neto ?? propuesta.monto_total ?? null,
       monto_produccion:     propuesta.monto_produccion ?? 0,
+      // La comisión de agencia pactada viaja de la cotización a la venta.
+      comision_agencia_pct:      propuesta.comision_agencia_pct ?? null,
+      comision_agencia_prod_pct: propuesta.comision_agencia_prod_pct ?? null,
       fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
       fecha_baja_prevista:  propuesta.fecha_fin ?? null,
       // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.

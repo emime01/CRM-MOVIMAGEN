@@ -37,6 +37,21 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     }
   }
 
+  // La comisión de la agencia es obligatoria cuando hay agencia, y se chequea
+  // ANTES de aceptar: aceptar es irreversible, y si fallara recién al generar
+  // la OIC la cotización quedaría aceptada y sin venta.
+  const { data: cot } = await supabase
+    .from('propuestas')
+    .select('agencia_id, comision_agencia_pct, comision_agencia_prod_pct')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (cot?.agencia_id && (cot.comision_agencia_pct == null || cot.comision_agencia_prod_pct == null)) {
+    return NextResponse.json(
+      { error: 'Falta la comisión de la agencia (sobre arrendamiento y sobre producción). Si esta vez no comisiona, poné 0.' },
+      { status: 400 },
+    )
+  }
+
   const r = await aceptarCotizacion(supabase, params.id, session.user.id)
   if (!r.ok) {
     const status = r.error === 'Cotización no encontrada' ? 404 : 400

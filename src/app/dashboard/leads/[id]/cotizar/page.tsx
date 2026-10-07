@@ -23,7 +23,7 @@ export default async function CotizarDesdeLeadPage({ params }: { params: { id: s
     .select(`
       id, descripcion, vendedor_id, cliente_id, agencia_id,
       clientes(id, nombre, empresa),
-      agencias(id, nombre)
+      agencias(id, nombre, porcentaje_comision, porcentaje_comision_produccion)
     `)
     .eq('id', params.id)
     .maybeSingle()
@@ -54,6 +54,8 @@ export default async function CotizarDesdeLeadPage({ params }: { params: { id: s
         clienteId: lead.cliente_id,
         clienteNombre: cliente?.empresa ?? cliente?.nombre ?? 'Cliente',
         agenciaNombre: agencia?.nombre ?? null,
+        agenciaComisionPct: agencia?.porcentaje_comision ?? null,
+        agenciaComisionProdPct: agencia?.porcentaje_comision_produccion ?? null,
       }}
     />
   )

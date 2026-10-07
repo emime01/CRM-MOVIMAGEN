@@ -20,10 +20,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .select(`
       id, numero, nombre, marca, observaciones, estado, moneda,
       monto_neto, monto_total, monto_impactos,
+      comision_agencia_pct, comision_agencia_prod_pct,
       fecha_inicio, fecha_fin, notas,
       lead_id, cliente_id, agencia_id, vendedor_id, created_at, updated_at,
       clientes(id, nombre, empresa),
-      agencias!agencia_id(id, nombre),
+      agencias!agencia_id(id, nombre, porcentaje_comision, porcentaje_comision_produccion),
       leads!lead_id(id, descripcion),
       perfiles(id, nombre)
     `)
@@ -85,6 +86,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.moneda !== undefined)         updates.moneda = body.moneda || 'UYU'
   if (body.monto_neto !== undefined)     updates.monto_neto = body.monto_neto
   if (body.monto_arrendamiento !== undefined) updates.monto_arrendamiento = body.monto_arrendamiento
+  for (const campo of ['comision_agencia_pct', 'comision_agencia_prod_pct'] as const) {
+    if (body[campo] === undefined) continue
+    const v = body[campo] === null || body[campo] === '' ? null : Number(body[campo])
+    if (v !== null && (!Number.isFinite(v) || v < 0 || v > 100)) {
+      return NextResponse.json({ error: 'La comisión de la agencia tiene que estar entre 0 y 100' }, { status: 400 })
+    }
+    updates[campo] = v
+  }
   if (body.monto_produccion !== undefined)    updates.monto_produccion = body.monto_produccion
   if (body.monto_total !== undefined)    updates.monto_total = body.monto_total
   if (body.monto_impactos !== undefined) updates.monto_impactos = body.monto_impactos

@@ -61,8 +61,10 @@ interface PropuestaHeader {
   moneda: string
   notas: string | null
   clientes: { nombre: string; empresa: string | null } | null
-  agencias: { id: string; nombre: string | null } | null
+  agencias: { id: string; nombre: string | null; porcentaje_comision?: number | null; porcentaje_comision_produccion?: number | null } | null
   leads: { id: string; descripcion: string | null } | null
+  comision_agencia_pct?: number | null
+  comision_agencia_prod_pct?: number | null
 }
 
 interface SavedItem {
@@ -184,6 +186,9 @@ export default function CotizadorClient({
     clienteId: string
     clienteNombre: string
     agenciaNombre: string | null
+    /** Lo recomendado de la agencia; precarga la comisión pactada. */
+    agenciaComisionPct?: number | null
+    agenciaComisionProdPct?: number | null
   } | null
 }) {
   const router = useRouter()
@@ -195,6 +200,11 @@ export default function CotizadorClient({
   const [nombre, setNombre] = useState('')
   const [marca, setMarca] = useState('')
   const [observaciones, setObservaciones] = useState('')
+  // Comisión de la agencia pactada en esta venta. Se precarga con lo
+  // recomendado de la agencia, pero lo que vale es lo que pone el vendedor:
+  // se negocia venta por venta. Obligatoria cuando hay agencia.
+  const [comAgPct, setComAgPct] = useState('')
+  const [comAgProdPct, setComAgProdPct] = useState('')
   const [clienteId, setClienteId] = useState('')
   const [leadId, setLeadId] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
@@ -243,6 +253,10 @@ export default function CotizadorClient({
         setNombre(p.nombre ?? '')
         setMarca(p.marca ?? '')
         setObservaciones(p.observaciones ?? p.notas ?? '')
+        const pctAg = p.comision_agencia_pct ?? p.agencias?.porcentaje_comision ?? null
+        const pctAgProd = p.comision_agencia_prod_pct ?? p.agencias?.porcentaje_comision_produccion ?? null
+        setComAgPct(pctAg != null ? String(pctAg) : '')
+        setComAgProdPct(pctAgProd != null ? String(pctAgProd) : '')
         setClienteId(p.cliente_id ?? '')
         setLeadId(p.lead_id ?? '')
         setFechaInicio(p.fecha_inicio ?? '')
@@ -297,6 +311,10 @@ export default function CotizadorClient({
           setLeadId(lead.id)
           setClienteId(lead.clienteId)
           setClienteQuery(lead.clienteNombre)
+          if (lead.agenciaNombre) {
+            setComAgPct(lead.agenciaComisionPct != null ? String(lead.agenciaComisionPct) : '')
+            setComAgProdPct(lead.agenciaComisionProdPct != null ? String(lead.agenciaComisionProdPct) : '')
+          }
         }
       }
       setLoadingInit(false)
@@ -469,6 +487,8 @@ export default function CotizadorClient({
       // arrendamiento: la producción no comisiona ni paga canon.
       monto_arrendamiento: totals.arr,
       monto_produccion:    totals.prod,
+      comision_agencia_pct:      comAgPct === '' ? null : Number(comAgPct),
+      comision_agencia_prod_pct: comAgProdPct === '' ? null : Number(comAgProdPct),
       monto_total:    totals.tot,
       monto_impactos: totals.imp,
       items,
@@ -490,6 +510,10 @@ export default function CotizadorClient({
   }
 
   async function marcarAceptada() {
+    if (clienteFijo?.agencia && (comAgPct === '' || comAgProdPct === '')) {
+      alert('Falta la comisión de la agencia.\n\nCargá el porcentaje sobre arrendamiento y sobre producción antes de cerrar la venta. Si esta vez no comisiona, poné 0.')
+      return
+    }
     if (!confirm('¿El cliente aceptó esta cotización?\n\nSe genera la orden de venta (OIC) para que la apruebe el gerente. Los soportes quedan ocupados cuando se aprueba.')) return
     const id = await save()
     if (!id) return
@@ -767,6 +791,25 @@ export default function CotizadorClient({
             </>
           )}
         </div>
+        {clienteFijo?.agencia && (
+          /* Comisión de la agencia, pactada en esta venta. Obligatoria: sin
+             ella no se puede cerrar la venta. Viene precargada con lo
+             recomendado de la agencia, y se cambia si se negoció otra cosa. */
+          <div style={{ display: 'flex', gap: 8, minWidth: 220 }}>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="com-ag-arr" style={lblSt}>Com. agencia · arrend. %</label>
+              <input id="com-ag-arr" type="number" min={0} max={100} step={0.5} required
+                value={comAgPct} onChange={e => setComAgPct(e.target.value)} placeholder="Obligatorio"
+                style={{ ...inputSt, borderColor: comAgPct === '' ? '#dc2626' : inputSt.borderColor }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="com-ag-prod" style={lblSt}>Com. agencia · prod. %</label>
+              <input id="com-ag-prod" type="number" min={0} max={100} step={0.5} required
+                value={comAgProdPct} onChange={e => setComAgProdPct(e.target.value)} placeholder="Obligatorio"
+                style={{ ...inputSt, borderColor: comAgProdPct === '' ? '#dc2626' : inputSt.borderColor }} />
+            </div>
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 110 }}>
           <label style={lblSt}>Inicio</label>
           <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} style={inputSt} />

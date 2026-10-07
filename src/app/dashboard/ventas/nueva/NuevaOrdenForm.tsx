@@ -25,6 +25,8 @@ interface Cliente {
 interface Agencia {
   id: string
   nombre: string
+  porcentaje_comision?: number | null
+  porcentaje_comision_produccion?: number | null
 }
 
 interface Vendedor {
@@ -127,6 +129,17 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   const [clienteId, setClienteId] = useState(initialClienteId ?? '')
   const [contacto, setContacto] = useState('')
   const [agenciaId, setAgenciaId] = useState('')
+  // Comisión de la agencia pactada en esta venta: se precarga con lo
+  // recomendado de la agencia y es obligatoria si hay agencia.
+  const [comAgPct, setComAgPct] = useState('')
+  const [comAgProdPct, setComAgProdPct] = useState('')
+
+  function elegirAgencia(id: string) {
+    setAgenciaId(id)
+    const ag = agencias.find(a => a.id === id)
+    setComAgPct(ag?.porcentaje_comision != null ? String(ag.porcentaje_comision) : '')
+    setComAgProdPct(ag?.porcentaje_comision_produccion != null ? String(ag.porcentaje_comision_produccion) : '')
+  }
   const [facturarA, setFacturarA] = useState<'agencia' | 'cliente_final'>('cliente_final')
   const [marca, setMarca] = useState('')
   const [campana, setCampana] = useState('')
@@ -216,6 +229,10 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
   async function handleSubmit(estado: 'borrador' | 'pendiente_aprobacion') {
     setError('')
+    if (agenciaId && (comAgPct === '' || comAgProdPct === '')) {
+      setError('Falta la comisión de la agencia, sobre arrendamiento y sobre producción. Si esta vez no comisiona, poné 0.')
+      return
+    }
     if (!clienteId) {
       setError('Seleccioná un cliente.')
       return
@@ -249,6 +266,8 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
           contacto,
           agenciaId: agenciaId || undefined,
           facturarA: agenciaId ? facturarA : undefined,
+          comisionAgenciaPct: agenciaId ? Number(comAgPct) : undefined,
+          comisionAgenciaProdPct: agenciaId ? Number(comAgProdPct) : undefined,
           marca,
           campana,
           referencia,
@@ -306,7 +325,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
     if (!clienteId) return
     const cliente = clientes.find(c => c.id === clienteId)
     if (cliente?.agencia_id && !agenciaId) {
-      setAgenciaId(cliente.agencia_id)
+      elegirAgencia(cliente.agencia_id)
     }
   }, [clienteId])
 
@@ -367,7 +386,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
           }>
         }
         if (f.clienteId) setClienteId(f.clienteId)
-        if (f.agenciaId) setAgenciaId(f.agenciaId)
+        if (f.agenciaId) elegirAgencia(f.agenciaId)
         if (f.contacto) setContacto(f.contacto)
         if (f.marca) setMarca(f.marca)
         if (f.moneda) setMoneda(f.moneda)
@@ -544,11 +563,23 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
           <div>
             <label style={labelStyle}>Agencia (opcional)</label>
-            <select value={agenciaId} onChange={e => setAgenciaId(e.target.value)} style={inputStyle}>
+            <select value={agenciaId} onChange={e => elegirAgencia(e.target.value)} style={inputStyle}>
               <option value="">— Sin agencia —</option>
               {agencias.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
             </select>
           </div>
+
+          {agenciaId && (
+            <div>
+              <label style={labelStyle}>Comisión de la agencia</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input id="com-ag-arr" type="number" min={0} max={100} step={0.5} required aria-label="Comisión sobre arrendamiento (%)"
+                  value={comAgPct} onChange={e => setComAgPct(e.target.value)} placeholder="Arrend. %" style={inputStyle} />
+                <input id="com-ag-prod" type="number" min={0} max={100} step={0.5} required aria-label="Comisión sobre producción (%)"
+                  value={comAgProdPct} onChange={e => setComAgProdPct(e.target.value)} placeholder="Prod. %" style={inputStyle} />
+              </div>
+            </div>
+          )}
 
           {agenciaId && (
             <div>
