@@ -465,6 +465,10 @@ export default function CotizadorClient({
       // ivaProd se suman aparte), así que el neto es la suma de los tres. La
       // fórmula anterior le restaba IVA a la producción, que no lo tenía.
       monto_neto:     totals.arr + totals.prod + totals.mun,
+      // Por separado, porque la comisión y el canon se calculan sólo sobre el
+      // arrendamiento: la producción no comisiona ni paga canon.
+      monto_arrendamiento: totals.arr,
+      monto_produccion:    totals.prod,
       monto_total:    totals.tot,
       monto_impactos: totals.imp,
       items,

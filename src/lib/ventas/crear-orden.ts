@@ -91,6 +91,8 @@ export async function crearOrdenDesdePropuesta(
       // negocio comisionaba distinto según si la venta vino de una cotización
       // (con IVA) o se cargó a mano (sin IVA).
       monto_neto:           propuesta.monto_neto ?? propuesta.monto_total ?? null,
+      monto_arrendamiento:  propuesta.monto_arrendamiento ?? propuesta.monto_neto ?? propuesta.monto_total ?? null,
+      monto_produccion:     propuesta.monto_produccion ?? 0,
       fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
       fecha_baja_prevista:  propuesta.fecha_fin ?? null,
       // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.

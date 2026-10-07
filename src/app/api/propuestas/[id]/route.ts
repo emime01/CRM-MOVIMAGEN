@@ -84,6 +84,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.notas !== undefined)          updates.notas = body.notas || null
   if (body.moneda !== undefined)         updates.moneda = body.moneda || 'UYU'
   if (body.monto_neto !== undefined)     updates.monto_neto = body.monto_neto
+  if (body.monto_arrendamiento !== undefined) updates.monto_arrendamiento = body.monto_arrendamiento
+  if (body.monto_produccion !== undefined)    updates.monto_produccion = body.monto_produccion
   if (body.monto_total !== undefined)    updates.monto_total = body.monto_total
   if (body.monto_impactos !== undefined) updates.monto_impactos = body.monto_impactos
 

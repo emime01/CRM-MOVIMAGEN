@@ -99,6 +99,8 @@ export async function POST(req: NextRequest) {
       fecha_fin:      body.fecha_fin ?? null,
       moneda:         body.moneda ?? 'UYU',
       monto_neto:     body.monto_neto ?? null,
+      monto_arrendamiento: body.monto_arrendamiento ?? null,
+      monto_produccion:    body.monto_produccion ?? null,
       monto_total:    body.monto_total ?? null,
       monto_impactos: body.monto_impactos ?? null,
     })

@@ -1,6 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
+ * Lo que se le liquida al vendedor sobre el arrendamiento sin IVA. Es el
+ * porcentaje de la planilla de comisiones de Administración; se usa cuando el
+ * perfil del vendedor no tiene uno propio cargado.
+ */
+export const PORCENTAJE_COMISION_VENDEDOR = 6.75
+
+/**
  * Registro del cobro de una venta: deja la fecha, crea el pago y genera la
  * comisión del vendedor.
  *
@@ -34,7 +41,7 @@ export async function registrarCobro(
 
   const { data: orden } = await supabase
     .from('ordenes_venta')
-    .select('vendedor_id, monto_total, monto_neto, factura_numero')
+    .select('vendedor_id, monto_total, monto_neto, monto_arrendamiento, factura_numero')
     .eq('id', ordenId)
     .maybeSingle()
   if (!orden?.vendedor_id || !orden.monto_total) return { ok: true, comisionGenerada: false }
@@ -48,8 +55,11 @@ export async function registrarCobro(
   // La comisión va sobre el neto. Antes salía de `monto_total`, que según por
   // dónde entró la venta venía con IVA o sin IVA: el mismo negocio liquidaba
   // distinto según la pantalla que usó el vendedor.
-  const monto = Number(orden.monto_neto ?? orden.monto_total)
-  const pct = Number(vendedor?.porcentaje_comision ?? 6)
+  // Base de la comisión: el arrendamiento sin IVA. La producción no comisiona
+  // —en la planilla de Administración una venta que es toda producción tiene
+  // la comisión en blanco— y el IVA tampoco.
+  const monto = Number(orden.monto_arrendamiento ?? orden.monto_neto ?? orden.monto_total)
+  const pct = Number(vendedor?.porcentaje_comision ?? PORCENTAJE_COMISION_VENDEDOR)
   const montoComision = Math.round(monto * pct) / 100
 
   const { data: pago } = await supabase

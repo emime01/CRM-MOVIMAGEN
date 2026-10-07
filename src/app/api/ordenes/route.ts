@@ -96,6 +96,10 @@ export async function POST(req: NextRequest) {
       monto_total: montoTotal,
       // Acá las líneas ya vienen sin IVA, así que el total es el neto.
       monto_neto: montoTotal,
+      // La carga manual no tiene producción con precio: las líneas son todo
+      // arrendamiento sin IVA.
+      monto_arrendamiento: montoTotal,
+      monto_produccion: 0,
       fecha_alta_prevista: body.fechaAltaPrevista || null,
       fecha_baja_prevista: body.fechaBajaPrevista || null,
       validez: body.validez || null,
