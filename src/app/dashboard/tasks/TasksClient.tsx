@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { puede, es, areasDeTarea } from '@/lib/auth/roles'
-import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react'
+import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical, DollarSign } from 'lucide-react'
 
 interface Task {
   id: string
   tipo: string
-  asignado_a_rol: 'arte' | 'operaciones'
+  asignado_a_rol: Area
   estado: Estado
   descripcion: string | null
   fecha_limite: string | null
@@ -19,6 +19,11 @@ interface Task {
 }
 
 type Estado = 'pendiente' | 'en_progreso' | 'completada'
+type Area = 'arte' | 'operaciones' | 'administracion'
+
+const AREA_LABEL: Record<Area | 'todas', string> = {
+  todas: 'Todas', arte: 'Arte', operaciones: 'Operaciones', administracion: 'Administración',
+}
 
 const COLUMNAS: { estado: Estado; titulo: string; color: string }[] = [
   { estado: 'pendiente',   titulo: 'Por hacer',   color: '#d97706' },
@@ -32,6 +37,7 @@ const TIPO_META: Record<string, { label: string; icon: React.ReactNode; color: s
   ops_asignar_buses:              { label: 'Asignar buses',     icon: <Truck size={12} />,    color: '#0891b2' },
   ops_producir_impresos:          { label: 'Producir impresos', icon: <Printer size={12} />,  color: '#d97706' },
   ops_crear_comprobante:          { label: 'Crear comprobante', icon: <Camera size={12} />,   color: '#16a34a' },
+  admin_verificar_pago:           { label: 'Verificar pago',    icon: <DollarSign size={12} />, color: '#b45309' },
 }
 
 /** Cuántas completadas se muestran antes de cortar: la columna crece para siempre. */
@@ -77,16 +83,18 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
   const [loading, setLoading] = useState(true)
   // Quien trabaja un área arranca en la suya; gerencia y el administrador del
   // sistema arrancan en todas, que es lo que `areasDeTarea` les devuelve.
-  const [rolFilter, setRolFilter] = useState<'arte' | 'operaciones' | 'todas'>(() => {
+  // Administración arranca en sus seguimientos de pago, que son los suyos.
+  const [rolFilter, setRolFilter] = useState<Area | 'todas'>(() => {
     const areas = areasDeTarea(userRol)
-    if (areas.length !== 1) return 'todas'
-    return areas[0] as 'arte' | 'operaciones'
+    if (areas.length === 1) return areas[0] as Area
+    if (userRol === 'administracion') return 'administracion'
+    return 'todas'
   })
   const [arrastrando, setArrastrando] = useState<string | null>(null)
   const [columnaActiva, setColumnaActiva] = useState<Estado | null>(null)
   const [moviendo, setMoviendo] = useState<string | null>(null)
 
-  const canSwitchRol = ['administracion', 'gerente_comercial'].includes(userRol)
+  const canSwitchRol = puede(userRol, ['administracion', 'gerente_comercial']) && areasDeTarea(userRol).length === 0
   // El rol mixto trabaja las tareas de operaciones, así que también puede moverlas.
   const canAct = puede(userRol, ['arte', 'operaciones', 'administracion'])
 
@@ -160,14 +168,14 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
         </div>
         {canSwitchRol && (
           <div style={{ display: 'flex', gap: 4, background: '#f4f3f0', borderRadius: 8, padding: 3 }}>
-            {(['todas', 'arte', 'operaciones'] as const).map(r => (
+            {(['todas', 'arte', 'operaciones', 'administracion'] as const).map(r => (
               <button key={r} onClick={() => setRolFilter(r)} style={{
                 padding: '6px 12px', border: 'none', borderRadius: 6, cursor: 'pointer',
                 fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif',
                 background: rolFilter === r ? '#fff' : 'transparent',
                 color: rolFilter === r ? '#1a1915' : '#6e6a62',
                 boxShadow: rolFilter === r ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}>{r === 'todas' ? 'Todas' : r === 'arte' ? 'Arte' : 'Operaciones'}</button>
+              }}>{AREA_LABEL[r]}</button>
             ))}
           </div>
         )}
@@ -179,7 +187,11 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
         <div style={{ textAlign: 'center', padding: 60, color: '#9a9895' }}>
           <ClipboardList size={36} style={{ display: 'block', margin: '0 auto 12px', opacity: 0.3 }} />
           <p style={{ fontSize: 14, fontWeight: 700, color: '#4a4845', margin: '0 0 6px' }}>No hay tareas para mostrar</p>
-          <p style={{ fontSize: 13, margin: 0 }}>Las tareas aparecen automáticamente al aprobar órdenes de venta.</p>
+          <p style={{ fontSize: 13, margin: 0 }}>
+            {rolFilter === 'administracion'
+              ? 'Aparecen al cargar una promesa de pago en Deudores.'
+              : 'Las tareas aparecen automáticamente al aprobar órdenes de venta.'}
+          </p>
         </div>
       ) : (
         /* Tablero: en pantallas chicas las columnas se deslizan de costado */

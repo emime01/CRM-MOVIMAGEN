@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { cerrarSeguimiento } from './cobranza'
 
 /**
  * Lo que se le liquida al vendedor sobre el arrendamiento sin IVA. Es el
@@ -56,6 +57,9 @@ export async function registrarCobroDeFactura(
   if (updErr) return { ok: false, error: updErr.message, comisionGenerada: false }
   // Si otro pedido la cobró entre la lectura y acá, no se duplica el pago.
   if (!cobradas?.length) return { ok: false, error: 'La factura ya se había cobrado', comisionGenerada: false }
+
+  // Si había una promesa de pago, su tarea de seguimiento ya no hace falta.
+  await cerrarSeguimiento(supabase, facturaId)
 
   const { data: pago } = await supabase
     .from('pagos')

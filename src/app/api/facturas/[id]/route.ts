@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { estaCerrada } from '@/lib/ventas/estados'
 import { registrarCobroDeFactura } from '@/lib/ventas/cobrar'
+import { registrarPromesa, cerrarSeguimiento } from '@/lib/ventas/cobranza'
 import {
   calcularVencimiento, primerDiaDelMes, CONDICION_PAGO_POR_DEFECTO,
   puedePlanificar, puedeAdministrarFacturas,
@@ -24,7 +25,7 @@ const importe = (v: unknown) => {
  *   { accion: 'emitir', numero, fecha_emision?, importe_*? }
  *   { accion: 'cobrar', fecha?, metodo? }
  *   { accion: 'anular', motivo? }
- *   { accion: 'promesa', fecha_pago_prometida }
+ *   { accion: 'promesa', fecha_pago_prometida | null, nota? }
  *
  * Una cuota prevista la ajusta quien planifica la venta. Una vez emitida es un
  * documento: sólo Administración la cobra, la anula o le corrige el
@@ -165,6 +166,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         .update({ estado: 'anulada', notas: motivo, updated_at: ahora })
         .eq('id', params.id)
       if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
+      await cerrarSeguimiento(supabase, params.id)
       return NextResponse.json({ ok: true })
     }
 
@@ -173,12 +175,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (factura.estado !== 'emitida') {
         return NextResponse.json({ error: 'La promesa de pago es para una factura emitida y no cobrada' }, { status: 409 })
       }
-      const fecha = body.fecha_pago_prometida
-      if (fecha !== null && !fechaValida(fecha)) return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 })
-      const { error: uErr } = await supabase.from('facturas')
-        .update({ fecha_pago_prometida: fecha, updated_at: ahora })
-        .eq('id', params.id)
-      if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
+      const prometida = body.fecha_pago_prometida
+      const fecha = prometida == null ? null : fechaValida(prometida) ? prometida : undefined
+      if (fecha === undefined) return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 })
+      // La promesa deja una gestión escrita y una tarea de Administración
+      // para ese día, que se cierra sola cuando entra el cobro.
+      const r = await registrarPromesa(supabase, params.id, fecha, {
+        userId: session.user.id,
+        nota: typeof body.nota === 'string' ? body.nota : null,
+      })
+      if (!r.ok) return NextResponse.json({ error: r.error }, { status: 409 })
       return NextResponse.json({ ok: true })
     }
 
