@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen } from 'lucide-react'
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
+import VentaCompartida from '@/components/dashboard/VentaCompartida'
 import FacturacionVenta from '@/components/dashboard/FacturacionVenta'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
@@ -98,6 +99,7 @@ interface Orden {
   clientes: JoinedNombre
   agencias: JoinedNombre
   perfiles: JoinedNombre
+  compartido?: { id: string; nombre: string } | { id: string; nombre: string }[] | null
   orden_items: OrdenItem[]
   orden_historial: HistorialItem[]
   orden_documentos: DocumentoItem[]
@@ -122,6 +124,7 @@ interface Props {
   userId: string
   driveConnected?: boolean
   emisor?: Emisor | null
+  vendedores?: { id: string; nombre: string }[]
 }
 
 const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -203,7 +206,7 @@ const fieldValue: React.CSSProperties = {
   fontWeight: 500,
 }
 
-export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false, emisor = null }: Props) {
+export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false, emisor = null, vendedores = [] }: Props) {
   const router = useRouter()
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [expandedHistorial, setExpandedHistorial] = useState(true)
@@ -473,6 +476,16 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               <div>
                 <div style={fieldLabel}>Vendedor</div>
                 <div style={fieldValue}>{joinedNombre(orden.perfiles)}</div>
+              </div>
+              <div>
+                <div style={fieldLabel}>Venta compartida</div>
+                <VentaCompartida
+                  ordenId={orden.id}
+                  vendedorId={vendedorDeLaOrden ?? null}
+                  compartido={(Array.isArray(orden.compartido) ? orden.compartido[0] : orden.compartido) ?? null}
+                  vendedores={vendedores}
+                  puedeEditar={vendedorDeLaOrden === userId || puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])}
+                />
               </div>
               <div>
                 <div style={fieldLabel}>Contacto</div>

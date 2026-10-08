@@ -3,8 +3,8 @@ import { cerrarSeguimiento } from './cobranza'
 
 /**
  * Lo que se le liquida al vendedor sobre el arrendamiento sin IVA. Es el
- * porcentaje de la planilla de comisiones de Administración; se usa cuando el
- * perfil del vendedor no tiene uno propio cargado.
+ * porcentaje de la planilla de comisiones de Administración, y es el mismo
+ * para todos los vendedores.
  */
 export const PORCENTAJE_COMISION_VENDEDOR = 6.75
 
@@ -33,7 +33,7 @@ export async function registrarCobroDeFactura(
 
   const { data: factura, error: fErr } = await supabase
     .from('facturas')
-    .select('id, orden_id, tipo, estado, numero, importe_total, importe_arrendamiento')
+    .select('id, orden_id, tipo, estado, numero, importe_total, importe_arrendamiento, moneda')
     .eq('id', facturaId)
     .maybeSingle()
   if (fErr) return { ok: false, error: fErr.message, comisionGenerada: false }
@@ -76,42 +76,84 @@ export async function registrarCobroDeFactura(
   // Las notas de crédito no generan comisión por sí solas.
   if (factura.tipo !== 'factura') return { ok: true, comisionGenerada: false }
 
+  const generada = await generarComisionDeFactura(supabase, {
+    facturaId,
+    ordenId: factura.orden_id,
+    arrendamiento: Number(factura.importe_arrendamiento ?? 0),
+    moneda: factura.moneda ?? 'UYU',
+    fechaCobro,
+    pagoId: pago?.id ?? null,
+  })
+  return { ok: true, comisionGenerada: generada }
+}
+
+/** Primer día del mes de una fecha "AAAA-MM-DD": el mes de liquidación. */
+export function mesDeLiquidacion(fecha: string): string {
+  return `${fecha.slice(0, 7)}-01`
+}
+
+/**
+ * Reparto de la comisión de una factura entre los vendedores de la venta.
+ * Una venta compartida va mitad y mitad; los centavos que sobran del redondeo
+ * van al vendedor titular, así las dos mitades suman exacto.
+ */
+export function repartirComision(
+  base: number,
+  vendedorId: string,
+  compartidoId: string | null,
+  pct: number = PORCENTAJE_COMISION_VENDEDOR,
+): { vendedor_id: string; monto_base: number; monto_comision: number; compartida_con: string | null }[] {
+  const total = Math.round(base * pct) / 100
+  if (!compartidoId || compartidoId === vendedorId) {
+    return [{ vendedor_id: vendedorId, monto_base: base, monto_comision: total, compartida_con: null }]
+  }
+  const mitadBase = Math.round(base * 50) / 100
+  const mitad = Math.floor(total * 50) / 100
+  return [
+    { vendedor_id: vendedorId,   monto_base: Math.round((base - mitadBase) * 100) / 100, monto_comision: Math.round((total - mitad) * 100) / 100, compartida_con: compartidoId },
+    { vendedor_id: compartidoId, monto_base: mitadBase,                                  monto_comision: mitad,                                  compartida_con: vendedorId },
+  ]
+}
+
+/**
+ * Genera la comisión del cobro de una factura: 6,75% del arrendamiento sin
+ * IVA, en el mes del cobro y en la moneda de la factura. Idempotente: si la
+ * factura ya tiene comisión, no hace nada.
+ */
+async function generarComisionDeFactura(
+  supabase: SupabaseClient,
+  f: { facturaId: string; ordenId: string; arrendamiento: number; moneda: string; fechaCobro: string; pagoId: string | null },
+): Promise<boolean> {
   // Con `maybeSingle()` dos filas devuelven error y `data` en null, así que
   // un chequeo anti-duplicados así se rompe justo cuando ya hay duplicado.
-  const { data: ya } = await supabase.from('comisiones').select('id').eq('factura_id', facturaId).limit(1)
-  if (ya?.length) return { ok: true, comisionGenerada: false }
+  const { data: ya } = await supabase.from('comisiones').select('id').eq('factura_id', f.facturaId).limit(1)
+  if (ya?.length) return false
 
   const { data: orden } = await supabase
     .from('ordenes_venta')
-    .select('vendedor_id')
-    .eq('id', factura.orden_id)
+    .select('vendedor_id, vendedor_compartido_id')
+    .eq('id', f.ordenId)
     .maybeSingle()
-  if (!orden?.vendedor_id) return { ok: true, comisionGenerada: false }
-
-  const { data: vendedor } = await supabase
-    .from('perfiles')
-    .select('porcentaje_comision')
-    .eq('id', orden.vendedor_id)
-    .maybeSingle()
+  if (!orden?.vendedor_id) return false
 
   // Base de la comisión: el arrendamiento sin IVA de esta factura. La
   // producción no comisiona —en la planilla, una venta que es toda producción
   // tiene la comisión en blanco— y el IVA tampoco.
-  const base = Number(factura.importe_arrendamiento ?? 0)
-  if (base <= 0) return { ok: true, comisionGenerada: false }
-  const pct = Number(vendedor?.porcentaje_comision ?? PORCENTAJE_COMISION_VENDEDOR)
-  const montoComision = Math.round(base * pct) / 100
+  if (f.arrendamiento <= 0) return false
 
-  const { error: comErr } = await supabase.from('comisiones').insert({
-    pago_id:        pago?.id ?? null,
-    vendedor_id:    orden.vendedor_id,
-    orden_id:       factura.orden_id,
-    factura_id:     facturaId,
-    monto_base:     base,
-    porcentaje:     pct,
-    monto_comision: montoComision,
-    estado:         'pendiente',
-  })
-
-  return { ok: true, comisionGenerada: !comErr }
+  // Es la misma tasa para todos: no se lee el porcentaje del perfil, que
+  // sólo serviría para que alguien quede liquidado distinto sin saberlo.
+  const filas = repartirComision(f.arrendamiento, orden.vendedor_id, orden.vendedor_compartido_id ?? null)
+  const { error } = await supabase.from('comisiones').insert(filas.map(r => ({
+    ...r,
+    tipo:            'venta',
+    pago_id:         f.pagoId,
+    orden_id:        f.ordenId,
+    factura_id:      f.facturaId,
+    porcentaje:      PORCENTAJE_COMISION_VENDEDOR,
+    moneda:          f.moneda,
+    mes_liquidacion: mesDeLiquidacion(f.fechaCobro),
+    estado:          'pendiente',
+  })))
+  return !error
 }
