@@ -10,10 +10,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!es(session.user.rol, 'administracion')) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const body = await req.json()
+  // Sólo lo que se edita desde la pantalla: antes se pasaba el body entero.
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (typeof body.nombre === 'string' && body.nombre.trim()) updates.nombre = body.nombre.trim()
+  for (const campo of ['porcentaje_canon', 'canon_minimo'] as const) {
+    if (body[campo] === undefined) continue
+    const n = Number(body[campo])
+    if (!Number.isFinite(n) || n < 0) return NextResponse.json({ error: 'Valor inválido' }, { status: 400 })
+    updates[campo] = n
+  }
+  if (typeof body.activo === 'boolean') updates.activo = body.activo
+
   const supabase = createServerClient()
   const { error } = await supabase
     .from('canon_shoppings')
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
