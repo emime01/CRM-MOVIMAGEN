@@ -104,6 +104,8 @@ export async function POST(req: NextRequest) {
       monto_arrendamiento: body.monto_arrendamiento ?? null,
       // Lo pactado en esta venta; si el vendedor todavía no lo cargó, se
       // precarga con lo recomendado de la agencia.
+      cuotas:              Number.isInteger(body.cuotas) && body.cuotas >= 1 && body.cuotas <= 60 ? body.cuotas : 1,
+      condicion_pago_dias: Number.isInteger(body.condicion_pago_dias) && body.condicion_pago_dias >= 0 && body.condicion_pago_dias <= 365 ? body.condicion_pago_dias : null,
       comision_agencia_pct:      lead.agencia_id ? (body.comision_agencia_pct ?? agenciaDelLead?.porcentaje_comision ?? null) : null,
       comision_agencia_prod_pct: lead.agencia_id ? (body.comision_agencia_prod_pct ?? agenciaDelLead?.porcentaje_comision_produccion ?? null) : null,
       monto_produccion:    body.monto_produccion ?? null,

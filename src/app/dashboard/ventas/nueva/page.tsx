@@ -39,7 +39,7 @@ export default async function NuevaOrdenPage({ searchParams }: { searchParams: {
 
     supabase
       .from('agencias')
-      .select('id, nombre, porcentaje_comision, porcentaje_comision_produccion')
+      .select('id, nombre, porcentaje_comision, porcentaje_comision_produccion, condicion_pago_dias')
       .order('nombre'),
 
     supabase

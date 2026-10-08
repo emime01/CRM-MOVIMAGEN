@@ -28,6 +28,7 @@ interface Agencia {
   ejecutivo_cuenta: string | null
   porcentaje_comision: number | null
   porcentaje_comision_produccion?: number | null
+  condicion_pago_dias?: number | null
   activo: boolean
 }
 
@@ -664,6 +665,11 @@ function AgenciaModalForm({ data, onClose, onSave, saving, error }: {
         <div>
           <label style={labelStyle}>% Comisión recomendada · prod.</label>
           <input style={inputStyle} type="number" min={0} max={100} step={0.5} value={form.porcentaje_comision_produccion ?? 0} onChange={e => set('porcentaje_comision_produccion', parseFloat(e.target.value))} />
+        </div>
+        <div>
+          <label style={labelStyle}>Vencimiento recomendado (días)</label>
+          <input style={inputStyle} type="number" min={0} max={365} step={1} value={form.condicion_pago_dias ?? ''} placeholder="60"
+            onChange={e => set('condicion_pago_dias', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
         </div>
       </div>
       {error && <div style={{ color: '#c82f2f', fontSize: 12, marginBottom: 12 }}>{error}</div>}

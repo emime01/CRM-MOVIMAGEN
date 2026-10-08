@@ -2,123 +2,158 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
-import ComisionEstadoToggle from '@/components/dashboard/ComisionEstadoToggle'
-import { es } from '@/lib/auth/roles'
+import { es, puede } from '@/lib/auth/roles'
+import { cuatrimestreDe, cuatrimestresCercanos, rangoCuatrimestre, vendidoEnCuatrimestre } from '@/lib/comisiones/bonos'
+import ComisionesClient, { type ComisionRow, type AgenciaRow, type BonoRow } from './ComisionesClient'
+import { mesUY } from '@/lib/fechas'
 
 export const dynamic = 'force-dynamic'
 
-const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigits: 0 })
-const fmtPct = (n: number) => n.toLocaleString('es-UY', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'
+const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : v ?? null)
 
-export default async function ComisionesPage() {
+
+function finDeMes(mes: string): string {
+  const [y, m] = mes.split('-').map(Number)
+  const ultimo = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return `${mes}-${String(ultimo).padStart(2, '0')}`
+}
+
+/**
+ * Comisiones: la planilla "COMISIONES vtas" del mes.
+ *
+ * La comisión se genera al cobrar cada factura y cae en el mes del cobro:
+ * 6,75% del arrendamiento sin IVA, mitad y mitad si la venta es compartida.
+ * Acá se ve el mes, se liquida y se marca pagada; se ve cuánto le corresponde
+ * a cada agencia; y se manejan los bonos por objetivo.
+ */
+export default async function ComisionesPage({ searchParams }: { searchParams: { mes?: string; q?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!es(session.user.rol, 'administracion')) redirect('/dashboard')
+  if (!puede(session.user.rol, ['administracion', 'gerente_comercial'])) redirect('/dashboard')
   const supabase = createServerClient()
 
-  const [{ data: comisiones }, { data: vendedores }] = await Promise.all([
-    supabase.from('comisiones')
-      .select('id, vendedor_id, orden_id, monto_comision, porcentaje, estado, created_at, ordenes_venta(numero, monto_total, clientes(nombre, empresa))')
-      .order('created_at', { ascending: false }),
-    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
+  const mes = searchParams.mes && /^\d{4}-\d{2}$/.test(searchParams.mes) ? searchParams.mes : mesUY()
+  const cuatri = searchParams.q && rangoCuatrimestre(searchParams.q) ? searchParams.q : cuatrimestreDe()
+
+  const [comRes, cobradasRes, perfilesRes, objetivosRes, bonosRes, bonosLiqRes, vendido] = await Promise.all([
+    supabase
+      .from('comisiones')
+      .select(`
+        id, tipo, vendedor_id, compartida_con, orden_id, factura_id, cuatrimestre,
+        monto_base, porcentaje, monto_comision, moneda, estado,
+        facturas(numero, cuota, cuotas_total, mes_pauta, fecha_cobro, importe_total, importe_arrendamiento, importe_produccion),
+        ordenes_venta(numero, marca, clientes(nombre, empresa), agencias(nombre))
+      `)
+      .eq('mes_liquidacion', `${mes}-01`)
+      .order('created_at', { ascending: true }),
+    // Lo de las agencias sale de las facturas cobradas en el mes.
+    supabase
+      .from('facturas')
+      .select(`
+        id, numero, importe_arrendamiento, importe_produccion, moneda, fecha_cobro,
+        ordenes_venta(numero, comision_agencia_pct, comision_agencia_prod_pct, clientes(nombre, empresa), agencias(id, nombre))
+      `)
+      .eq('tipo', 'factura')
+      .eq('estado', 'cobrada')
+      .gte('fecha_cobro', `${mes}-01`)
+      .lte('fecha_cobro', finDeMes(mes)),
+    supabase.from('perfiles').select('id, nombre, rol, activo'),
+    supabase.from('objetivos').select('vendedor_id, objetivo_monto').eq('cuatrimestre', cuatri),
+    supabase.from('bonos_objetivo').select('vendedor_id, monto, moneda').eq('cuatrimestre', cuatri),
+    supabase.from('comisiones').select('vendedor_id, estado, monto_comision').eq('tipo', 'bono').eq('cuatrimestre', cuatri).neq('estado', 'cancelada'),
+    vendidoEnCuatrimestre(supabase, cuatri),
   ])
+  if (comRes.error) console.error('Comisiones: no se pudieron leer:', comRes.error.message)
+  if (cobradasRes.error) console.error('Comisiones: no se pudieron leer las facturas cobradas:', cobradasRes.error.message)
 
-  // Group by vendor
-  const vendMap: Record<string, { nombre: string; pendiente: number; pagada: number; count: number }> = {}
-  vendedores?.forEach(v => { vendMap[v.id] = { nombre: v.nombre, pendiente: 0, pagada: 0, count: 0 } })
+  const nombres = new Map((perfilesRes.data ?? []).map(p => [p.id as string, p.nombre as string]))
 
-  comisiones?.forEach(c => {
-    if (!vendMap[c.vendedor_id]) return
-    vendMap[c.vendedor_id].count++
-    if (c.estado === 'pagada') vendMap[c.vendedor_id].pagada += Number(c.monto_comision ?? 0)
-    else vendMap[c.vendedor_id].pendiente += Number(c.monto_comision ?? 0)
+  const comisiones: ComisionRow[] = (comRes.data ?? []).map(c => {
+    const f = first<any>(c.facturas)
+    const o = first<any>(c.ordenes_venta)
+    const cli = first<any>(o?.clientes)
+    const ag = first<any>(o?.agencias)
+    return {
+      id: c.id,
+      tipo: c.tipo,
+      vendedor_id: c.vendedor_id,
+      vendedor: nombres.get(c.vendedor_id) ?? '—',
+      compartida_con: c.compartida_con ? (nombres.get(c.compartida_con) ?? '—') : null,
+      orden_id: c.orden_id,
+      orden_numero: o?.numero ?? null,
+      agencia: ag?.nombre ?? null,
+      cliente: cli?.empresa ?? cli?.nombre ?? null,
+      marca: o?.marca ?? null,
+      cuatrimestre: c.cuatrimestre,
+      mes_pauta: f?.mes_pauta ?? null,
+      cuota: f?.cuota ?? null,
+      cuotas_total: f?.cuotas_total ?? null,
+      fecha_cobro: f?.fecha_cobro ?? null,
+      numero: f?.numero ?? null,
+      importe: f ? Number(f.importe_total ?? 0) : null,
+      arrendamiento: f ? Number(f.importe_arrendamiento ?? 0) : null,
+      produccion: f ? Number(f.importe_produccion ?? 0) : null,
+      base: Number(c.monto_base ?? 0),
+      porcentaje: Number(c.porcentaje ?? 0),
+      comision: Number(c.monto_comision ?? 0),
+      moneda: c.moneda ?? 'UYU',
+      estado: c.estado ?? 'pendiente',
+    }
   })
 
-  const vendStats = Object.entries(vendMap).map(([id, v]) => ({ id, ...v })).filter(v => v.count > 0)
-  const totalPendiente = vendStats.reduce((s, v) => s + v.pendiente, 0)
-  const totalPagada = vendStats.reduce((s, v) => s + v.pagada, 0)
+  // Por agencia: lo que le toca a cada una según lo pactado en cada venta.
+  const agencias: AgenciaRow[] = []
+  for (const f of cobradasRes.data ?? []) {
+    const o = first<any>(f.ordenes_venta)
+    const ag = first<any>(o?.agencias)
+    if (!ag) continue
+    const cli = first<any>(o?.clientes)
+    const arr = Number(f.importe_arrendamiento ?? 0)
+    const prod = Number(f.importe_produccion ?? 0)
+    const pctArr = Number(o?.comision_agencia_pct ?? 0)
+    const pctProd = Number(o?.comision_agencia_prod_pct ?? 0)
+    agencias.push({
+      factura_id: f.id,
+      agencia_id: ag.id,
+      agencia: ag.nombre,
+      cliente: cli?.empresa ?? cli?.nombre ?? '—',
+      orden_numero: o?.numero ?? null,
+      numero: f.numero,
+      fecha_cobro: f.fecha_cobro,
+      moneda: f.moneda ?? 'UYU',
+      arrendamiento: arr,
+      produccion: prod,
+      pct_arrendamiento: pctArr,
+      pct_produccion: pctProd,
+      comision: Math.round((arr * pctArr + prod * pctProd)) / 100,
+    })
+  }
+
+  // Bonos: todo vendedor con objetivo o con bono en el cuatrimestre.
+  const objetivos = new Map((objetivosRes.data ?? []).map(o => [o.vendedor_id as string, Number(o.objetivo_monto ?? 0)]))
+  const bonos = new Map((bonosRes.data ?? []).map(b => [b.vendedor_id as string, { monto: Number(b.monto), moneda: b.moneda ?? 'UYU' }]))
+  const liquidados = new Map((bonosLiqRes.data ?? []).map(b => [b.vendedor_id as string, b.estado as string]))
+  const vendedoresActivos = (perfilesRes.data ?? []).filter(p => p.activo !== false && ['vendedor', 'asistente_ventas'].includes(p.rol))
+  const ids = new Set<string>([...vendedoresActivos.map(p => p.id as string), ...Array.from(objetivos.keys()), ...Array.from(bonos.keys())])
+  const bonosRows: BonoRow[] = Array.from(ids).map(id => ({
+    vendedor_id: id,
+    vendedor: nombres.get(id) ?? '—',
+    objetivo: objetivos.get(id) ?? 0,
+    vendido: Math.round((vendido.get(id) ?? 0) * 100) / 100,
+    bono: bonos.get(id)?.monto ?? null,
+    moneda: bonos.get(id)?.moneda ?? 'UYU',
+    liquidado: liquidados.get(id) ?? null,
+  })).sort((a, b) => a.vendedor.localeCompare(b.vendedor))
 
   return (
-    <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
-      {/* Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        {[
-          { label: 'Comisiones pendientes', value: fmt(totalPendiente), color: '#d97706' },
-          { label: 'Comisiones pagadas', value: fmt(totalPagada), color: '#15803d' },
-          { label: 'Total registros', value: String(comisiones?.length ?? 0), color: 'var(--text-primary)' },
-        ].map(s => (
-          <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 20 }}>
-        {/* By vendor */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Por vendedor</div>
-          {vendStats.length === 0 ? (
-            <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>Sin registros.</p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-                  {['Vendedor', 'Pendiente', 'Pagada'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: h === 'Vendedor' ? 'left' : 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {vendStats.map(v => (
-                  <tr key={v.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>{v.nombre}</td>
-                    <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: v.pendiente > 0 ? '#d97706' : 'var(--text-muted)' }}>{fmt(v.pendiente)}</td>
-                    <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: v.pagada > 0 ? '#15803d' : 'var(--text-muted)' }}>{fmt(v.pagada)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Detail */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Detalle de comisiones</div>
-          {(comisiones?.length ?? 0) === 0 ? (
-            <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>Sin registros.</p>
-          ) : (
-            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead style={{ position: 'sticky', top: 0 }}>
-                  <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-                    {['Orden', 'Vendedor', '%', 'Monto', 'Estado'].map(h => (
-                      <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {comisiones?.map(c => {
-                    const ord = Array.isArray(c.ordenes_venta) ? c.ordenes_venta[0] : c.ordenes_venta
-                    const vend = vendedores?.find(v => v.id === c.vendedor_id)
-                    return (
-                      <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>{(ord as any)?.numero ?? '—'}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{vend?.nombre ?? '—'}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{fmtPct(Number(c.porcentaje ?? 0))}</td>
-                        <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(Number(c.monto_comision ?? 0))}</td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <ComisionEstadoToggle id={c.id} estado={c.estado ?? 'pendiente'} />
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    <ComisionesClient
+      mes={mes}
+      cuatrimestre={cuatri}
+      cuatrimestres={cuatrimestresCercanos()}
+      comisiones={comisiones}
+      agencias={agencias}
+      bonos={bonosRows}
+      administra={es(session.user.rol, 'administracion')}
+    />
   )
 }

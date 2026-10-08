@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { puede } from '@/lib/auth/roles'
 import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
@@ -20,19 +21,29 @@ export default async function ReportesPage() {
   if (!session?.user) redirect('/login')
   const supabase = createServerClient()
   const q = getCurrentQuarter()
-  const isGerente = ['gerente_comercial', 'administracion'].includes(session.user.rol)
+  const isGerente = puede(session.user.rol, ['gerente_comercial', 'administracion'])
 
   let ordQuery = supabase.from('ordenes_venta').select('monto_total, moneda, estado, created_at, fecha_facturacion, clientes(nombre, empresa)')
     .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
   if (!isGerente) ordQuery = ordQuery.eq('vendedor_id', session.user.id)
 
+  // Lo facturado por mes sale de las facturas (cuotas y notas de crédito),
+  // por su fecha de emisión: con la fecha de la venta, una venta en doce
+  // cuotas cargaba el total entero en el mes de la primera.
+  let factQuery = supabase.from('facturas').select('importe_total, moneda, fecha_emision, ordenes_venta!inner(vendedor_id)')
+    .in('estado', ['emitida', 'cobrada'])
+    .gte('fecha_emision', q.start)
+    .lte('fecha_emision', q.end)
+  if (!isGerente) factQuery = factQuery.eq('ordenes_venta.vendedor_id', session.user.id)
+
   let leadsQuery = supabase.from('leads').select('estado, monto_potencial')
   if (!isGerente) leadsQuery = leadsQuery.eq('vendedor_id', session.user.id)
 
-  const [{ data: ordenes }, { data: leads }, { data: objetivo }] = await Promise.all([
+  const [{ data: ordenes }, { data: leads }, { data: objetivo }, { data: facturas }] = await Promise.all([
     ordQuery,
     leadsQuery,
     supabase.from('objetivos').select('objetivo_monto').eq('vendedor_id', session.user.id).eq('cuatrimestre', q.label).maybeSingle(),
+    factQuery,
   ])
 
   // Monthly revenue — dynamic based on current quarter
@@ -44,7 +55,9 @@ export default async function ReportesPage() {
     key: `${qYear}-${String(m).padStart(2, '0')}`,
   }))
   const monthlyRev = months.map(m => {
-    const delMes = ordenes?.filter(o => o.fecha_facturacion?.startsWith(m.key)) ?? []
+    const delMes = (facturas ?? [])
+      .filter(f => f.fecha_emision?.startsWith(m.key))
+      .map(f => ({ monto_total: f.importe_total, moneda: f.moneda }))
     return { ...m, porMoneda: sumarPorMoneda(delMes), total: montoEnPesos(sumarPorMoneda(delMes)) }
   })
   const maxMonthly = Math.max(...monthlyRev.map(m => m.total), 1)

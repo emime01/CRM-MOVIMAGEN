@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .select(`
       id, numero, nombre, marca, observaciones, estado, moneda,
       monto_neto, monto_total, monto_impactos,
-      comision_agencia_pct, comision_agencia_prod_pct,
+      comision_agencia_pct, comision_agencia_prod_pct, cuotas, condicion_pago_dias,
       fecha_inicio, fecha_fin, notas,
       lead_id, cliente_id, agencia_id, vendedor_id, created_at, updated_at,
       clientes(id, nombre, empresa),
@@ -86,6 +86,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.moneda !== undefined)         updates.moneda = body.moneda || 'UYU'
   if (body.monto_neto !== undefined)     updates.monto_neto = body.monto_neto
   if (body.monto_arrendamiento !== undefined) updates.monto_arrendamiento = body.monto_arrendamiento
+  if (body.cuotas !== undefined) {
+    const n = Number(body.cuotas)
+    if (!Number.isInteger(n) || n < 1 || n > 60) return NextResponse.json({ error: 'Las cuotas tienen que estar entre 1 y 60' }, { status: 400 })
+    updates.cuotas = n
+  }
+  if (body.condicion_pago_dias !== undefined) {
+    const d = body.condicion_pago_dias === null ? null : Number(body.condicion_pago_dias)
+    if (d !== null && (!Number.isInteger(d) || d < 0 || d > 365)) return NextResponse.json({ error: 'La condición de pago tiene que estar entre 0 y 365 días' }, { status: 400 })
+    updates.condicion_pago_dias = d
+  }
   for (const campo of ['comision_agencia_pct', 'comision_agencia_prod_pct'] as const) {
     if (body[campo] === undefined) continue
     const v = body[campo] === null || body[campo] === '' ? null : Number(body[campo])

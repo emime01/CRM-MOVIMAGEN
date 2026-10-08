@@ -17,6 +17,7 @@ const EDITABLE_FIELDS = [
   // vale. Por eso se puede editar acá (con los roles de este endpoint).
   'porcentaje_comision',
   'porcentaje_comision_produccion',
+  'condicion_pago_dias',
 ] as const
 
 const ADMIN_ROLES = ['asistente_ventas', 'gerente_comercial', 'administracion']

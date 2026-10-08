@@ -65,6 +65,8 @@ interface PropuestaHeader {
   leads: { id: string; descripcion: string | null } | null
   comision_agencia_pct?: number | null
   comision_agencia_prod_pct?: number | null
+  cuotas?: number | null
+  condicion_pago_dias?: number | null
 }
 
 interface SavedItem {
@@ -189,6 +191,8 @@ export default function CotizadorClient({
     /** Lo recomendado de la agencia; precarga la comisión pactada. */
     agenciaComisionPct?: number | null
     agenciaComisionProdPct?: number | null
+    /** Condición de pago recomendada de la agencia, en días. */
+    agenciaCondicionPagoDias?: number | null
   } | null
 }) {
   const router = useRouter()
@@ -205,6 +209,10 @@ export default function CotizadorClient({
   // se negocia venta por venta. Obligatoria cuando hay agencia.
   const [comAgPct, setComAgPct] = useState('')
   const [comAgProdPct, setComAgProdPct] = useState('')
+  // Plan de facturación que pacta el vendedor: en cuántas cuotas mensuales se
+  // factura y a cuántos días vence cada factura.
+  const [cuotas, setCuotas] = useState('1')
+  const [condicionPago, setCondicionPago] = useState('60')
   const [clienteId, setClienteId] = useState('')
   const [leadId, setLeadId] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
@@ -257,6 +265,8 @@ export default function CotizadorClient({
         const pctAgProd = p.comision_agencia_prod_pct ?? p.agencias?.porcentaje_comision_produccion ?? null
         setComAgPct(pctAg != null ? String(pctAg) : '')
         setComAgProdPct(pctAgProd != null ? String(pctAgProd) : '')
+        setCuotas(String(p.cuotas ?? 1))
+        setCondicionPago(String(p.condicion_pago_dias ?? 60))
         setClienteId(p.cliente_id ?? '')
         setLeadId(p.lead_id ?? '')
         setFechaInicio(p.fecha_inicio ?? '')
@@ -314,6 +324,7 @@ export default function CotizadorClient({
           if (lead.agenciaNombre) {
             setComAgPct(lead.agenciaComisionPct != null ? String(lead.agenciaComisionPct) : '')
             setComAgProdPct(lead.agenciaComisionProdPct != null ? String(lead.agenciaComisionProdPct) : '')
+            if (lead.agenciaCondicionPagoDias != null) setCondicionPago(String(lead.agenciaCondicionPagoDias))
           }
         }
       }
@@ -489,6 +500,8 @@ export default function CotizadorClient({
       monto_produccion:    totals.prod,
       comision_agencia_pct:      comAgPct === '' ? null : Number(comAgPct),
       comision_agencia_prod_pct: comAgProdPct === '' ? null : Number(comAgProdPct),
+      cuotas:              Math.min(60, Math.max(1, Math.floor(Number(cuotas) || 1))),
+      condicion_pago_dias: condicionPago === '' ? null : Math.min(365, Math.max(0, Math.floor(Number(condicionPago)))),
       monto_total:    totals.tot,
       monto_impactos: totals.imp,
       items,
@@ -817,6 +830,16 @@ export default function CotizadorClient({
         <div style={{ flex: 1, minWidth: 110 }}>
           <label style={lblSt}>Fin</label>
           <input type="date" value={fechaFin} onChange={e => setFechaFin(e.target.value)} style={inputSt} />
+        </div>
+        <div style={{ minWidth: 70, maxWidth: 90 }}>
+          <label htmlFor="cuotas" style={lblSt}>Cuotas</label>
+          <input id="cuotas" type="number" min={1} max={60} step={1} value={cuotas}
+            onChange={e => setCuotas(e.target.value)} style={inputSt} title="En cuántas cuotas mensuales se factura" />
+        </div>
+        <div style={{ minWidth: 90, maxWidth: 110 }}>
+          <label htmlFor="cond-pago" style={lblSt}>Vence a (días)</label>
+          <input id="cond-pago" type="number" min={0} max={365} step={1} value={condicionPago}
+            onChange={e => setCondicionPago(e.target.value)} style={inputSt} title="Días desde la factura hasta el vencimiento" />
         </div>
         <div style={{ minWidth: 70 }}>
           <label style={lblSt}>Moneda</label>

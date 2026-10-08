@@ -31,6 +31,7 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
       clientes(id, nombre, empresa, rut, email, telefono),
       agencias(id, nombre, rut, email, telefono),
       perfiles!vendedor_id(id, nombre),
+      compartido:perfiles!vendedor_compartido_id(id, nombre),
       orden_items(
         id, cantidad, semanas, salidas, segundos,
         precio_unitario, descuento_pct, nota,
@@ -81,6 +82,14 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
     .eq('id', 1)
     .maybeSingle()
 
+  // Para elegir con quién se comparte la venta.
+  const { data: vendedores } = await supabase
+    .from('perfiles')
+    .select('id, nombre')
+    .in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial'])
+    .eq('activo', true)
+    .order('nombre')
+
   return (
     <OrdenDetalleClient
       orden={{ ...orden, orden_historial: historial } as any}
@@ -89,6 +98,7 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
       userId={session.user.id}
       driveConnected={!!tokenRow}
       emisor={empresa ?? null}
+      vendedores={vendedores ?? []}
     />
   )
 }

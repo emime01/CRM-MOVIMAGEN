@@ -14,7 +14,9 @@ export async function GET(_req: NextRequest) {
   const supabase = createServerClient()
   const { data, error } = await supabase
     .from('canon_shoppings')
-    .select('id, nombre, porcentaje_canon, activo')
+    .select('id, nombre, porcentaje_canon, canon_minimo, activo')
+    // Los desactivados (borrados con historia de canon) no se configuran más.
+    .eq('activo', true)
     .order('nombre')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
   const supabase = createServerClient()
   const { data, error } = await supabase
     .from('canon_shoppings')
-    .insert({ nombre: body.nombre, porcentaje_canon: body.porcentaje_canon ?? 0 })
+    .insert({ nombre: body.nombre, porcentaje_canon: Number(body.porcentaje_canon) || 0, canon_minimo: Number(body.canon_minimo) || 0 })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { armarPlanDeFacturas, CONDICION_PAGO_POR_DEFECTO } from '@/lib/ventas/facturas'
 
 interface OrdenItem {
   soporteId: string
@@ -23,6 +24,10 @@ interface OrdenPayload {
   agenciaId?: string
   comisionAgenciaPct?: number
   comisionAgenciaProdPct?: number
+  /** En cuántas cuotas mensuales se factura. */
+  cuotas?: number
+  /** Días desde la factura hasta el vencimiento. */
+  condicionPagoDias?: number
   facturarA?: 'agencia' | 'cliente_final'
   marca?: string
   campana?: string
@@ -100,6 +105,9 @@ export async function POST(req: NextRequest) {
       agencia_id: body.agenciaId || null,
       comision_agencia_pct:      body.agenciaId ? body.comisionAgenciaPct : null,
       comision_agencia_prod_pct: body.agenciaId ? body.comisionAgenciaProdPct : null,
+      condicion_pago_dias: Number.isInteger(body.condicionPagoDias) && body.condicionPagoDias! >= 0 && body.condicionPagoDias! <= 365
+        ? body.condicionPagoDias
+        : CONDICION_PAGO_POR_DEFECTO,
       vendedor_id: vendedorId,
       contacto: body.contacto || null,
       facturar_a: body.facturarA || 'cliente_final',
@@ -164,6 +172,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Error al guardar los ítems de la orden' }, { status: 500 })
     }
   }
+
+  // El plan de facturación: una cuota por mes desde el alta.
+  const plan = await armarPlanDeFacturas(supabase, orden.id, Number(body.cuotas) || 1)
+  if (!plan.ok) console.error('No se pudo armar el plan de facturas:', plan.error)
 
   await supabase.from('orden_historial').insert({
     orden_id: orden.id,

@@ -10,7 +10,7 @@ import { puede } from '@/lib/auth/roles'
 const CREATE_FIELDS = [
   'nombre', 'telefono', 'email', 'rut', 'direccion',
   'ejecutivo_cuenta', 'observaciones', 'notas', 'activo',
-  'porcentaje_comision', 'porcentaje_comision_produccion',
+  'porcentaje_comision', 'porcentaje_comision_produccion', 'condicion_pago_dias',
 ] as const
 
 const CREATE_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const all = searchParams.get('all') === 'true'
   const supabase = createServerClient()
-  let query = supabase.from('agencias').select('id, nombre, email, telefono, rut, ejecutivo_cuenta, porcentaje_comision, porcentaje_comision_produccion, incluye_produccion, notas, activo').order('nombre')
+  let query = supabase.from('agencias').select('id, nombre, email, telefono, rut, ejecutivo_cuenta, porcentaje_comision, porcentaje_comision_produccion, condicion_pago_dias, incluye_produccion, notas, activo').order('nombre')
   if (!all) query = query.eq('activo', true) as typeof query
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

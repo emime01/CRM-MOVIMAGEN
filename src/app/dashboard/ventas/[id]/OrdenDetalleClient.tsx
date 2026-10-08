@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen, Receipt, DollarSign, Printer } from 'lucide-react'
+import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen } from 'lucide-react'
 import ComentariosOrden from '@/components/dashboard/ComentariosOrden'
+import VentaCompartida from '@/components/dashboard/VentaCompartida'
+import FacturacionVenta from '@/components/dashboard/FacturacionVenta'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
 import { puede, es } from '@/lib/auth/roles'
@@ -97,6 +99,7 @@ interface Orden {
   clientes: JoinedNombre
   agencias: JoinedNombre
   perfiles: JoinedNombre
+  compartido?: { id: string; nombre: string } | { id: string; nombre: string }[] | null
   orden_items: OrdenItem[]
   orden_historial: HistorialItem[]
   orden_documentos: DocumentoItem[]
@@ -121,6 +124,7 @@ interface Props {
   userId: string
   driveConnected?: boolean
   emisor?: Emisor | null
+  vendedores?: { id: string; nombre: string }[]
 }
 
 const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -202,7 +206,7 @@ const fieldValue: React.CSSProperties = {
   fontWeight: 500,
 }
 
-export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false, emisor = null }: Props) {
+export default function OrdenDetalleClient({ orden, leads, userRol, userId, driveConnected = false, emisor = null, vendedores = [] }: Props) {
   const router = useRouter()
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [expandedHistorial, setExpandedHistorial] = useState(true)
@@ -212,12 +216,6 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const [showReject, setShowReject] = useState(false)
   const [motivoRechazo, setMotivoRechazo] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
-  const [showFacturar, setShowFacturar] = useState(false)
-  const [facturaNumero, setFacturaNumero] = useState('')
-  const [fechaFacturacion, setFechaFacturacion] = useState(() => new Date().toISOString().slice(0, 10))
-  const [showCobrar, setShowCobrar] = useState(false)
-  const [fechaCobro, setFechaCobro] = useState(() => new Date().toISOString().slice(0, 10))
-  const [metodoPago, setMetodoPago] = useState('')
 
   // La aprobación de OIC es exclusiva del gerente comercial
   const canApprove = es(userRol, 'gerente_comercial') && orden.estado === 'pendiente_aprobacion'
@@ -227,14 +225,9 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     vendedorDeLaOrden === userId ||
     puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
   )
-  // Facturación y cobro son exclusivas de administracion
-  // Facturación y cobro corren en paralelo a la producción: dependen de sus
-  // propias fechas, no del estado de la venta.
+  // Facturación y cobro van por cuota (FacturacionVenta) y corren en
+  // paralelo a la producción. Se factura sólo una venta aprobada.
   const estaAprobada = estaCerrada(orden.estado)
-  const estaFacturada = !!orden.fecha_facturacion
-  const estaCobrada = !!orden.fecha_cobro
-  const canFacturar = es(userRol, 'administracion') && estaAprobada && !estaFacturada
-  const canCobrar = es(userRol, 'administracion') && estaFacturada && !estaCobrada
 
   const badge = ESTADO_BADGE[orden.estado] ?? { bg: '#f1f1ef', color: '#6e6a62', label: orden.estado }
   const numero = orden.numero ? `#${String(orden.numero).padStart(5, '0')}` : `#${orden.id.slice(0, 6)}`
@@ -281,7 +274,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     await handleChangeEstado('pendiente_aprobacion', 'Enviada para aprobación')
   }
 
-  function generarFactura(overrides?: { factura_numero?: string; fecha_facturacion?: string }) {
+  function generarFactura(overrides?: { factura_numero?: string | null; fecha_facturacion?: string | null; monto_total?: number; monto_neto?: number; items?: FacturaData['items'] }) {
     const facturarA = orden.facturar_a === 'agencia' ? joinedEntidad(orden.agencias) : joinedEntidad(orden.clientes)
     const cli = joinedEntidad(orden.clientes)
     const receptor = facturarA ?? cli
@@ -290,8 +283,8 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
       factura_numero: overrides?.factura_numero ?? orden.factura_numero,
       fecha_facturacion: overrides?.fecha_facturacion ?? orden.fecha_facturacion,
       moneda: orden.moneda ?? 'UYU',
-      monto_total: orden.monto_total,
-      monto_neto: orden.monto_neto,
+      monto_total: overrides?.monto_total ?? orden.monto_total,
+      monto_neto: overrides?.monto_neto ?? orden.monto_neto,
       marca: orden.marca,
       campana: orden.campana,
       referencia: orden.referencia,
@@ -305,7 +298,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
         email: receptor?.email ?? null,
         telefono: receptor?.telefono ?? null,
       },
-      items: (orden.orden_items ?? []).map(it => {
+      items: overrides?.items ?? (orden.orden_items ?? []).map(it => {
         const info = soporteInfo(it.soportes)
         return {
           cantidad: it.cantidad,
@@ -324,57 +317,6 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     win.document.close()
     win.focus()
     setTimeout(() => win.print(), 300)
-  }
-
-  async function handleFacturar() {
-    if (actionLoading) return
-    setActionLoading(true)
-    try {
-      // Facturar no cambia el estado de la venta: la producción sigue su curso.
-      const res = await fetch(`/api/ordenes/${orden.id}/facturar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha: fechaFacturacion, numero: facturaNumero.trim() || undefined }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        alert(err?.error ?? 'No se pudo registrar la factura')
-        return
-      }
-      router.refresh()
-      setShowFacturar(false)
-      // Abrir la factura recién emitida (usa los valores recién ingresados,
-      // ya que orden.* todavía no refleja el refresh).
-      generarFactura({ factura_numero: facturaNumero.trim() || undefined, fecha_facturacion: fechaFacturacion })
-      setFacturaNumero('')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  async function handleCobrar() {
-    // Sin este candado, un doble clic mandaba dos cobros y se generaban dos
-    // comisiones por la misma venta.
-    if (actionLoading) return
-    setActionLoading(true)
-    try {
-      // El cobro tampoco toca el estado; genera el pago y la comisión.
-      const res = await fetch(`/api/ordenes/${orden.id}/cobrar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha: fechaCobro, metodo: metodoPago.trim() || undefined }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        alert(err?.error ?? 'No se pudo registrar el cobro')
-        return
-      }
-      router.refresh()
-      setShowCobrar(false)
-      setMetodoPago('')
-    } finally {
-      setActionLoading(false)
-    }
   }
 
   async function handleUploadDoc() {
@@ -482,102 +424,8 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               </button>
             </>
           )}
-          {canFacturar && (
-            <button
-              onClick={() => setShowFacturar(true)}
-              disabled={actionLoading}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-            >
-              <Receipt size={15} /> Marcar facturada
-            </button>
-          )}
-          {canCobrar && (
-            <button
-              onClick={() => setShowCobrar(true)}
-              disabled={actionLoading}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#15803d', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-            >
-              <DollarSign size={15} /> Registrar cobro
-            </button>
-          )}
-          {estaFacturada && (
-            <button
-              onClick={() => generarFactura()}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-            >
-              <Printer size={15} /> Descargar factura
-            </button>
-          )}
         </div>
       </div>
-
-      {/* Facturar modal */}
-      {showFacturar && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setShowFacturar(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>Marcar OIC como facturada</h3>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>Quedará pendiente de cobro hasta que registres el pago.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                N° de factura
-                <input
-                  value={facturaNumero}
-                  onChange={e => setFacturaNumero(e.target.value)}
-                  placeholder="Ej. A-12345"
-                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
-                />
-              </label>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Fecha de facturación
-                <input
-                  type="date"
-                  value={fechaFacturacion}
-                  onChange={e => setFechaFacturacion(e.target.value)}
-                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
-                />
-              </label>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setShowFacturar(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={handleFacturar} disabled={actionLoading} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Confirmar facturación</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cobrar modal */}
-      {showCobrar && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setShowCobrar(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>Registrar cobro</h3>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>Al confirmar se genera automáticamente la comisión del vendedor.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Fecha de cobro
-                <input
-                  type="date"
-                  value={fechaCobro}
-                  onChange={e => setFechaCobro(e.target.value)}
-                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
-                />
-              </label>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Método de pago (opcional)
-                <input
-                  value={metodoPago}
-                  onChange={e => setMetodoPago(e.target.value)}
-                  placeholder="Transferencia, cheque, efectivo..."
-                  style={{ width: '100%', padding: 9, marginTop: 4, border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box' }}
-                />
-              </label>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setShowCobrar(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={handleCobrar} disabled={actionLoading} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#15803d', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Confirmar cobro</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Reject modal */}
       {showReject && (
@@ -628,6 +476,16 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               <div>
                 <div style={fieldLabel}>Vendedor</div>
                 <div style={fieldValue}>{joinedNombre(orden.perfiles)}</div>
+              </div>
+              <div>
+                <div style={fieldLabel}>Venta compartida</div>
+                <VentaCompartida
+                  ordenId={orden.id}
+                  vendedorId={vendedorDeLaOrden ?? null}
+                  compartido={(Array.isArray(orden.compartido) ? orden.compartido[0] : orden.compartido) ?? null}
+                  vendedores={vendedores}
+                  puedeEditar={vendedorDeLaOrden === userId || puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])}
+                />
               </div>
               <div>
                 <div style={fieldLabel}>Contacto</div>
@@ -825,6 +683,40 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
                 )}
               </div>
             )}
+          </div>
+
+          {/* Facturación por cuota: número, vencimiento y cobro de cada factura */}
+          <div style={{ marginBottom: 16 }}>
+            <FacturacionVenta
+              ordenId={orden.id}
+              moneda={orden.moneda ?? 'UYU'}
+              montoTotal={orden.monto_total}
+              aprobada={estaAprobada}
+              onImprimir={f => {
+                const neto = Number(f.importe_arrendamiento) + Number(f.importe_produccion)
+                const parcial = f.tipo === 'nota_credito' || f.cuotas_total > 1
+                  || Math.abs(Number(f.importe_total) - Number(orden.monto_total ?? 0)) > 0.5
+                generarFactura({
+                  factura_numero: f.numero,
+                  fecha_facturacion: f.fecha_emision,
+                  monto_total: Number(f.importe_total),
+                  monto_neto: neto,
+                  // Una cuota (o una nota de crédito) se imprime en una línea
+                  // propia: con los ítems de toda la venta, las líneas sumaban
+                  // la venta entera y el total era el de una cuota.
+                  items: parcial ? [{
+                    cantidad: 1,
+                    semanas: 1,
+                    precio_unitario: neto,
+                    descuento_pct: 0,
+                    soporte_nombre: f.tipo === 'nota_credito'
+                      ? 'Nota de crédito'
+                      : `Cuota ${f.cuota} de ${f.cuotas_total} · ${new Date(f.mes_pauta + 'T12:00:00').toLocaleDateString('es-UY', { month: 'long', year: 'numeric' })}`,
+                    soporte_ubicacion: [orden.marca, orden.campana].filter(Boolean).join(' · ') || null,
+                  }] : undefined,
+                })
+              }}
+            />
           </div>
 
           {/* Comentarios — hilo de coordinación entre vendedor, arte y operaciones */}

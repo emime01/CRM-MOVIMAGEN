@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { armarPlanDeFacturas, CONDICION_PAGO_POR_DEFECTO } from './facturas'
 
 /**
  * Creación de la OIC a partir de una cotización aceptada.
@@ -57,6 +58,14 @@ export async function crearOrdenDesdePropuesta(
     return { ok: false, error: 'Ya hay una orden creada desde esta cotización', motivo: 'ya_existe', ordenId: existing.id }
   }
 
+  // Condición de pago: la pactada en la cotización; si no, la recomendada de
+  // la agencia; si no, la habitual.
+  let condicionPagoDias: number = propuesta.condicion_pago_dias ?? CONDICION_PAGO_POR_DEFECTO
+  if (propuesta.condicion_pago_dias == null && propuesta.agencia_id) {
+    const { data: ag } = await supabase.from('agencias').select('condicion_pago_dias').eq('id', propuesta.agencia_id).maybeSingle()
+    if (ag?.condicion_pago_dias != null) condicionPagoDias = ag.condicion_pago_dias
+  }
+
   // Siguiente número vía secuencia Postgres (atómico, sin race).
   // Si la secuencia todavía no existe (migración v17 no aplicada), fallback
   // al patrón max+1 — pero con riesgo de race.
@@ -96,6 +105,7 @@ export async function crearOrdenDesdePropuesta(
       // La comisión de agencia pactada viaja de la cotización a la venta.
       comision_agencia_pct:      propuesta.comision_agencia_pct ?? null,
       comision_agencia_prod_pct: propuesta.comision_agencia_prod_pct ?? null,
+      condicion_pago_dias:  condicionPagoDias,
       fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
       fecha_baja_prevista:  propuesta.fecha_fin ?? null,
       // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.
@@ -131,6 +141,12 @@ export async function crearOrdenDesdePropuesta(
       return { ok: false, error: 'Error al copiar items: ' + itemsErr.message, motivo: 'error' }
     }
   }
+
+  // El plan de facturación: las cuotas que pactó el vendedor, una por mes
+  // desde el alta. Si algo falla acá la venta queda igual —el plan se puede
+  // rearmar desde la pantalla—, pero se avisa.
+  const plan = await armarPlanDeFacturas(supabase, orden.id, propuesta.cuotas ?? 1)
+  if (!plan.ok) console.error(`No se pudo armar el plan de facturas de la OIC ${orden.numero}:`, plan.error)
 
   // Lead ganado: la venta se concreta al existir la OIC.
   if (propuesta.lead_id) {
