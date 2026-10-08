@@ -53,7 +53,9 @@ alter table canon_soporte_shoppings enable row level security;
 -- ── 3. Liquidación mensual ──────────────────────────────────────────────────
 create table if not exists canon_mensual (
   id               uuid primary key default gen_random_uuid(),
-  shopping_id      uuid not null references canon_shoppings(id) on delete cascade,
+  -- restrict: borrar un shopping no puede llevarse lo que ya se le liquidó
+  -- y pagó. La pantalla lo desactiva en vez de borrarlo.
+  shopping_id      uuid not null references canon_shoppings(id) on delete restrict,
   mes              date not null,                  -- primer día del mes
   -- Foto al cerrar el mes, en pesos y sin IVA.
   canon_variable   numeric(12,2) not null default 0,

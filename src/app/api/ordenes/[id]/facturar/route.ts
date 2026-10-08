@@ -5,6 +5,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
 import { estaCerrada } from '@/lib/ventas/estados'
 import { calcularVencimiento, CONDICION_PAGO_POR_DEFECTO } from '@/lib/ventas/facturas'
+import { hoyUY } from '@/lib/fechas'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,9 +55,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .limit(1)
   if (!proxima?.length) return NextResponse.json({ error: 'No quedan cuotas por facturar' }, { status: 400 })
 
-  const fecha = body.fecha || new Date().toISOString().slice(0, 10)
+  const fecha = body.fecha || hoyUY()
   const vto = calcularVencimiento(fecha, orden.condicion_pago_dias ?? CONDICION_PAGO_POR_DEFECTO)
-  const { error } = await supabase
+  const { data: emitidas, error } = await supabase
     .from('facturas')
     .update({
       estado: 'emitida', numero, fecha_emision: fecha, fecha_vencimiento: vto,
@@ -64,7 +65,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })
     .eq('id', proxima[0].id)
     .eq('estado', 'prevista')
+    .select('id')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Dos pedidos a la vez toman la misma cuota: el segundo no emite nada y
+  // tiene que enterarse, si no su número de factura se pierde.
+  if (!emitidas?.length) return NextResponse.json({ error: 'Esa cuota se acaba de facturar. Recargá y probá de nuevo.' }, { status: 409 })
 
   await supabase.from('orden_historial').insert({
     orden_id: params.id,

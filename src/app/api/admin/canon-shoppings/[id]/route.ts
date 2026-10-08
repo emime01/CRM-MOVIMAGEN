@@ -36,6 +36,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!es(session.user.rol, 'administracion')) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const supabase = createServerClient()
+
+  // Con liquidaciones de canon guardadas no se borra: se desactiva, para no
+  // perder lo que ya se le liquidó y pagó.
+  const { data: historia } = await supabase.from('canon_mensual').select('id').eq('shopping_id', params.id).limit(1)
+  if (historia?.length) {
+    const { error } = await supabase.from('canon_shoppings')
+      .update({ activo: false, updated_at: new Date().toISOString() }).eq('id', params.id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, desactivado: true })
+  }
+
   // Unassign soportes before deleting
   await supabase.from('soportes').update({ canon_shopping_id: null }).eq('canon_shopping_id', params.id)
   const { error } = await supabase.from('canon_shoppings').delete().eq('id', params.id)

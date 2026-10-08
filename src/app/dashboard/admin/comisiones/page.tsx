@@ -5,15 +5,12 @@ import { createServerClient } from '@/lib/supabase-server'
 import { es, puede } from '@/lib/auth/roles'
 import { cuatrimestreDe, cuatrimestresCercanos, rangoCuatrimestre, vendidoEnCuatrimestre } from '@/lib/comisiones/bonos'
 import ComisionesClient, { type ComisionRow, type AgenciaRow, type BonoRow } from './ComisionesClient'
+import { mesUY } from '@/lib/fechas'
 
 export const dynamic = 'force-dynamic'
 
 const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : v ?? null)
 
-/** "AAAA-MM" del mes en curso, en hora de Uruguay. */
-function mesActual(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Montevideo' }).slice(0, 7)
-}
 
 function finDeMes(mes: string): string {
   const [y, m] = mes.split('-').map(Number)
@@ -35,7 +32,7 @@ export default async function ComisionesPage({ searchParams }: { searchParams: {
   if (!puede(session.user.rol, ['administracion', 'gerente_comercial'])) redirect('/dashboard')
   const supabase = createServerClient()
 
-  const mes = searchParams.mes && /^\d{4}-\d{2}$/.test(searchParams.mes) ? searchParams.mes : mesActual()
+  const mes = searchParams.mes && /^\d{4}-\d{2}$/.test(searchParams.mes) ? searchParams.mes : mesUY()
   const cuatri = searchParams.q && rangoCuatrimestre(searchParams.q) ? searchParams.q : cuatrimestreDe()
 
   const [comRes, cobradasRes, perfilesRes, objetivosRes, bonosRes, bonosLiqRes, vendido] = await Promise.all([

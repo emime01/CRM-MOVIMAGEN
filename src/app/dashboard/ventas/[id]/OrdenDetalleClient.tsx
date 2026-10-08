@@ -274,7 +274,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     await handleChangeEstado('pendiente_aprobacion', 'Enviada para aprobación')
   }
 
-  function generarFactura(overrides?: { factura_numero?: string | null; fecha_facturacion?: string | null; monto_total?: number; monto_neto?: number }) {
+  function generarFactura(overrides?: { factura_numero?: string | null; fecha_facturacion?: string | null; monto_total?: number; monto_neto?: number; items?: FacturaData['items'] }) {
     const facturarA = orden.facturar_a === 'agencia' ? joinedEntidad(orden.agencias) : joinedEntidad(orden.clientes)
     const cli = joinedEntidad(orden.clientes)
     const receptor = facturarA ?? cli
@@ -298,7 +298,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
         email: receptor?.email ?? null,
         telefono: receptor?.telefono ?? null,
       },
-      items: (orden.orden_items ?? []).map(it => {
+      items: overrides?.items ?? (orden.orden_items ?? []).map(it => {
         const info = soporteInfo(it.soportes)
         return {
           cantidad: it.cantidad,
@@ -692,12 +692,30 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               moneda={orden.moneda ?? 'UYU'}
               montoTotal={orden.monto_total}
               aprobada={estaAprobada}
-              onImprimir={f => generarFactura({
-                factura_numero: f.numero,
-                fecha_facturacion: f.fecha_emision,
-                monto_total: Number(f.importe_total),
-                monto_neto: Number(f.importe_arrendamiento) + Number(f.importe_produccion),
-              })}
+              onImprimir={f => {
+                const neto = Number(f.importe_arrendamiento) + Number(f.importe_produccion)
+                const parcial = f.tipo === 'nota_credito' || f.cuotas_total > 1
+                  || Math.abs(Number(f.importe_total) - Number(orden.monto_total ?? 0)) > 0.5
+                generarFactura({
+                  factura_numero: f.numero,
+                  fecha_facturacion: f.fecha_emision,
+                  monto_total: Number(f.importe_total),
+                  monto_neto: neto,
+                  // Una cuota (o una nota de crédito) se imprime en una línea
+                  // propia: con los ítems de toda la venta, las líneas sumaban
+                  // la venta entera y el total era el de una cuota.
+                  items: parcial ? [{
+                    cantidad: 1,
+                    semanas: 1,
+                    precio_unitario: neto,
+                    descuento_pct: 0,
+                    soporte_nombre: f.tipo === 'nota_credito'
+                      ? 'Nota de crédito'
+                      : `Cuota ${f.cuota} de ${f.cuotas_total} · ${new Date(f.mes_pauta + 'T12:00:00').toLocaleDateString('es-UY', { month: 'long', year: 'numeric' })}`,
+                    soporte_ubicacion: [orden.marca, orden.campana].filter(Boolean).join(' · ') || null,
+                  }] : undefined,
+                })
+              }}
             />
           </div>
 

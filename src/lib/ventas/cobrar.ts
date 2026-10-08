@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { cerrarSeguimiento } from './cobranza'
+import { hoyUY } from '@/lib/fechas'
 
 /**
  * Lo que se le liquida al vendedor sobre el arrendamiento sin IVA. Es el
@@ -28,7 +29,7 @@ export async function registrarCobroDeFactura(
   facturaId: string,
   opts: { fecha?: string; metodo?: string; userId: string },
 ): Promise<{ ok: boolean; error?: string; comisionGenerada: boolean }> {
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyUY()
   const fechaCobro = opts.fecha || hoy
 
   const { data: factura, error: fErr } = await supabase

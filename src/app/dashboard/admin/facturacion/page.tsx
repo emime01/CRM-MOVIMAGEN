@@ -1,126 +1,160 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { es } from '@/lib/auth/roles'
+import { formatMoney, formatTotales, type TotalPorMoneda } from '@/lib/money'
+import { mesUY } from '@/lib/fechas'
 
 export const dynamic = 'force-dynamic'
 
-const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigits: 0 })
+const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : v ?? null)
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const fmtMes = (d: string) => `${MESES[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`
+const fmtFecha = (d: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—')
 
-const BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  aprobada:              { bg: 'rgba(21,128,61,0.12)',  color: '#15803d', label: 'Aprobada' },
-  en_oic:                { bg: 'rgba(235,105,28,0.12)', color: '#eb691c', label: 'En producción' },
-  facturada:             { bg: 'rgba(2,132,199,0.12)',  color: '#0284c7', label: 'Facturada' },
-  cobrada:               { bg: 'rgba(21,128,61,0.12)',  color: '#15803d', label: 'Cobrada' },
-  pendiente_aprobacion:  { bg: 'rgba(217,119,6,0.12)',  color: '#d97706', label: 'Pend. Aprobación' },
+type Fila = {
+  id: string; orden_id: string; cuota: number; cuotas_total: number; mes_pauta: string
+  numero: string | null; fecha_emision: string | null; importe_total: number; moneda: string
+  orden_numero: number | null; cliente: string; agencia: string | null; vendedor: string
 }
 
+/**
+ * Facturación: las cuotas que hay que facturar.
+ *
+ * Antes era una lista de ventas "sin fecha de factura": con cuotas, una venta
+ * en doce salía de la lista al emitir la primera y las otras once no
+ * aparecían en ningún lado. Ahora cada fila es una cuota prevista de una
+ * venta aprobada, con su mes; las de este mes o anteriores van primero.
+ */
 export default async function FacturacionPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
   if (!es(session.user.rol, 'administracion')) redirect('/dashboard')
   const supabase = createServerClient()
 
-  // Lo que falta facturar se decide por la fecha de factura, no por el estado.
-  // Facturar dejó de ser un estado de la venta, así que filtrar por estado
-  // mostraba toda venta aprobada como pendiente para siempre —aun ya
-  // facturada— y la lista de recientes no traía nunca nada.
-  const CAMPOS = 'id, numero, monto_total, moneda, estado, created_at, fecha_facturacion, factura_numero, clientes(nombre, empresa), perfiles!vendedor_id(nombre)'
-  const [{ data: pendientes }, { data: recientes }] = await Promise.all([
-    supabase.from('ordenes_venta')
+  const CAMPOS = `id, orden_id, cuota, cuotas_total, mes_pauta, numero, fecha_emision, importe_total, moneda,
+    ordenes_venta!inner(numero, estado, clientes(nombre, empresa), agencias(nombre), perfiles!vendedor_id(nombre))`
+  const [{ data: previstas, error: pErr }, { data: recientes }] = await Promise.all([
+    supabase.from('facturas')
       .select(CAMPOS)
-      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
-      .is('fecha_facturacion', null)
-      .order('created_at', { ascending: false }),
-    supabase.from('ordenes_venta')
+      .eq('tipo', 'factura')
+      .eq('estado', 'prevista')
+      .in('ordenes_venta.estado', ESTADOS_VENTA_VIVA as unknown as string[])
+      .order('mes_pauta', { ascending: true })
+      .limit(500),
+    supabase.from('facturas')
       .select(CAMPOS)
-      .not('fecha_facturacion', 'is', null)
-      .order('fecha_facturacion', { ascending: false })
-      .limit(10),
+      .eq('tipo', 'factura')
+      .in('estado', ['emitida', 'cobrada'])
+      .order('fecha_emision', { ascending: false })
+      .limit(15),
   ])
+  if (pErr) console.error('Facturación: no se pudieron leer las cuotas:', pErr.message)
 
-  const totalPendiente = pendientes?.reduce((s, o) => s + Number(o.monto_total ?? 0), 0) ?? 0
+  const aFila = (f: any): Fila => {
+    const o = first<any>(f.ordenes_venta)
+    const cli = first<any>(o?.clientes)
+    return {
+      id: f.id, orden_id: f.orden_id, cuota: f.cuota, cuotas_total: f.cuotas_total, mes_pauta: f.mes_pauta,
+      numero: f.numero, fecha_emision: f.fecha_emision, importe_total: Number(f.importe_total ?? 0), moneda: f.moneda ?? 'UYU',
+      orden_numero: o?.numero ?? null, cliente: cli?.empresa ?? cli?.nombre ?? '—',
+      agencia: first<any>(o?.agencias)?.nombre ?? null, vendedor: first<any>(o?.perfiles)?.nombre ?? '—',
+    }
+  }
+  const pendientes = (previstas ?? []).map(aFila)
+  const mesActual = `${mesUY()}-01`
+  const deEsteMes = pendientes.filter(f => f.mes_pauta <= mesActual)
+  const proximas = pendientes.filter(f => f.mes_pauta > mesActual)
 
-  const Row = ({ o }: { o: any }) => {
-    const cli = Array.isArray(o.clientes) ? o.clientes[0] : o.clientes
-    const vend = Array.isArray(o.perfiles) ? o.perfiles[0] : o.perfiles
-    const badge = BADGE[o.estado] ?? { bg: '#f3f4f6', color: '#6b7280', label: o.estado }
-    return (
-      <tr style={{ borderBottom: '1px solid var(--border)' }}>
-        <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: 12 }}>{o.numero ?? '—'}</td>
-        <td style={{ padding: '12px 16px' }}>
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>{cli?.empresa ?? cli?.nombre ?? '—'}</div>
-          {cli?.empresa && cli?.nombre && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{cli.nombre}</div>}
-        </td>
-        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(Number(o.monto_total ?? 0))}</td>
-        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-          <span style={{ background: badge.bg, color: badge.color, padding: '3px 8px', borderRadius: 5, fontSize: 11, fontWeight: 700 }}>{badge.label}</span>
-        </td>
-        <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{vend?.nombre ?? '—'}</td>
-        <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{o.created_at ? new Date(o.created_at).toLocaleDateString('es-UY') : '—'}</td>
-      </tr>
-    )
+  const total = (fs: Fila[]): TotalPorMoneda => {
+    const t: TotalPorMoneda = {}
+    for (const f of fs) { const m = f.moneda === 'USD' ? 'USD' : 'UYU'; t[m] = (t[m] ?? 0) + f.importe_total }
+    return t
   }
 
-  const TableHead = () => (
-    <thead>
-      <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-        {['N° Orden', 'Cliente', 'Monto', 'Estado', 'Vendedor', 'Fecha'].map((h, i) => (
-          <th key={h} style={{ padding: '10px 16px', textAlign: i >= 2 ? 'right' : 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', ...(i === 3 ? { textAlign: 'center' } : {}) }}>{h}</th>
-        ))}
-      </tr>
-    </thead>
+  const Tabla = ({ filas, emitidas = false }: { filas: Fila[]; emitidas?: boolean }) => (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
+        <thead>
+          <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
+            {['Venta', 'Cliente', 'Cuota', 'Mes', emitidas ? 'Factura' : 'Vendedor', 'Importe'].map((h, i) => (
+              <th key={h} style={{ padding: '10px 16px', textAlign: i === 5 ? 'right' : 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map(f => {
+            const atrasada = !emitidas && f.mes_pauta < mesActual
+            return (
+              <tr key={f.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '11px 16px', fontFamily: 'monospace', fontSize: 12, fontWeight: 700 }}>
+                  <Link href={`/dashboard/ventas/${f.orden_id}`} style={{ color: 'var(--orange)', textDecoration: 'none' }}>OIC #{f.orden_numero ?? '—'}</Link>
+                </td>
+                <td style={{ padding: '11px 16px' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{f.cliente}</div>
+                  {f.agencia && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{f.agencia}</div>}
+                </td>
+                <td style={{ padding: '11px 16px', color: 'var(--text-secondary)' }}>{f.cuotas_total > 1 ? `${f.cuota} de ${f.cuotas_total}` : 'Única'}</td>
+                <td style={{ padding: '11px 16px', color: atrasada ? '#c62828' : 'var(--text-secondary)', fontWeight: atrasada ? 700 : 500 }}>
+                  {fmtMes(f.mes_pauta)}{atrasada ? ' · atrasada' : ''}
+                </td>
+                <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-muted)' }}>
+                  {emitidas ? <><span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{f.numero ?? '—'}</span> · {fmtFecha(f.fecha_emision)}</> : f.vendedor}
+                </td>
+                <td style={{ padding: '11px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{formatMoney(f.importe_total, f.moneda)}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const Caja = ({ titulo, children }: { titulo: string; children: React.ReactNode }) => (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 24 }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{titulo}</div>
+      {children}
+    </div>
   )
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
-      {/* Summary bar */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 20px', marginBottom: 24, display: 'flex', gap: 32, alignItems: 'center' }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 20px', marginBottom: 24, display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>Pendientes de facturar</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--orange)' }}>{pendientes?.length ?? 0} órdenes</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>Para facturar este mes</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--orange)' }}>{deEsteMes.length} cuota{deEsteMes.length === 1 ? '' : 's'}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>Monto total pendiente</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(totalPendiente)}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>Importe</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>{formatTotales(total(deEsteMes))}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>Próximos meses</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>{formatTotales(total(proximas))}</div>
         </div>
       </div>
 
-      {/* Pending to invoice */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 24 }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-          Para facturar — ventas aprobadas sin factura
-        </div>
-        {pendientes?.length === 0 ? (
-          <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>No hay órdenes pendientes de facturar.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <TableHead />
-            <tbody>
-              {pendientes?.map(o => <Row key={o.id} o={o} />)}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <Caja titulo={`Para facturar — cuotas de ${fmtMes(mesActual)} o anteriores`}>
+        {deEsteMes.length === 0
+          ? <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>No hay cuotas pendientes de facturar.</p>
+          : <Tabla filas={deEsteMes} />}
+      </Caja>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '-14px 0 24px' }}>Cada cuota se factura desde la venta, en la sección Facturación.</p>
 
-      {/* Recently invoiced */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-          Facturadas recientemente
-        </div>
-        {recientes?.length === 0 ? (
-          <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>Sin registros.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <TableHead />
-            <tbody>
-              {recientes?.map(o => <Row key={o.id} o={o} />)}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {proximas.length > 0 && (
+        <Caja titulo="Próximos meses">
+          <Tabla filas={proximas} />
+        </Caja>
+      )}
+
+      <Caja titulo="Facturadas recientemente">
+        {(recientes?.length ?? 0) === 0
+          ? <p style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Sin registros.</p>
+          : <Tabla filas={(recientes ?? []).map(aFila)} emitidas />}
+      </Caja>
     </div>
   )
 }

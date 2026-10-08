@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Edit2, Plus, Trash2 } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
@@ -54,14 +54,22 @@ export default function CanonClient() {
   const [abierto, setAbierto] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
 
+  // El mes que se está mirando, para descartar respuestas viejas: al pasar
+  // rápido de un mes a otro, la respuesta lenta del anterior pisaba la
+  // pantalla y los botones cerraban o pagaban un mes con números ajenos.
+  const mesVigente = useRef(mes)
+  mesVigente.current = mes
+
   const cargarMes = useCallback(async () => {
+    const pedido = mes
     setCargando(true); setErrorMes('')
     try {
-      const res = await fetch(`/api/admin/canon-mensual?mes=${mes}`)
+      const res = await fetch(`/api/admin/canon-mensual?mes=${pedido}`)
       const d = await res.json()
+      if (pedido !== mesVigente.current) return
       if (!res.ok) { setErrorMes(d.error ?? 'No se pudo calcular'); setFilas([]); return }
       setFilas(d.shoppings ?? [])
-    } finally { setCargando(false) }
+    } finally { if (pedido === mesVigente.current) setCargando(false) }
   }, [mes])
 
   useEffect(() => { if (tab === 'mes') cargarMes() }, [tab, cargarMes])
@@ -173,7 +181,7 @@ export default function CanonClient() {
   }
 
   async function deleteShopping(id: string, nombre: string) {
-    if (!confirm(`¿Eliminar shopping "${nombre}"? Los soportes asignados quedarán sin shopping.`)) return
+    if (!confirm(`¿Eliminar shopping "${nombre}"? Los soportes asignados quedarán sin shopping. Si ya tiene canon liquidado, se desactiva y su historia se conserva.`)) return
     const res = await fetch(`/api/admin/canon-shoppings/${id}`, { method: 'DELETE' })
     if (!res.ok) { alert('Error al eliminar'); return }
     setShoppings(prev => prev.filter(s => s.id !== id))
@@ -317,10 +325,12 @@ export default function CanonClient() {
                           <button onClick={() => informe(f)} style={btn}><Download size={13} /> Informe del shopping</button>
                           {f.estado !== 'pagado' && (
                             <button disabled={ocupado} style={btn} onClick={() => {
-                              const v = prompt(`¿Cuánto del canon de ${nombreMes(mes)} pasa al mes siguiente? (0 para nada)`, String(f.diferido || ''))
+                              const v = prompt(`¿Cuánto del canon de ${nombreMes(mes)} pasa al mes siguiente? (0 para nada)`, f.diferido ? f.diferido.toLocaleString('es-UY') : '')
                               if (v === null) return
+                              const monto = leerMonto(v)
+                              if (monto === null) { alert('No entendí el monto'); return }
                               const nota = prompt('Motivo (opcional)', f.notas ?? '') ?? undefined
-                              accion(f.shopping.id, { accion: 'diferir', diferido: Number(v.replace(/\./g, '').replace(',', '.')) || 0, notas: nota })
+                              accion(f.shopping.id, { accion: 'diferir', diferido: monto, notas: nota })
                             }}>Pasar parte al mes siguiente</button>
                           )}
                           {f.estado === 'abierto' && (
@@ -469,6 +479,19 @@ export default function CanonClient() {
       )}
     </div>
   )
+}
+
+/**
+ * Un monto escrito a mano: "17.778,50" (como se escribe acá), "17778,5" o
+ * "17778.5". El punto es de miles sólo si hay coma o si deja grupos de tres.
+ */
+function leerMonto(v: string): number | null {
+  let t = v.trim().replace(/\s|\$/g, '')
+  if (!t) return 0
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.')
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '')
+  const n = Number(t)
+  return Number.isFinite(n) && n >= 0 ? n : null
 }
 
 function Dato({ label, valor, fuerte, grande }: { label: string; valor: string; fuerte?: boolean; grande?: boolean }) {

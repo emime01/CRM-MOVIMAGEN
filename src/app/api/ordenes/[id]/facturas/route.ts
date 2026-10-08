@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { hoyUY } from '@/lib/fechas'
 import {
   armarPlanDeFacturas, calcularVencimiento, primerDiaDelMes,
   puedeVerFacturas, puedePlanificar, puedeAdministrarFacturas,
@@ -103,6 +104,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         .eq('id', params.id)
       if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
 
+      // La condición nueva vale para lo que se emita de acá en más. Correr el
+      // vencimiento de lo ya emitido es cosa de Administración: si no, un
+      // vendedor podía hacer que sus facturas vencidas parecieran al día.
+      if (!administra) return NextResponse.json({ ok: true })
+
       // Las emitidas que todavía se deben vencen con la condición nueva.
       const { data: abiertas } = await supabase
         .from('facturas')
@@ -126,7 +132,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
       const numero = typeof body.numero === 'string' ? body.numero.trim() : ''
       if (!numero) return NextResponse.json({ error: 'Indicá el número de la nota de crédito' }, { status: 400 })
-      const fecha = typeof body.fecha_emision === 'string' && body.fecha_emision ? body.fecha_emision : new Date().toISOString().slice(0, 10)
+      const fecha = typeof body.fecha_emision === 'string' && body.fecha_emision ? body.fecha_emision : hoyUY()
       const mes = typeof body.mes_pauta === 'string' && body.mes_pauta ? primerDiaDelMes(body.mes_pauta) : primerDiaDelMes(fecha)
       // Una nota de crédito resta: se guarda en negativo aunque la carguen positiva.
       const neg = (v: unknown) => -Math.abs(Number(v) || 0)

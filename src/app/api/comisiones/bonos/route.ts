@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { es, puede } from '@/lib/auth/roles'
 import { rangoCuatrimestre, vendidoEnCuatrimestre } from '@/lib/comisiones/bonos'
+import { hoyUY } from '@/lib/fechas'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Todavía no llegó al objetivo: lleva ${Math.round(vendido / meta * 100)}%` }, { status: 409 })
   }
 
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyUY()
   const { error } = await supabase.from('comisiones').insert({
     tipo: 'bono',
     vendedor_id,

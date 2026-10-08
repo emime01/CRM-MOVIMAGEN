@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Receipt, DollarSign, Printer, X, FileMinus, RefreshCw, Pencil } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import type { Factura } from '@/lib/ventas/facturas'
+import { hoyUY } from '@/lib/fechas'
 
 /**
  * Facturación de una venta, cuota por cuota.
@@ -14,7 +15,7 @@ import type { Factura } from '@/lib/ventas/facturas'
  */
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre']
-const hoy = () => new Date().toISOString().slice(0, 10)
+const hoy = () => hoyUY()
 
 function fmtFecha(d: string | null) {
   if (!d) return '—'
@@ -157,7 +158,10 @@ export default function FacturacionVenta({
       if (!form.numero.trim() || !Number(form.total)) { alert('Indicá el número y el importe'); return }
       ok = await enviar(`/api/ordenes/${ordenId}/facturas`, 'POST', {
         accion: 'nota_credito', numero: form.numero.trim(), fecha_emision: form.fecha,
-        importe_total: Number(form.total), importe_arrendamiento: Number(form.arr || form.total),
+        importe_total: Number(form.total),
+        // Sin dato, el arrendamiento sale del total sin IVA menos la
+        // producción: tomar el total entero le restaba de más al canon.
+        importe_arrendamiento: form.arr !== '' ? Number(form.arr) : Math.round((Number(form.total) / 1.22 - Number(form.prod || 0)) * 100) / 100,
         importe_produccion: Number(form.prod || 0), notas: form.notas,
       })
     }
@@ -365,7 +369,7 @@ export default function FacturacionVenta({
                   <label style={lblSt}>Nº<input id="nc-numero" value={form.numero ?? ''} onChange={e => setForm({ ...form, numero: e.target.value })} style={inputSt} /></label>
                   <label style={lblSt}>Fecha<input id="nc-fecha" type="date" value={form.fecha ?? ''} onChange={e => setForm({ ...form, fecha: e.target.value })} style={inputSt} /></label>
                   <label style={lblSt}>Importe total<input id="nc-total" type="number" step="0.01" value={form.total ?? ''} onChange={e => setForm({ ...form, total: e.target.value })} style={inputSt} /></label>
-                  <label style={lblSt}>De eso, arrendamiento sin IVA<input id="nc-arr" type="number" step="0.01" value={form.arr ?? ''} onChange={e => setForm({ ...form, arr: e.target.value })} placeholder="Igual al total si no se indica" style={inputSt} /></label>
+                  <label style={lblSt}>De eso, arrendamiento sin IVA<input id="nc-arr" type="number" step="0.01" value={form.arr ?? ''} onChange={e => setForm({ ...form, arr: e.target.value })} placeholder="Si no se indica: total sin IVA menos producción" style={inputSt} /></label>
                   <label style={lblSt}>Motivo<input id="nc-notas" value={form.notas ?? ''} onChange={e => setForm({ ...form, notas: e.target.value })} style={inputSt} /></label>
                 </div>
               </>

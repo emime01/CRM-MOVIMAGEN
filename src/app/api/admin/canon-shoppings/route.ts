@@ -15,6 +15,8 @@ export async function GET(_req: NextRequest) {
   const { data, error } = await supabase
     .from('canon_shoppings')
     .select('id, nombre, porcentaje_canon, canon_minimo, activo')
+    // Los desactivados (borrados con historia de canon) no se configuran más.
+    .eq('activo', true)
     .order('nombre')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)

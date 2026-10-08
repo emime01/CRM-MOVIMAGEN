@@ -104,8 +104,12 @@ comment on column propuestas.cuotas is
 alter table comisiones add column if not exists factura_id uuid references facturas(id) on delete set null;
 
 -- ── 6. Facturas de las ventas que ya existen ────────────────────────────────
--- Una por venta aprobada, con lo que tenía: si estaba facturada, emitida con
--- su número y fecha; si estaba cobrada, cobrada; si no, prevista.
+-- Una por venta, con lo que tenía: si estaba cobrada, cobrada; si estaba
+-- facturada, emitida con su número y fecha; si no, prevista. También las que
+-- esperan aprobación: si no, quedaban sin plan y había que rearmarlo a mano.
+-- Una venta con cobro pero sin fecha de factura (anularon la factura con el
+-- botón viejo) va como cobrada, con el cobro como fecha: como prevista, la
+-- sincronización le borraba la fecha de cobro y su comisión podía repetirse.
 insert into facturas (
   orden_id, cuota, cuotas_total, mes_pauta, tipo, estado, numero, fecha_emision,
   importe_arrendamiento, importe_produccion, importe_total, moneda,
@@ -115,19 +119,20 @@ select
   o.id, 1, 1,
   date_trunc('month', coalesce(o.fecha_alta_real, o.fecha_alta_prevista, o.created_at::date))::date,
   'factura',
-  case when o.fecha_cobro is not null and o.fecha_facturacion is not null then 'cobrada'
+  case when o.fecha_cobro is not null then 'cobrada'
        when o.fecha_facturacion is not null then 'emitida'
        else 'prevista' end,
   o.factura_numero,
-  o.fecha_facturacion,
+  coalesce(o.fecha_facturacion, o.fecha_cobro),
   coalesce(o.monto_arrendamiento, o.monto_neto, o.monto_total, 0),
   coalesce(o.monto_produccion, 0),
   coalesce(o.monto_total, 0),
   coalesce(o.moneda, 'UYU'),
-  case when o.fecha_facturacion is not null then o.fecha_facturacion + o.condicion_pago_dias end,
-  case when o.fecha_facturacion is not null then o.fecha_cobro end
+  case when coalesce(o.fecha_facturacion, o.fecha_cobro) is not null
+       then coalesce(o.fecha_facturacion, o.fecha_cobro) + o.condicion_pago_dias end,
+  o.fecha_cobro
 from ordenes_venta o
-where o.estado in ('aprobada', 'en_oic', 'facturada', 'cobrada')
+where o.estado in ('pendiente_aprobacion', 'aprobada', 'en_oic', 'facturada', 'cobrada')
   and not exists (select 1 from facturas f where f.orden_id = o.id);
 
 -- Las comisiones que ya había, a la factura de su venta.
