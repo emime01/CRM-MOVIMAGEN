@@ -27,6 +27,7 @@ interface Agencia {
   nombre: string
   porcentaje_comision?: number | null
   porcentaje_comision_produccion?: number | null
+  condicion_pago_dias?: number | null
 }
 
 interface Vendedor {
@@ -133,12 +134,16 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   // recomendado de la agencia y es obligatoria si hay agencia.
   const [comAgPct, setComAgPct] = useState('')
   const [comAgProdPct, setComAgProdPct] = useState('')
+  // Plan de facturación: cuotas mensuales y a cuántos días vence cada factura.
+  const [cuotas, setCuotas] = useState('1')
+  const [condicionPago, setCondicionPago] = useState('60')
 
   function elegirAgencia(id: string) {
     setAgenciaId(id)
     const ag = agencias.find(a => a.id === id)
     setComAgPct(ag?.porcentaje_comision != null ? String(ag.porcentaje_comision) : '')
     setComAgProdPct(ag?.porcentaje_comision_produccion != null ? String(ag.porcentaje_comision_produccion) : '')
+    if (ag?.condicion_pago_dias != null) setCondicionPago(String(ag.condicion_pago_dias))
   }
   const [facturarA, setFacturarA] = useState<'agencia' | 'cliente_final'>('cliente_final')
   const [marca, setMarca] = useState('')
@@ -268,6 +273,8 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
           facturarA: agenciaId ? facturarA : undefined,
           comisionAgenciaPct: agenciaId ? Number(comAgPct) : undefined,
           comisionAgenciaProdPct: agenciaId ? Number(comAgProdPct) : undefined,
+          cuotas: Math.min(60, Math.max(1, Math.floor(Number(cuotas) || 1))),
+          condicionPagoDias: Math.min(365, Math.max(0, Math.floor(Number(condicionPago) || 0))),
           marca,
           campana,
           referencia,
@@ -608,6 +615,18 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
           <div>
             <label style={labelStyle}>Referencia</label>
             <input type="text" value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Código o referencia interna" style={inputStyle} />
+          </div>
+
+          <div>
+            <label htmlFor="cuotas" style={labelStyle}>Cuotas</label>
+            <input id="cuotas" type="number" min={1} max={60} step={1} value={cuotas}
+              onChange={e => setCuotas(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div>
+            <label htmlFor="cond-pago" style={labelStyle}>Vence a (días)</label>
+            <input id="cond-pago" type="number" min={0} max={365} step={1} value={condicionPago}
+              onChange={e => setCondicionPago(e.target.value)} style={inputStyle} />
           </div>
 
           <div>

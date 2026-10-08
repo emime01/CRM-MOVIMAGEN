@@ -23,7 +23,7 @@ export default async function CuentasPage() {
       .order('nombre'),
     supabase
       .from('agencias')
-      .select('id, nombre, email, telefono, ejecutivo_cuenta, porcentaje_comision, porcentaje_comision_produccion, activo')
+      .select('id, nombre, email, telefono, ejecutivo_cuenta, porcentaje_comision, porcentaje_comision_produccion, condicion_pago_dias, activo')
       .order('nombre'),
     supabase
       .from('contactos')
