@@ -12,7 +12,7 @@ const CONTACTO_FIELDS = [
 ] as const
 
 // Los contactos son la agenda comercial: los maneja quien vende o asiste.
-const CONTACTO_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
+const CONTACTO_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion']
 
 
 export const dynamic = 'force-dynamic'

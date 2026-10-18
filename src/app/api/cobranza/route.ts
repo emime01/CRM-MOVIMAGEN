@@ -7,7 +7,7 @@ import { TIPOS_GESTION } from '@/lib/ventas/cobranza'
 
 export const dynamic = 'force-dynamic'
 
-const COBRANZA_ROLES = ['administracion', 'gerente_comercial']
+const COBRANZA_ROLES = ['administracion', 'gerente_comercial', 'asistente_administracion']
 
 /**
  * GET /api/cobranza?factura_id= | ?orden_id=

@@ -88,7 +88,7 @@ function renderMarkdown(text: string): React.ReactNode {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion' | 'asistente_ventas_ops' | 'admin_sistema'
+type Rol = 'vendedor' | 'asistente_ventas' | 'gerente_comercial' | 'operaciones' | 'arte' | 'administracion' | 'asistente_ventas_ops' | 'admin_sistema' | 'asistente_administracion'
 
 interface NavItem {
   href: string
@@ -102,14 +102,14 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/leads', label: 'Leads', icon: <Filter size={16} />, roles: ['vendedor', 'gerente_comercial'] },
   { href: '/dashboard/cotizaciones', label: 'Cotizaciones', icon: <ClipboardList size={16} />, roles: ['vendedor', 'asistente_ventas'] },
   { href: '/dashboard/disponibilidad', label: 'Disponibilidad', icon: <Calendar size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'administracion'] },
-  { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones'] },
+  { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'asistente_administracion'] },
   { href: '/dashboard/agenda', label: 'Agenda', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/reportes', label: 'Reportes', icon: <BarChart2 size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
-  { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
+  { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion'] },
   { href: '/dashboard/gerente', label: 'Mi Equipo', icon: <Users size={16} />, roles: ['gerente_comercial', 'administracion'] },
   { href: '/dashboard/gerente/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['asistente_ventas'] },
-  { href: '/dashboard/tasks', label: 'Tareas', icon: <ClipboardList size={16} />, roles: ['arte', 'operaciones', 'administracion', 'gerente_comercial'] },
-  { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['operaciones', 'administracion', 'gerente_comercial'] },
+  { href: '/dashboard/tasks', label: 'Tareas', icon: <ClipboardList size={16} />, roles: ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion'] },
+  { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion'] },
   // La pantalla existía pero no estaba en el menú ni enlazada desde ningún
   // lado: operaciones sólo llegaba escribiendo la URL.
   { href: '/dashboard/oic', label: 'Producción', icon: <Factory size={16} />, roles: ['operaciones'] },
@@ -117,14 +117,14 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/arte', label: 'Planilla digital', icon: <Monitor size={16} />, roles: ['arte'] },
   { href: '/dashboard/arte/colores', label: 'Muestras de color', icon: <Palette size={16} />, roles: ['arte'] },
-  { href: '/dashboard/admin/facturacion', label: 'Facturación', icon: <Receipt size={16} />, roles: ['administracion'] },
-  { href: '/dashboard/admin/deudores', label: 'Deudores', icon: <AlertCircle size={16} />, roles: ['administracion', 'gerente_comercial'] },
-  { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'gerente_comercial'] },
-  { href: '/dashboard/admin/canon', label: 'Canon', icon: <Building2 size={16} />, roles: ['administracion'] },
-  { href: '/dashboard/admin/gastos', label: 'Gastos', icon: <CreditCard size={16} />, roles: ['administracion'] },
+  { href: '/dashboard/admin/facturacion', label: 'Facturación', icon: <Receipt size={16} />, roles: ['administracion', 'asistente_administracion'] },
+  { href: '/dashboard/admin/deudores', label: 'Deudores', icon: <AlertCircle size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
+  { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
+  { href: '/dashboard/admin/canon', label: 'Canon', icon: <Building2 size={16} />, roles: ['administracion', 'asistente_administracion'] },
+  { href: '/dashboard/admin/gastos', label: 'Gastos', icon: <CreditCard size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/soportes', label: 'Soportes', icon: <Package size={16} />, roles: ['asistente_ventas', 'administracion'] },
   { href: '/dashboard/config', label: 'Configuración', icon: <Settings size={16} />, roles: ['administracion'] },
-  { href: '/dashboard/perfil', label: 'Mi Perfil', icon: <UserCircle size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion'] },
+  { href: '/dashboard/perfil', label: 'Mi Perfil', icon: <UserCircle size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
 ]
 
 const PAGE_TITLES: Record<string, string> = {
@@ -161,6 +161,7 @@ const ROL_LABELS: Record<Rol, string> = {
   asistente_ventas: 'Asistente de Ventas',
   asistente_ventas_ops: 'Asistente Ventas y Operaciones',
   admin_sistema: 'Administrador del sistema',
+  asistente_administracion: 'Asistente administrativa',
   gerente_comercial: 'Gerente Comercial',
   operaciones: 'Operaciones',
   arte: 'Arte',

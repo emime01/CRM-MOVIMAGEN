@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { es, puede } from '@/lib/auth/roles'
+import { es, puede, haceAdministracion } from '@/lib/auth/roles'
 import { rangoCuatrimestre, vendidoEnCuatrimestre } from '@/lib/comisiones/bonos'
 import { hoyUY } from '@/lib/fechas'
 
@@ -75,7 +75,7 @@ export async function PUT(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!es(session.user.rol, 'administracion')) {
+  if (!haceAdministracion(session.user.rol)) {
     return NextResponse.json({ error: 'Sólo Administración liquida bonos' }, { status: 403 })
   }
 

@@ -21,7 +21,7 @@ const EDITABLE_FIELDS = [
 // Reasignar dueño del cliente es operación administrativa.
 const ADMIN_FIELDS = ['vendedor_id'] as const
 
-const EDIT_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
+const EDIT_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion']
 const ADMIN_ROLES = ['asistente_ventas', 'gerente_comercial', 'administracion']
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

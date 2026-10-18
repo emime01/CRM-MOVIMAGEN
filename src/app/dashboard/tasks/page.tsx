@@ -6,7 +6,7 @@ import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED = ['arte', 'operaciones', 'administracion', 'gerente_comercial']
+const ALLOWED = ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion']
 
 export default async function TasksPage() {
   const session = await getServerSession(authOptions)

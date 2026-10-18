@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { puede } from '@/lib/auth/roles'
+import { puede, haceAdministracion } from '@/lib/auth/roles'
 import { registrarCobroDeFactura } from '@/lib/ventas/cobrar'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!puede(session.user.rol, ['administracion'])) {
+  if (!haceAdministracion(session.user.rol)) {
     return NextResponse.json({ error: 'Sólo administración puede registrar el cobro' }, { status: 403 })
   }
 

@@ -20,7 +20,7 @@ const EDITABLE_FIELDS = [
   'condicion_pago_dias',
 ] as const
 
-const ADMIN_ROLES = ['asistente_ventas', 'gerente_comercial', 'administracion']
+const ADMIN_ROLES = ['asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion']
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)

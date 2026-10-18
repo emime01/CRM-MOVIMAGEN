@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export default async function CuentasPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion'])) {
     redirect('/dashboard')
   }
 

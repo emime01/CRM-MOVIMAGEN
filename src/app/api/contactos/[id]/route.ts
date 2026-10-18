@@ -11,7 +11,7 @@ const CONTACTO_FIELDS = [
   'cumple_dia', 'cumple_mes', 'notas', 'activo',
 ] as const
 
-const CONTACTO_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
+const CONTACTO_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion']
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)

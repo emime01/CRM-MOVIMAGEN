@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { es } from '@/lib/auth/roles'
+import { es, haceAdministracion, pagaAdministracion } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!es(session.user.rol, 'administracion')) {
+  if (!haceAdministracion(session.user.rol)) {
     return NextResponse.json({ error: 'Sólo Administración liquida comisiones' }, { status: 403 })
   }
 
@@ -26,6 +26,10 @@ export async function POST(req: NextRequest) {
   }
   if (!body.mes || !/^\d{4}-\d{2}$/.test(body.mes)) return NextResponse.json({ error: 'Mes inválido' }, { status: 400 })
   if (body.accion !== 'liquidar' && body.accion !== 'pagar') return NextResponse.json({ error: 'Acción inválida' }, { status: 400 })
+  // La asistente liquida (prepara); pagar lo marca Administración.
+  if (body.accion === 'pagar' && !pagaAdministracion(session.user.rol)) {
+    return NextResponse.json({ error: 'El pago de las comisiones lo registra Administración' }, { status: 403 })
+  }
 
   const ahora = new Date().toISOString()
   const [desde, hacia, updates] = body.accion === 'liquidar'

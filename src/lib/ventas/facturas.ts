@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { puede, es } from '@/lib/auth/roles'
+import { puede, es, haceAdministracion } from '@/lib/auth/roles'
 
 /**
  * Facturas de una venta.
@@ -154,6 +154,7 @@ export async function armarPlanDeFacturas(
 /** Ver las facturas: el vendedor de la venta, y los roles que ven todas. */
 export function puedeVerFacturas(rol: string | null | undefined, userId: string, vendedorId: string | null): boolean {
   if (puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) return true
+  if (haceAdministracion(rol)) return true
   return rol === 'vendedor' && vendedorId === userId
 }
 
@@ -168,5 +169,5 @@ export function puedePlanificar(rol: string | null | undefined, userId: string, 
 
 /** Emitir, cobrar, anular, notas de crédito y promesas de pago: Administración. */
 export function puedeAdministrarFacturas(rol: string | null | undefined): boolean {
-  return es(rol, 'administracion')
+  return haceAdministracion(rol)
 }

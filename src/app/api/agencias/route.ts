@@ -13,7 +13,7 @@ const CREATE_FIELDS = [
   'porcentaje_comision', 'porcentaje_comision_produccion', 'condicion_pago_dias',
 ] as const
 
-const CREATE_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
+const CREATE_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion']
 
 export const dynamic = 'force-dynamic'
 

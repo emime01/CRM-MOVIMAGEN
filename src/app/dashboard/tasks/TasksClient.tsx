@@ -96,7 +96,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
 
   const canSwitchRol = puede(userRol, ['administracion', 'gerente_comercial']) && areasDeTarea(userRol).length === 0
   // El rol mixto trabaja las tareas de operaciones, así que también puede moverlas.
-  const canAct = puede(userRol, ['arte', 'operaciones', 'administracion'])
+  const canAct = puede(userRol, ['arte', 'operaciones', 'administracion', 'asistente_administracion'])
 
   const fetchTasks = useCallback(async () => {
     setLoading(true)

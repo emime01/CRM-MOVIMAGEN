@@ -21,7 +21,7 @@ const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v)
 export default async function DeudoresPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!puede(session.user.rol, ['administracion', 'gerente_comercial'])) redirect('/dashboard')
+  if (!puede(session.user.rol, ['administracion', 'gerente_comercial', 'asistente_administracion'])) redirect('/dashboard')
   const supabase = createServerClient()
 
   const { data: facturas, error } = await supabase

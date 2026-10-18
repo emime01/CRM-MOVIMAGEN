@@ -262,7 +262,7 @@ export async function POST(req: NextRequest) {
     const { data: admins } = await supabase
       .from('perfiles')
       .select('id')
-      .in('rol', ['administracion', 'gerente_comercial'])
+      .in('rol', ['administracion', 'gerente_comercial', 'asistente_administracion'])
 
     for (const orden of deudasAntiguas ?? []) {
       const cli = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes

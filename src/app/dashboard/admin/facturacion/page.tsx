@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
-import { es } from '@/lib/auth/roles'
+import { es, haceAdministracion } from '@/lib/auth/roles'
 import { formatMoney, formatTotales, type TotalPorMoneda } from '@/lib/money'
 import { mesUY } from '@/lib/fechas'
 
@@ -32,7 +32,7 @@ type Fila = {
 export default async function FacturacionPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!es(session.user.rol, 'administracion')) redirect('/dashboard')
+  if (!haceAdministracion(session.user.rol)) redirect('/dashboard')
   const supabase = createServerClient()
 
   const CAMPOS = `id, orden_id, cuota, cuotas_total, mes_pauta, numero, fecha_emision, importe_total, moneda,

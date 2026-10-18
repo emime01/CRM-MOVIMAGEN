@@ -6,7 +6,7 @@ declare module "next-auth" {
       id: string
       email: string
       name: string
-      rol: "vendedor" | "asistente_ventas" | "gerente_comercial" | "operaciones" | "arte" | "administracion" | "asistente_ventas_ops"
+      rol: "vendedor" | "asistente_ventas" | "gerente_comercial" | "operaciones" | "arte" | "administracion" | "asistente_ventas_ops" | "admin_sistema" | "asistente_administracion"
     }
   }
 
@@ -14,7 +14,7 @@ declare module "next-auth" {
     id: string
     email: string
     name: string
-    rol: "vendedor" | "asistente_ventas" | "gerente_comercial" | "operaciones" | "arte" | "administracion" | "asistente_ventas_ops"
+    rol: "vendedor" | "asistente_ventas" | "gerente_comercial" | "operaciones" | "arte" | "administracion" | "asistente_ventas_ops" | "admin_sistema" | "asistente_administracion"
   }
 }
 

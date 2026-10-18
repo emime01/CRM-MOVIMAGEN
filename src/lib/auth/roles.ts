@@ -27,10 +27,23 @@ export const ROL_MIXTO = 'asistente_ventas_ops'
  */
 export const ROL_ADMIN_SISTEMA = 'admin_sistema'
 
+/**
+ * Asistente administrativa (Belén): hace el trabajo diario de
+ * Administración —factura, cobra, gestiona deudores, arma la liquidación de
+ * comisiones y de canon, lleva los gastos de tarjeta— pero no paga: marcar
+ * pagadas las comisiones y el canon es de Administración (Romina, Mauricio).
+ * Tampoco ve la configuración, el desempeño del equipo ni el catálogo.
+ *
+ * A diferencia del rol mixto, NO se expande a 'administracion': cada permiso
+ * suyo se da a mano con `haceAdministracion()`, para que nada de lo que
+ * Administración tiene le llegue sin querer.
+ */
+export const ROL_ASISTENTE_ADMIN = 'asistente_administracion'
+
 /** Todos los roles del negocio, que es lo que ejerce el administrador. */
 export const TODOS_LOS_ROLES = [
   'vendedor', 'asistente_ventas', 'operaciones', 'arte',
-  'gerente_comercial', 'administracion', ROL_MIXTO,
+  'gerente_comercial', 'administracion', ROL_MIXTO, ROL_ASISTENTE_ADMIN,
 ] as const
 
 /** Los roles que ejerce un perfil. El mixto vale por los dos. */
@@ -56,6 +69,7 @@ export function puede(rol: string | null | undefined, permitidos: readonly strin
  * trabaja las de ese área — el rol mixto trabaja las de operaciones.
  */
 export function atiendeTareasDe(rol: string | null | undefined, areaTarea: string): boolean {
+  if (areaTarea === 'administracion') return haceAdministracion(rol)
   return rolesDe(rol).includes(areaTarea)
 }
 
@@ -73,5 +87,24 @@ export function areasDeTarea(rol: string | null | undefined): string[] {
   // El administrador del sistema las ve todas, como gerencia: filtrarlo por
   // área lo dejaría viendo sólo una parte del tablero.
   if (esAdminSistema(rol)) return []
+  // La asistente administrativa trabaja los seguimientos de pago.
+  if (rol === ROL_ASISTENTE_ADMIN) return ['administracion']
   return rolesDe(rol).filter(r => r === 'arte' || r === 'operaciones')
+}
+
+/**
+ * El trabajo diario de Administración: facturar, cobrar, gestionar deudores,
+ * preparar comisiones y canon, gastos de tarjeta. Lo hacen Administración y
+ * la asistente administrativa.
+ */
+export function haceAdministracion(rol: string | null | undefined): boolean {
+  return es(rol, 'administracion') || es(rol, ROL_ASISTENTE_ADMIN)
+}
+
+/**
+ * Pagar: marcar pagadas las comisiones y el canon, y asignar bonos. Sólo
+ * Administración; la asistente prepara la información.
+ */
+export function pagaAdministracion(rol: string | null | undefined): boolean {
+  return es(rol, 'administracion')
 }
