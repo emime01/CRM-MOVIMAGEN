@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { es } from '@/lib/auth/roles'
+import { es, haceAdministracion, pagaAdministracion } from '@/lib/auth/roles'
 import { aPagar, cargarCanonDelMes, mesAnterior } from '@/lib/canon/calcular'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,7 @@ type Liquidacion = {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!es(session.user.rol, 'administracion')) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  if (!haceAdministracion(session.user.rol)) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const mes = req.nextUrl.searchParams.get('mes')
   if (!mesValido(mes)) return NextResponse.json({ error: 'Mes inválido' }, { status: 400 })
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!es(session.user.rol, 'administracion')) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  if (!haceAdministracion(session.user.rol)) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   let body: { shopping_id?: string; mes?: string; accion?: string; diferido?: unknown; fecha_pago?: unknown; notas?: unknown }
   try { body = await req.json() } catch {
@@ -119,6 +119,11 @@ export async function POST(req: NextRequest) {
   let fechaPago: string | null = actual?.fecha_pago ?? null
   let notas: string | null = actual?.notas ?? null
   if (typeof body.notas === 'string') notas = body.notas.trim() || null
+
+  // Pagar es de Administración: la asistente prepara la liquidación.
+  if ((body.accion === 'pagar' || body.accion === 'desmarcar_pago') && !pagaAdministracion(session.user.rol)) {
+    return NextResponse.json({ error: 'El pago del canon lo registra Administración' }, { status: 403 })
+  }
 
   switch (body.accion) {
     case 'diferir': {

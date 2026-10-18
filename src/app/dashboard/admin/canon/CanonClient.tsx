@@ -43,7 +43,12 @@ const ESTADO: Record<string, { bg: string; fg: string; label: string }> = {
   pagado:  { bg: 'rgba(21,128,61,0.12)', fg: '#15803d', label: 'Pagado' },
 }
 
-export default function CanonClient() {
+export default function CanonClient({ paga = true, configura = true }: {
+  /** Registrar el pago del canon: Administración. La asistente prepara. */
+  paga?: boolean
+  /** Cambiar % de canon, mínimos y soportes de cada shopping. */
+  configura?: boolean
+} = {}) {
   const [tab, setTab] = useState<'mes' | 'shoppings'>('mes')
 
   // ── Liquidación del mes ──
@@ -339,7 +344,7 @@ export default function CanonClient() {
                           {f.estado === 'cerrado' && (
                             <button disabled={ocupado} style={btn} onClick={() => accion(f.shopping.id, { accion: 'reabrir' })}>Reabrir</button>
                           )}
-                          {f.estado !== 'pagado' ? (
+                          {!paga ? null : f.estado !== 'pagado' ? (
                             <button disabled={ocupado} style={{ ...btn, background: '#15803d', color: '#fff', border: 'none' }} onClick={() => {
                               const fecha = prompt('Fecha de pago (AAAA-MM-DD)', hoy())
                               if (fecha) accion(f.shopping.id, { accion: 'pagar', fecha_pago: fecha })
@@ -369,12 +374,12 @@ export default function CanonClient() {
             <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
               Cada shopping con su % de canon, su canon mínimo mensual y sus soportes. Un circuito se asigna a todos los shoppings que recorre y su canon se reparte en partes iguales.
             </p>
-            <button
+            {configura && <button
               onClick={() => { setShowForm(true); setEditShopping(null); setFormNombre(''); setFormPct(''); setFormMinimo(''); setFormError('') }}
               style={{ ...btn, background: 'var(--orange)', color: '#fff', border: 'none' }}
             >
               <Plus size={14} /> Nuevo shopping
-            </button>
+            </button>}
           </div>
 
           {showForm && (
@@ -425,14 +430,14 @@ export default function CanonClient() {
                           mínimo {sh.canon_minimo ? formatMoney(Number(sh.canon_minimo), 'UYU') : '—'} · {misSoportes.length} soporte{misSoportes.length !== 1 ? 's' : ''}
                         </span>
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      {configura && <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setAssigningShopping(isAssigning ? null : sh)}
                           style={{ ...btn, background: isAssigning ? 'var(--orange)' : '#fff', color: isAssigning ? '#fff' : 'var(--text-secondary)' }}>
                           {isAssigning ? 'Cerrar' : 'Asignar soportes'}
                         </button>
                         <button onClick={() => { setEditShopping(sh); setFormNombre(sh.nombre); setFormPct(String(sh.porcentaje_canon)); setFormMinimo(String(sh.canon_minimo ?? '')); setShowForm(true) }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 6, color: 'var(--text-muted)' }}><Edit2 size={14} /></button>
                         <button onClick={() => deleteShopping(sh.id, sh.nombre)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 6, color: '#c82f2f' }}><Trash2 size={14} /></button>
-                      </div>
+                      </div>}
                     </div>
 
                     {misSoportes.length > 0 && !isAssigning && (

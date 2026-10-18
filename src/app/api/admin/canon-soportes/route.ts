@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { es } from '@/lib/auth/roles'
+import { es, haceAdministracion } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!es(session.user.rol, 'administracion')) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  if (!haceAdministracion(session.user.rol)) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const supabase = createServerClient()
   const { data, error } = await supabase.from('canon_soporte_shoppings').select('soporte_id, shopping_id, peso')

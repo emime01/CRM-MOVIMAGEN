@@ -55,6 +55,8 @@ export const dynamic = 'force-dynamic'
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  // La asistente administrativa no vende: su inicio es lo que hay que facturar.
+  if (session.user.rol === 'asistente_administracion') redirect('/dashboard/admin/facturacion')
 
   const supabase = createServerClient()
   const vendedorId = session.user.id

@@ -97,7 +97,7 @@ const sumar = (rows: { moneda: string }[], campo: (r: any) => number): TotalPorM
 type Tab = 'liquidacion' | 'agencias' | 'bonos'
 
 export default function ComisionesClient({
-  mes, cuatrimestre, cuatrimestres, comisiones, agencias, bonos, administra,
+  mes, cuatrimestre, cuatrimestres, comisiones, agencias, bonos, administra, paga = administra, asignaBonos = administra,
 }: {
   mes: string
   cuatrimestre: string
@@ -105,7 +105,11 @@ export default function ComisionesClient({
   comisiones: ComisionRow[]
   agencias: AgenciaRow[]
   bonos: BonoRow[]
+  /** Prepara la liquidación: liquida, cambia estados, liquida bonos. */
   administra: boolean
+  /** Registra pagos. La asistente administrativa prepara, no paga. */
+  paga?: boolean
+  asignaBonos?: boolean
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('liquidacion')
@@ -273,7 +277,7 @@ export default function ComisionesClient({
                         </td>
                         <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                           {administra && pend > 0 && <button onClick={() => liquidar('liquidar', v.id, v.nombre)} disabled={ocupado} style={btn}>Liquidar</button>}
-                          {administra && pend === 0 && liq > 0 && <button onClick={() => liquidar('pagar', v.id, v.nombre)} disabled={ocupado} style={{ ...btn, background: '#15803d', color: '#fff', border: 'none' }}>Marcar pagado</button>}
+                          {paga && pend === 0 && liq > 0 && <button onClick={() => liquidar('pagar', v.id, v.nombre)} disabled={ocupado} style={{ ...btn, background: '#15803d', color: '#fff', border: 'none' }}>Marcar pagado</button>}
                         </td>
                       </tr>
                     )
@@ -330,10 +334,10 @@ export default function ComisionesClient({
                           {c.tipo === 'venta' && <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 500 }}>{c.porcentaje.toLocaleString('es-UY')}% de {formatMoney(c.base, c.moneda)}</div>}
                         </td>
                         <td style={td}>
-                          {administra ? (
+                          {administra && (paga || c.estado !== 'pagada') ? (
                             <select value={c.estado} disabled={ocupado} onChange={ev => cambiarEstado(c.id, ev.target.value)}
                               style={{ background: e.bg, color: e.fg, border: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
-                              {Object.entries(ESTADO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                              {Object.entries(ESTADO).filter(([k]) => paga || k !== 'pagada').map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                             </select>
                           ) : (
                             <span style={{ background: e.bg, color: e.fg, borderRadius: 5, padding: '3px 8px', fontSize: 11, fontWeight: 700 }}>{e.label}</span>
@@ -348,6 +352,7 @@ export default function ComisionesClient({
           </div>
           <p style={nota}>
             La comisión se genera al registrar el cobro de cada factura: 6,75% del arrendamiento sin IVA, en el mes del cobro. La producción no comisiona. Una venta compartida se reparte mitad y mitad.
+            {administra && !paga && ' Vos dejás la liquidación lista; el pago lo registra Administración.'}
           </p>
         </>
       )}
@@ -425,9 +430,11 @@ export default function ComisionesClient({
                             <span style={{ fontSize: 11.5, fontWeight: 700, color: ESTADO[b.liquidado]?.fg }}>Bono {ESTADO[b.liquidado]?.label.toLowerCase()}</span>
                           ) : (
                             <>
-                              <button onClick={() => setEditBono({ vendedor_id: b.vendedor_id, monto: b.bono != null ? String(b.bono) : '' })} style={btn}>
-                                {b.bono != null ? 'Cambiar bono' : 'Asignar bono'}
-                              </button>
+                              {asignaBonos && (
+                                <button onClick={() => setEditBono({ vendedor_id: b.vendedor_id, monto: b.bono != null ? String(b.bono) : '' })} style={btn}>
+                                  {b.bono != null ? 'Cambiar bono' : 'Asignar bono'}
+                                </button>
+                              )}
                               {administra && b.bono != null && llego && (
                                 <button disabled={ocupado} onClick={() => llamar('/api/comisiones/bonos', { method: 'POST', body: JSON.stringify({ vendedor_id: b.vendedor_id, cuatrimestre }) },
                                   `¿Liquidar el bono de ${b.vendedor}? Entra en las comisiones de este mes.`)}

@@ -21,7 +21,7 @@ const CREATE_FIELDS = [
   'logo_url',
 ] as const
 
-const CREATE_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion']
+const CREATE_ROLES = ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion']
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)

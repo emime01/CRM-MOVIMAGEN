@@ -17,6 +17,7 @@ const ROL_LABELS: Record<string, string> = {
   operaciones: 'Operaciones',
   arte: 'Arte',
   administracion: 'Administracion',
+  asistente_administracion: 'Asistente administrativa',
 }
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
@@ -529,7 +530,7 @@ async function executeTool(name: string, input: Record<string, any>, supabase: R
     // Deudores redirige a cualquier otro rol y /api/cobranza lo exige. El
     // chat la entregaba a cualquiera que supiera preguntar.
     case 'consultar_deudores':
-      if (!puede(rol, ['administracion', 'gerente_comercial'])) {
+      if (!puede(rol, ['administracion', 'gerente_comercial', 'asistente_administracion'])) {
         return 'La cartera de deudores es información de administración. Pedísela a Belén o a Gonzalo.'
       }
       return runDeudores(supabase, input as any)

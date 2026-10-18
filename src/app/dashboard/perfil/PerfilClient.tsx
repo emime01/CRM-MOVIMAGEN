@@ -9,6 +9,7 @@ const ROL_LABELS: Record<string, string> = {
   asistente_ventas: 'Asistente de Ventas',
   asistente_ventas_ops: 'Asistente Ventas y Operaciones',
   admin_sistema: 'Administrador del sistema',
+  asistente_administracion: 'Asistente administrativa',
   gerente_comercial: 'Gerente Comercial',
   operaciones: 'Operaciones',
   arte: 'Arte',

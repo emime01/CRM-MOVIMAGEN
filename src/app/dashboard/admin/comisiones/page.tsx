@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
-import { es, puede } from '@/lib/auth/roles'
+import { es, puede, haceAdministracion, pagaAdministracion } from '@/lib/auth/roles'
 import { cuatrimestreDe, cuatrimestresCercanos, rangoCuatrimestre, vendidoEnCuatrimestre } from '@/lib/comisiones/bonos'
 import ComisionesClient, { type ComisionRow, type AgenciaRow, type BonoRow } from './ComisionesClient'
 import { mesUY } from '@/lib/fechas'
@@ -29,7 +29,7 @@ function finDeMes(mes: string): string {
 export default async function ComisionesPage({ searchParams }: { searchParams: { mes?: string; q?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!puede(session.user.rol, ['administracion', 'gerente_comercial'])) redirect('/dashboard')
+  if (!puede(session.user.rol, ['administracion', 'gerente_comercial', 'asistente_administracion'])) redirect('/dashboard')
   const supabase = createServerClient()
 
   const mes = searchParams.mes && /^\d{4}-\d{2}$/.test(searchParams.mes) ? searchParams.mes : mesUY()
@@ -153,7 +153,9 @@ export default async function ComisionesPage({ searchParams }: { searchParams: {
       comisiones={comisiones}
       agencias={agencias}
       bonos={bonosRows}
-      administra={es(session.user.rol, 'administracion')}
+      administra={haceAdministracion(session.user.rol)}
+      paga={pagaAdministracion(session.user.rol)}
+      asignaBonos={puede(session.user.rol, ['gerente_comercial', 'administracion'])}
     />
   )
 }
