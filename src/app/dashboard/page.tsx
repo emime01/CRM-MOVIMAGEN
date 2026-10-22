@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { TrendingUp, DollarSign, Target, Award, CheckCircle, XCircle } from 'lucide-react'
 import ApprovalButtons from '@/components/dashboard/ApprovalButtons'
 import SemaforoGestiones from '@/components/dashboard/SemaforoGestiones'
-import { puede } from '@/lib/auth/roles'
+import { puede, es } from '@/lib/auth/roles'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda } from '@/lib/money'
 
@@ -346,7 +346,8 @@ export default async function DashboardPage() {
       {/* Semáforo de gestiones */}
       {puede(rol, ['vendedor', 'asistente_ventas', 'gerente_comercial']) && (
         <div style={{ marginTop: 24 }}>
-          <SemaforoGestiones />
+          {/* El gerente arranca viendo las de todo el equipo; cada uno, las suyas. */}
+          <SemaforoGestiones verEquipo={es(rol, 'gerente_comercial')} />
         </div>
       )}
 
