@@ -27,17 +27,25 @@ function fmtDate(d: string) {
   return `${day}/${m}/${y}`
 }
 
-export default function SemaforoGestiones({ ventana = 14 }: { ventana?: number }) {
+export default function SemaforoGestiones({ ventana = 14, verEquipo = false }: {
+  ventana?: number
+  /** Gerencia: puede alternar entre sus gestiones y las de todo el equipo. */
+  verEquipo?: boolean
+}) {
+  const [alcance, setAlcance] = useState<'mias' | 'equipo'>(verEquipo ? 'equipo' : 'mias')
   const [items, setItems] = useState<Item[]>([])
   const [resumen, setResumen] = useState({ rojo: 0, amarillo: 0, verde: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/leads/proximas-gestiones?ventana=${ventana}`)
+    setLoading(true)
+    const params = new URLSearchParams({ ventana: String(ventana) })
+    if (alcance === 'equipo') params.set('vendedor', 'todos')
+    fetch(`/api/leads/proximas-gestiones?${params.toString()}`)
       .then(r => r.json())
       .then(d => { setItems(d.items ?? []); setResumen(d.resumen ?? { rojo: 0, amarillo: 0, verde: 0 }) })
       .finally(() => setLoading(false))
-  }, [ventana])
+  }, [ventana, alcance])
 
   const total = resumen.rojo + resumen.amarillo + resumen.verde
 
@@ -46,8 +54,23 @@ export default function SemaforoGestiones({ ventana = 14 }: { ventana?: number }
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Próximas gestiones</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Leads con seguimiento programado (próximos {ventana} días)</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            {alcance === 'equipo' ? 'Leads de todo el equipo' : 'Tus leads'} con seguimiento programado (próximos {ventana} días)
+          </div>
         </div>
+        {verEquipo && (
+          <div style={{ display: 'flex', gap: 2, background: '#f4f3f0', borderRadius: 7, padding: 2 }}>
+            {(['mias', 'equipo'] as const).map(a => (
+              <button key={a} onClick={() => setAlcance(a)} style={{
+                padding: '4px 10px', border: 'none', borderRadius: 5, cursor: 'pointer',
+                fontSize: 11, fontWeight: 700, fontFamily: 'Montserrat, sans-serif',
+                background: alcance === a ? '#fff' : 'transparent',
+                color: alcance === a ? '#1a1915' : '#6e6a62',
+                boxShadow: alcance === a ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+              }}>{a === 'mias' ? 'Mías' : 'Todo el equipo'}</button>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, fontSize: 11, fontWeight: 700 }}>
           {(['rojo', 'amarillo', 'verde'] as const).map(c => (
             <span key={c} style={{ padding: '3px 8px', borderRadius: 5, background: COLORES[c].bg, color: COLORES[c].dot, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -87,6 +110,9 @@ export default function SemaforoGestiones({ ventana = 14 }: { ventana?: number }
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {it.cliente ?? '—'}
                   </div>
+                  {alcance === 'equipo' && it.vendedor && (
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 1 }}>{it.vendedor}</div>
+                  )}
                   {it.nota_gestion && (
                     <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
                       {it.nota_gestion}
