@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { es } from '@/lib/auth/roles'
+import { puede } from '@/lib/auth/roles'
+import { hoyUY } from '@/lib/fechas'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,9 +15,9 @@ export const dynamic = 'force-dynamic'
  *   amarillo: proxima_gestion = hoy
  *   verde:   proxima_gestion > hoy y dentro de la ventana
  *
- * Default ventana: 14 días. Default scope: leads del usuario logueado
- * (vendedor o gerente sólo lo suyo); admin/gerente pueden pasar ?vendedor= para
- * filtrar otro vendedor.
+ * Default ventana: 14 días. Default scope: los leads del usuario logueado,
+ * sea cual sea su rol. Gerencia, asistente de ventas y Administración pueden
+ * pasar ?vendedor=<id> para ver los de otro, o ?vendedor=todos.
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -26,8 +27,9 @@ export async function GET(req: NextRequest) {
   const ventanaDias = Math.max(1, Math.min(60, Number(searchParams.get('ventana') ?? 14)))
   const vendedorFiltro = searchParams.get('vendedor')
 
-  const hoy = new Date().toISOString().slice(0, 10)
-  const limite = new Date(Date.now() + ventanaDias * 86400000).toISOString().slice(0, 10)
+  // Fechas en hora de Uruguay: en UTC, de noche "hoy" ya era mañana.
+  const hoy = hoyUY()
+  const limite = hoyUY(new Date(Date.now() + ventanaDias * 86400000))
 
   const supabase = createServerClient()
 
@@ -40,11 +42,18 @@ export async function GET(req: NextRequest) {
     .order('proxima_gestion', { ascending: true })
     .limit(50)
 
-  // Scope: vendedor solo ve los suyos; admin/gerente puede pasar vendedor
-  if (session.user.rol === 'vendedor') {
-    q = q.eq('vendedor_id', session.user.id)
-  } else if (vendedorFiltro) {
+  // Cada uno ve sus gestiones. Antes sólo se filtraba al rol vendedor, así
+  // que todos los demás (gerente, asistentes, operaciones, arte,
+  // Administración) veían en su inicio las de todos los vendedores —en la
+  // práctica, las de Fabián—. Ver las de otro es a pedido y sólo para
+  // quienes supervisan.
+  const supervisa = puede(session.user.rol, ['gerente_comercial', 'asistente_ventas', 'administracion'])
+  if (supervisa && vendedorFiltro === 'todos') {
+    // sin filtro
+  } else if (supervisa && vendedorFiltro) {
     q = q.eq('vendedor_id', vendedorFiltro)
+  } else {
+    q = q.eq('vendedor_id', session.user.id)
   }
 
   const { data, error } = await q
