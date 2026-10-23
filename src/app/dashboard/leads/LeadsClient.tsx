@@ -863,7 +863,7 @@ function LeadCard({
 
       {/* Agendar button */}
       <Link
-        href={`/dashboard/agenda?lead=${lead.id}`}
+        href={`/dashboard/calendario?lead=${lead.id}`}
         onClick={e => e.stopPropagation()}
         title="Agendar evento en Calendar"
         style={{
