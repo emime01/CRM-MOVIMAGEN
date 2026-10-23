@@ -80,8 +80,8 @@ export async function createEvent(
   const body = {
     summary: event.summary,
     description: event.description ?? '',
-    start: { dateTime: event.start, timeZone: 'America/Argentina/Buenos_Aires' },
-    end: { dateTime: event.end, timeZone: 'America/Argentina/Buenos_Aires' },
+    start: { dateTime: event.start, timeZone: 'America/Montevideo' },
+    end: { dateTime: event.end, timeZone: 'America/Montevideo' },
     colorId,
     extendedProperties: {
       private: {
@@ -115,8 +115,8 @@ export async function updateEvent(
   const body: Record<string, unknown> = {}
   if (patch.summary) body.summary = patch.summary
   if (patch.description !== undefined) body.description = patch.description
-  if (patch.start) body.start = { dateTime: patch.start, timeZone: 'America/Argentina/Buenos_Aires' }
-  if (patch.end) body.end = { dateTime: patch.end, timeZone: 'America/Argentina/Buenos_Aires' }
+  if (patch.start) body.start = { dateTime: patch.start, timeZone: 'America/Montevideo' }
+  if (patch.end) body.end = { dateTime: patch.end, timeZone: 'America/Montevideo' }
   const res = await fetch(`${CALENDAR_BASE}/calendars/primary/events/${encodeURIComponent(eventId)}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },

@@ -2,25 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { refreshAccessToken } from '@/lib/gmail'
+import { tokenDeGoogle } from '@/lib/google-token'
 import { deleteEvent, updateEvent } from '@/lib/calendar'
 
-async function getValidToken(userId: string) {
-  const supabase = createServerClient()
-  const { data: row } = await supabase.from('google_tokens').select('*').eq('user_id', userId).single()
-  if (!row) return null
-  let accessToken = row.access_token
-  if (new Date(row.expires_at) <= new Date()) {
-    const refreshed = await refreshAccessToken(row.refresh_token)
-    accessToken = refreshed.access_token
-    await supabase.from('google_tokens').update({
-      access_token: accessToken,
-      expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq('user_id', userId)
-  }
-  return accessToken
-}
+const getValidToken = (userId: string) => tokenDeGoogle(createServerClient(), userId)
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)

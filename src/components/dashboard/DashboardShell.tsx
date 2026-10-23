@@ -103,13 +103,12 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/cotizaciones', label: 'Cotizaciones', icon: <ClipboardList size={16} />, roles: ['vendedor', 'asistente_ventas'] },
   { href: '/dashboard/disponibilidad', label: 'Disponibilidad', icon: <Calendar size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'administracion'] },
   { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'asistente_administracion'] },
-  { href: '/dashboard/agenda', label: 'Agenda', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/reportes', label: 'Reportes', icon: <BarChart2 size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
   { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion'] },
   { href: '/dashboard/gerente', label: 'Mi Equipo', icon: <Users size={16} />, roles: ['gerente_comercial', 'administracion'] },
   { href: '/dashboard/gerente/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['asistente_ventas'] },
   { href: '/dashboard/tasks', label: 'Tareas', icon: <ClipboardList size={16} />, roles: ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion'] },
-  { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion'] },
+  { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
   // La pantalla existía pero no estaba en el menú ni enlazada desde ningún
   // lado: operaciones sólo llegaba escribiendo la URL.
   { href: '/dashboard/oic', label: 'Producción', icon: <Factory size={16} />, roles: ['operaciones'] },
@@ -133,7 +132,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/ventas/nueva': 'Nueva Orden',
   '/dashboard/leads': 'Leads',
   '/dashboard/disponibilidad': 'Disponibilidad',
-  '/dashboard/agenda': 'Agenda',
   '/dashboard/reportes': 'Reportes',
   '/dashboard/cuentas': 'Cuentas',
   '/dashboard/gerente': 'Mi Equipo',
