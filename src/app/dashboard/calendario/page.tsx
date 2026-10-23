@@ -147,7 +147,8 @@ export default async function CalendarioPage() {
   }
 
   const vendedores = ((equipoRes.data ?? []) as { id: string; nombre: string; rol: string }[])
-    .filter(p => ['vendedor', 'asistente_ventas', 'asistente_ventas_ops'].includes(p.rol))
+    // Los vendedores (no la asistente, ni los perfiles de prueba automática).
+    .filter(p => p.rol === 'vendedor' && !p.nombre.startsWith('[PRUEBA]'))
     .map(p => ({ id: p.id, nombre: p.nombre }))
 
   // Leads propios, para asociar un evento nuevo.
