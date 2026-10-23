@@ -8,8 +8,14 @@ import { listEvents } from '@/lib/calendar'
 
 export const dynamic = 'force-dynamic'
 
-/** Quiénes forman el equipo comercial, cuyos calendarios ve el gerente. */
-const ROLES_EQUIPO = ['vendedor', 'asistente_ventas', 'asistente_ventas_ops']
+/**
+ * Los vendedores, cuyos calendarios ve el gerente. La asistente de ventas
+ * (Magaly) no vende: no entra en el equipo de vendedores.
+ */
+const ROLES_EQUIPO = ['vendedor']
+
+/** Los perfiles de prueba automática no son personas del equipo. */
+const esDePrueba = (nombre: string | null) => (nombre ?? '').startsWith('[PRUEBA]')
 
 /**
  * GET /api/calendar/equipo?from=ISO&to=ISO
@@ -42,7 +48,7 @@ export async function GET(req: NextRequest) {
 
   const sinConectar: string[] = []
   const conError: string[] = []
-  const porPersona = await Promise.all((equipo ?? []).map(async p => {
+  const porPersona = await Promise.all((equipo ?? []).filter(p => !esDePrueba(p.nombre)).map(async p => {
     try {
       const token = await tokenDeGoogle(supabase, p.id)
       if (!token) { sinConectar.push(p.nombre); return [] }
