@@ -51,14 +51,6 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
 
-  // Un vendedor sólo ve sus ventas y las que comparte.
-  if (session.user.rol === 'vendedor') {
-    const titular = (Array.isArray(data.vendedor) ? data.vendedor[0] : data.vendedor) as { id?: string } | null
-    if (titular?.id !== session.user.id && (data as { vendedor_compartido_id?: string | null }).vendedor_compartido_id !== session.user.id) {
-      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
-    }
-  }
-
   return NextResponse.json(data)
 }
 

@@ -75,6 +75,9 @@ export default function FacturacionVenta({
   const [puedeAdministrar, setPuedeAdministrar] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Las ventas las ven todos, pero las cuotas y cobros sólo su vendedor y
+  // los roles que las manejan: a los demás no se les muestra la sección.
+  const [sinAcceso, setSinAcceso] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const [modal, setModal] = useState<Modal>(null)
   const [form, setForm] = useState<Record<string, string>>({})
@@ -85,6 +88,7 @@ export default function FacturacionVenta({
     setError(null)
     const res = await fetch(`/api/ordenes/${ordenId}/facturas`)
     const data = await res.json().catch(() => null)
+    if (res.status === 403) { setSinAcceso(true); setCargando(false); return }
     if (!res.ok) { setError(data?.error ?? 'No se pudieron cargar las facturas'); setCargando(false); return }
     setFacturas(data.facturas ?? [])
     setCondicion(data.condicion_pago_dias ?? 60)
@@ -183,6 +187,8 @@ export default function FacturacionVenta({
   const sumaCuotas = vivas.reduce((s, f) => s + Number(f.importe_total), 0)
   const diferencia = montoTotal != null ? Math.round((Number(montoTotal) - sumaCuotas) * 100) / 100 : 0
   const hayEmitidas = facturas.some(f => f.tipo === 'factura' && (f.estado === 'emitida' || f.estado === 'cobrada'))
+
+  if (sinAcceso) return null
 
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
