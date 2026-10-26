@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA, altaEfectiva, bajaEfectiva } from '@/lib/ventas/asignar-buses'
 import BusesClient from './BusesClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,9 @@ export const dynamic = 'force-dynamic'
 export default async function BusesPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  // Como en el menú: operaciones (y el rol mixto), Administración y gerencia.
+  // Antes no se chequeaba y cualquiera la abría escribiendo la dirección.
+  if (!puede(session.user.rol, ['operaciones', 'administracion', 'gerente_comercial'])) redirect('/dashboard')
 
   const supabase = createServerClient()
 
