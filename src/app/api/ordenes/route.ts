@@ -93,10 +93,14 @@ export async function POST(req: NextRequest) {
   const puedeAsignar = puede(session.user.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
   const vendedorId = puedeAsignar ? (body.asignadoAId || session.user.id) : session.user.id
 
-  const montoTotal = (body.items ?? []).reduce((sum, item) => {
+  const montoNeto = Math.round((body.items ?? []).reduce((sum, item) => {
     const lineTotal = item.precioUnitario * item.cantidad * item.semanas * (1 - (item.descuentoPct ?? 0) / 100)
     return sum + lineTotal
-  }, 0)
+  }, 0) * 100) / 100
+  // El total lleva IVA, como el que muestra el formulario y como el de una
+  // venta que viene de cotización. Antes se guardaba el neto como total y
+  // las cuotas se facturaban 22% por debajo.
+  const montoTotal = Math.round(montoNeto * 1.22 * 100) / 100
 
   const { data: orden, error: ordenError } = await supabase
     .from('ordenes_venta')
@@ -117,11 +121,11 @@ export async function POST(req: NextRequest) {
       moneda: body.moneda,
       estado: body.estado,
       monto_total: montoTotal,
-      // Acá las líneas ya vienen sin IVA, así que el total es el neto.
-      monto_neto: montoTotal,
+      // Las líneas vienen sin IVA: el neto es su suma.
+      monto_neto: montoNeto,
       // La carga manual no tiene producción con precio: las líneas son todo
       // arrendamiento sin IVA.
-      monto_arrendamiento: montoTotal,
+      monto_arrendamiento: montoNeto,
       monto_produccion: 0,
       fecha_alta_prevista: body.fechaAltaPrevista || null,
       fecha_baja_prevista: body.fechaBajaPrevista || null,

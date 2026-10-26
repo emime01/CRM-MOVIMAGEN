@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede, es } from '@/lib/auth/roles'
+import { proximoNumeroCotizacion } from '@/lib/cotizaciones/numero'
 
 // GET /api/propuestas?lead_id=&estado=
 export async function GET(req: NextRequest) {
@@ -79,8 +80,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Auto-generate numero
-  const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
-  const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
+  const numero = await proximoNumeroCotizacion(supabase)
 
   const { data, error } = await supabase
     .from('propuestas')

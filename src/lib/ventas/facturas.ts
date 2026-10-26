@@ -151,11 +151,16 @@ export async function armarPlanDeFacturas(
 // ── Quién puede qué ─────────────────────────────────────────────────────────
 
 
-/** Ver las facturas: el vendedor de la venta, y los roles que ven todas. */
-export function puedeVerFacturas(rol: string | null | undefined, userId: string, vendedorId: string | null): boolean {
+/**
+ * Ver las facturas: el vendedor de la venta (y con quien la comparte, que
+ * cobra la mitad de la comisión), y los roles que ven todas.
+ */
+export function puedeVerFacturas(
+  rol: string | null | undefined, userId: string, vendedorId: string | null, compartidoId: string | null = null,
+): boolean {
   if (puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) return true
   if (haceAdministracion(rol)) return true
-  return rol === 'vendedor' && vendedorId === userId
+  return rol === 'vendedor' && (vendedorId === userId || compartidoId === userId)
 }
 
 /**
@@ -164,6 +169,7 @@ export function puedeVerFacturas(rol: string | null | undefined, userId: string,
  * acompaña.
  */
 export function puedePlanificar(rol: string | null | undefined, userId: string, vendedorId: string | null): boolean {
+  // Sólo el titular: con quien se comparte la ve, pero no le cambia el plan.
   return puedeVerFacturas(rol, userId, vendedorId)
 }
 

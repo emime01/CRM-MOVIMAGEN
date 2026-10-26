@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { proximoNumeroCotizacion } from '@/lib/cotizaciones/numero'
 
 /**
  * POST /api/propuestas/[id]/duplicar
@@ -36,8 +37,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Sin permisos sobre esa cotización' }, { status: 403 })
   }
 
-  const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
-  const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
+  const numero = await proximoNumeroCotizacion(supabase)
 
   const { data: nueva, error } = await supabase
     .from('propuestas')

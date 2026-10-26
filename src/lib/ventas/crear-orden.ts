@@ -66,18 +66,6 @@ export async function crearOrdenDesdePropuesta(
     if (ag?.condicion_pago_dias != null) condicionPagoDias = ag.condicion_pago_dias
   }
 
-  // Siguiente número vía secuencia Postgres (atómico, sin race).
-  // Si la secuencia todavía no existe (migración v17 no aplicada), fallback
-  // al patrón max+1 — pero con riesgo de race.
-  let siguienteNumero: number
-  const { data: seqRow, error: seqErr } = await supabase.rpc('nextval', { seq: 'ordenes_venta_numero_seq' }).single<number>()
-  if (!seqErr && typeof seqRow === 'number') {
-    siguienteNumero = seqRow
-  } else {
-    const { data: ordenSeq } = await supabase.from('ordenes_venta').select('numero').order('numero', { ascending: false }).limit(1).maybeSingle()
-    siguienteNumero = ((ordenSeq?.numero ?? 0) as number) + 1
-  }
-
   const { data: orden, error: ordenErr } = await supabase
     .from('ordenes_venta')
     .insert({
@@ -92,7 +80,10 @@ export async function crearOrdenDesdePropuesta(
       marca:                propuesta.marca ?? null,
       campana:              propuesta.campana ?? null,
       vendedor_id:          propuesta.vendedor_id ?? userId,
-      numero:               siguienteNumero,
+      // El número lo pone la base (el mismo contador que usa la venta cargada
+      // a mano). Antes se pedía a una función `nextval` que no existe y caía
+      // en max+1, que corre aparte del contador: una venta desde cotización
+      // y una manual podían salir con el mismo número.
       estado:               ESTADO_INICIAL,
       moneda:               propuesta.moneda ?? 'UYU',
       monto_total:          propuesta.monto_total ?? null,
