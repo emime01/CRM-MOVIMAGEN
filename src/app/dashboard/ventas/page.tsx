@@ -12,7 +12,7 @@ export default async function VentasPage() {
 
   const supabase = createServerClient()
 
-  const { data: ordenes } = await supabase
+  let query = supabase
     .from('ordenes_venta')
     .select(`
       id, numero, monto_total, moneda, estado, created_at,
@@ -22,6 +22,12 @@ export default async function VentasPage() {
     `)
     .order('created_at', { ascending: false })
     .limit(200)
+  // El vendedor ve sus ventas y las que comparte, como pasa con sus leads y
+  // cotizaciones. Antes veía las de todos los vendedores.
+  if (session.user.rol === 'vendedor') {
+    query = query.or(`vendedor_id.eq.${session.user.id},vendedor_compartido_id.eq.${session.user.id}`)
+  }
+  const { data: ordenes } = await query
 
   return <VentasClient ordenes={ordenes ?? []} userRol={session.user.rol} userId={session.user.id} />
 }

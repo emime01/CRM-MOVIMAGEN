@@ -49,6 +49,13 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
 
   if (!orden) notFound()
 
+  // Un vendedor sólo abre sus ventas y las que comparte.
+  if (session.user.rol === 'vendedor') {
+    const titular = (Array.isArray(orden.perfiles) ? orden.perfiles[0] : orden.perfiles) as { id?: string } | null
+    const compartido = (Array.isArray(orden.compartido) ? orden.compartido[0] : orden.compartido) as { id?: string } | null
+    if (titular?.id !== session.user.id && compartido?.id !== session.user.id) notFound()
+  }
+
   const userId = (session.user as { id: string }).id
   const { data: tokenRow } = await supabase
     .from('google_tokens')

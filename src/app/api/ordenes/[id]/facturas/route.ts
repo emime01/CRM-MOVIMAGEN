@@ -17,7 +17,7 @@ const CAMPOS = `id, orden_id, cuota, cuotas_total, mes_pauta, tipo, estado, nume
 async function cargarOrden(supabase: ReturnType<typeof createServerClient>, id: string) {
   const { data, error } = await supabase
     .from('ordenes_venta')
-    .select('id, vendedor_id, moneda, condicion_pago_dias, estado')
+    .select('id, vendedor_id, vendedor_compartido_id, moneda, condicion_pago_dias, estado')
     .eq('id', id)
     .maybeSingle()
   return { orden: data, error }
@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { orden, error } = await cargarOrden(supabase, params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!orden) return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
-  if (!puedeVerFacturas(session.user.rol, session.user.id, orden.vendedor_id)) {
+  if (!puedeVerFacturas(session.user.rol, session.user.id, orden.vendedor_id, orden.vendedor_compartido_id)) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
@@ -146,7 +146,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         estado: 'emitida',
         numero,
         fecha_emision: fecha,
-        importe_arrendamiento: neg(body.importe_arrendamiento),
+        // Sin dato, el arrendamiento es el total sin IVA menos la producción
+        // (como precarga la pantalla): con 0, la nota no restaba del canon.
+        importe_arrendamiento: body.importe_arrendamiento === undefined || body.importe_arrendamiento === null || body.importe_arrendamiento === ''
+          ? neg(Math.round((Math.abs(total) / 1.22 - Math.abs(Number(body.importe_produccion) || 0)) * 100) / 100)
+          : neg(body.importe_arrendamiento),
         importe_produccion: neg(body.importe_produccion),
         importe_total: neg(total),
         moneda: orden.moneda ?? 'UYU',

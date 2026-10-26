@@ -589,8 +589,7 @@ const handler = createMcpHandler(
         const prod = plan.reduce((s, p) => s + p.calc.prod, 0)
 
         // Numeración
-        const { data: seqRow } = await supabase.rpc('nextval', { seq: 'propuestas_numero_seq' }).single()
-        const numero = `COT-${String((seqRow as any) ?? Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`
+        const numero = await proximoNumeroCotizacion(supabase)
 
         const { data: propuesta, error } = await supabase
           .from('propuestas')
@@ -1061,6 +1060,7 @@ const handler = createMcpHandler(
 
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { proximoNumeroCotizacion } from '@/lib/cotizaciones/numero'
 
 function safeEq(a: string, b: string): boolean {
   // timingSafeEqual requiere longitudes iguales; si difieren igual queremos
