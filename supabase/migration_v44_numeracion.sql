@@ -29,5 +29,7 @@ language sql security definer set search_path = public as $$
   select nextval('propuestas_numero_seq')
 $$;
 
-revoke all on function siguiente_numero_cotizacion() from public;
+-- Supabase le da permiso a anon y authenticated por defecto: se le saca,
+-- sólo el servidor del CRM pide números.
+revoke all on function siguiente_numero_cotizacion() from public, anon, authenticated;
 grant execute on function siguiente_numero_cotizacion() to service_role;
