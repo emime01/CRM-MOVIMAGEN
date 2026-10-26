@@ -19,6 +19,8 @@ function getCurrentQuarter() {
 export default async function ReportesPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  // Como en el menú: el área comercial y Administración.
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) redirect('/dashboard')
   const supabase = createServerClient()
   const q = getCurrentQuarter()
   const isGerente = puede(session.user.rol, ['gerente_comercial', 'administracion'])
