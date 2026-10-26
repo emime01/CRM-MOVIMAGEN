@@ -22,11 +22,10 @@ export default async function VentasPage() {
     `)
     .order('created_at', { ascending: false })
     .limit(200)
-  // El vendedor ve sus ventas y las que comparte, como pasa con sus leads y
-  // cotizaciones. Antes veía las de todos los vendedores.
-  if (session.user.rol === 'vendedor') {
-    query = query.or(`vendedor_id.eq.${session.user.id},vendedor_compartido_id.eq.${session.user.id}`)
-  }
+  // Las ventas las ven todos, a propósito: es información que el equipo
+  // necesita (qué se vendió, a quién, en qué soportes). Lo que es de cada
+  // vendedor son sus leads y cotizaciones; y las cuotas y cobros de una venta
+  // los ve sólo su vendedor (ver puedeVerFacturas).
   const { data: ordenes } = await query
 
   return <VentasClient ordenes={ordenes ?? []} userRol={session.user.rol} userId={session.user.id} />
