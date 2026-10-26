@@ -43,7 +43,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       orden_documentos(id, nombre, url, tipo, created_at)
     `)
     .eq('id', params.id)
-    .single()
+    .maybeSingle()
 
   // El error de PostgREST se devolvía como 404 "Orden no encontrada", así que
   // una consulta mal armada parecía una orden inexistente. Los dos embeds a

@@ -13,3 +13,6 @@ CREATE TABLE IF NOT EXISTS notificaciones (
 
 CREATE INDEX IF NOT EXISTS idx_notificaciones_user_leida
   ON notificaciones(user_id, leida, created_at DESC);
+
+-- El CRM la usa desde el servidor; nadie la lee directo.
+ALTER TABLE notificaciones ENABLE ROW LEVEL SECURITY;
