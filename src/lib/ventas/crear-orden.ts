@@ -13,7 +13,7 @@ import { armarPlanDeFacturas, CONDICION_PAGO_POR_DEFECTO } from './facturas'
 function flagsPorTipo(tipo: string | null): { requiere_grabado: boolean; requiere_produccion: boolean } {
   if (!tipo) return { requiere_grabado: false, requiere_produccion: false }
   const digital = ['led', 'banner_shopping', 'circuito'].includes(tipo)
-  const impreso = ['estatico_bus', 'estatico_shopping', 'medianera'].includes(tipo)
+  const impreso = ['estatico_bus', 'estatico_shopping', 'medianera', 'rutero'].includes(tipo)
   return { requiere_grabado: digital, requiere_produccion: impreso }
 }
 
