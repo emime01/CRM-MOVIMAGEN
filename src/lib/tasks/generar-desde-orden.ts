@@ -58,7 +58,7 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
 
     const base = `OIC #${ordenNumero} · ${clienteNombre} · ${soporteName}`
 
-    if (tipoCot === 'estatico_bus' || tipoCot === 'estatico_shopping' || tipoCot === 'medianera') {
+    if (tipoCot === 'estatico_bus' || tipoCot === 'estatico_shopping' || tipoCot === 'medianera' || tipoCot === 'rutero') {
       toCreate.push({ tipo: 'arte_muestra_color',        asignado_a_rol: 'arte',        orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Muestra color — ${base}`, fecha_limite: fechaAlta })
       toCreate.push({ tipo: 'ops_producir_impresos',     asignado_a_rol: 'operaciones', orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Producir impreso — ${base}`, fecha_limite: fechaAlta })
     } else if (tipoCot === 'led' || tipoCot === 'banner_shopping' || tipoCot === 'circuito') {

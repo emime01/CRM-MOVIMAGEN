@@ -101,7 +101,7 @@ const CAT_COLORS: Record<string, string> = {
 const isLed      = (s: Soporte) => s.tipo_cotizador === 'led'
 const isCircuito = (s: Soporte) => s.tipo_cotizador === 'circuito'
 const isDigital  = (s: Soporte) => isLed(s) || isCircuito(s)
-const hasCantidad = (s: Soporte) => ['estatico_bus', 'banner_shopping', 'estatico_shopping', 'medianera'].includes(s.tipo_cotizador ?? '')
+const hasCantidad = (s: Soporte) => ['estatico_bus', 'banner_shopping', 'estatico_shopping', 'medianera', 'rutero'].includes(s.tipo_cotizador ?? '')
 const displayCat = (s: Soporte) => s.seccion || s.categoria
 
 function getSemanasFromDates(inicio: string | null, fin: string | null): number {

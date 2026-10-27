@@ -38,7 +38,7 @@ interface Props {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CATEGORIAS = ['Shopping', 'Digital', 'Exterior', 'Bus', 'Otro']
-const TIPOS = ['estatico_shopping', 'banner_shopping', 'circuito', 'medianera', 'led', 'estatico_bus', 'otro']
+const TIPOS = ['estatico_shopping', 'banner_shopping', 'circuito', 'medianera', 'rutero', 'led', 'estatico_bus', 'otro']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
