@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede, atiendeTareasDe, areasDeTarea, es } from '@/lib/auth/roles'
 import { espaciosQueOcupa } from '@/lib/disponibilidad/espacios'
+import { esImpuestoMTOP } from '@/lib/cotizador/calcular'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -522,7 +523,7 @@ const handler = createMcpHandler(
         `   ${cantidad} unidad(es) × ${calc.sem} semana(s)${salidas ? ` · ${salidas} salidas/h` : ''}\n` +
         `   Arrendamiento ${f(calc.arr)}${calc.ivaArr ? ` + IVA ${f(calc.ivaArr)}` : ' (exento)'}` +
         `${calc.prod ? ` · Producción ${f(calc.prod)} + IVA ${f(calc.ivaProd)}` : ''}` +
-        `${calc.mun ? ` · Municipales ${f(calc.mun)}` : ''}\n` +
+        `${calc.mun ? ` · ${esImpuestoMTOP(soporte.tipo_cotizador) ? 'Impuesto MTOP' : 'Municipales'} ${f(calc.mun)}` : ''}\n` +
         `   Subtotal ${f(calc.tot)}${calc.imp ? ` · ${calc.imp.toLocaleString('es-UY')} impactos · CPM ${f(calc.cpm)}` : ''}`,
       )
       const tot = plan.reduce((s, p) => s + p.calc.tot, 0)

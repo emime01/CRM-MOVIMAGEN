@@ -4,9 +4,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * Genera las tareas automáticas para arte y operaciones cuando una OIC se aprueba.
  *
  * Reglas:
- *   - Item con tipo_cotizador en (estatico_bus, estatico_shopping, medianera)
+ *   - Item con tipo_cotizador en (estatico_bus, estatico_shopping, medianera,
+ *     rutero, banner_shopping) — los banners de shopping son lonas impresas
  *       → arte_muestra_color  + ops_producir_impresos    (deadline: fecha_alta)
- *   - Item con tipo_cotizador en (led, banner_shopping, circuito)
+ *   - Item con tipo_cotizador en (led, circuito)
  *       → arte_chequear_material_digital                  (deadline: fecha_alta)
  *   - Siempre por ítem → ops_crear_comprobante           (deadline: fecha_baja)
  *   - Si la OIC tiene al menos un soporte tipo bus       → ops_asignar_buses  (uno por OIC)
@@ -58,10 +59,10 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
 
     const base = `OIC #${ordenNumero} · ${clienteNombre} · ${soporteName}`
 
-    if (tipoCot === 'estatico_bus' || tipoCot === 'estatico_shopping' || tipoCot === 'medianera' || tipoCot === 'rutero') {
+    if (tipoCot === 'estatico_bus' || tipoCot === 'estatico_shopping' || tipoCot === 'medianera' || tipoCot === 'rutero' || tipoCot === 'banner_shopping') {
       toCreate.push({ tipo: 'arte_muestra_color',        asignado_a_rol: 'arte',        orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Muestra color — ${base}`, fecha_limite: fechaAlta })
       toCreate.push({ tipo: 'ops_producir_impresos',     asignado_a_rol: 'operaciones', orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Producir impreso — ${base}`, fecha_limite: fechaAlta })
-    } else if (tipoCot === 'led' || tipoCot === 'banner_shopping' || tipoCot === 'circuito') {
+    } else if (tipoCot === 'led' || tipoCot === 'circuito') {
       toCreate.push({ tipo: 'arte_chequear_material_digital', asignado_a_rol: 'arte',  orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Chequear materiales digitales — ${base}`, fecha_limite: fechaAlta })
     }
 
