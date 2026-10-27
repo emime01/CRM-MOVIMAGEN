@@ -12,8 +12,8 @@ import { armarPlanDeFacturas, CONDICION_PAGO_POR_DEFECTO } from './facturas'
 /** Mapeo de tipo_cotizador → qué necesita el ítem antes de salir al aire. */
 function flagsPorTipo(tipo: string | null): { requiere_grabado: boolean; requiere_produccion: boolean } {
   if (!tipo) return { requiere_grabado: false, requiere_produccion: false }
-  const digital = ['led', 'banner_shopping', 'circuito'].includes(tipo)
-  const impreso = ['estatico_bus', 'estatico_shopping', 'medianera', 'rutero'].includes(tipo)
+  const digital = ['led', 'circuito'].includes(tipo)
+  const impreso = ['estatico_bus', 'estatico_shopping', 'medianera', 'rutero', 'banner_shopping'].includes(tipo)
   return { requiere_grabado: digital, requiere_produccion: impreso }
 }
 

@@ -8,6 +8,15 @@
 export const IVA_RATE = 0.22
 export const HORAS_MES = 4.33 // semanas por mes para prorratear impactos
 
+/**
+ * Qué impuesto es `impuestos_municipales` según el soporte: los ruteros pagan
+ * el del MTOP (están sobre rutas nacionales); pantallas y medianeras, el
+ * municipal. El monto se guarda en la misma columna; cambia sólo el nombre.
+ */
+export const esImpuestoMTOP = (tipoCotizador: string | null | undefined) => tipoCotizador === 'rutero'
+export const etiquetaImpuesto = (tipoCotizador: string | null | undefined) =>
+  esImpuestoMTOP(tipoCotizador) ? 'Imp. MTOP' : 'Imp. Mun.'
+
 export interface SoportePrecio {
   id: string
   nombre: string
@@ -34,7 +43,7 @@ export interface CalcResultado {
   ivaArr: number   // IVA sobre arrendamiento (si gravado)
   prod: number     // producción
   ivaProd: number  // IVA sobre producción (siempre)
-  mun: number      // impuestos municipales
+  mun: number      // impuestos municipales (o MTOP en ruteros)
   imp: number      // impactos totales
   tot: number      // total con impuestos
   mul: number      // multiplicador por salidas

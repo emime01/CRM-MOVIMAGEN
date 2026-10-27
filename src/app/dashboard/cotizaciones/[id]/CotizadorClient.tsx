@@ -12,6 +12,7 @@ import {
   Tooltip, LineChart, Line, Legend, CartesianGrid,
 } from 'recharts'
 import { puede } from '@/lib/auth/roles'
+import { esImpuestoMTOP, etiquetaImpuesto } from '@/lib/cotizador/calcular'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -354,12 +355,14 @@ export default function CotizadorClient({
   const calcs = useMemo(() => plan.map(it => ({ item: it, c: calcItem(it) })), [plan])
 
   const totals = useMemo(() => {
-    const acc = { arr: 0, iva: 0, prod: 0, mun: 0, imp: 0, tot: 0 }
-    calcs.forEach(({ c }) => {
+    // Municipales (pantallas, medianeras) y MTOP (ruteros) van por separado.
+    const acc = { arr: 0, iva: 0, prod: 0, mun: 0, mtop: 0, imp: 0, tot: 0 }
+    calcs.forEach(({ item, c }) => {
       acc.arr  += c.arr
       acc.iva  += c.ivaArr
       acc.prod += c.prod + c.ivaProd
-      acc.mun  += c.mun
+      if (esImpuestoMTOP(item.soporte.tipo_cotizador)) acc.mtop += c.mun
+      else acc.mun += c.mun
       acc.imp  += c.imp
       acc.tot  += c.tot
     })
@@ -493,7 +496,7 @@ export default function CotizadorClient({
       // producción y los impuestos municipales ya vienen sin IVA (ivaArr e
       // ivaProd se suman aparte), así que el neto es la suma de los tres. La
       // fórmula anterior le restaba IVA a la producción, que no lo tenía.
-      monto_neto:     totals.arr + totals.prod + totals.mun,
+      monto_neto:     totals.arr + totals.prod + totals.mun + totals.mtop,
       // Por separado, porque la comisión y el canon se calculan sólo sobre el
       // arrendamiento: la producción no comisiona ni paga canon.
       monto_arrendamiento: totals.arr,
@@ -615,14 +618,15 @@ export default function CotizadorClient({
       <th>Soporte</th><th>Categoría</th><th style="text-align:center">Cant.</th>
       <th style="text-align:center">Sem.</th><th style="text-align:center">Salidas</th>
       <th style="text-align:right">Arrendamiento</th><th style="text-align:right">Producción</th>
-      <th style="text-align:right">Imp. Mun.</th><th style="text-align:right">IVA</th>
+      <th style="text-align:right">${totals.mtop ? (totals.mun ? 'Imp. Mun./MTOP' : 'Imp. MTOP') : 'Imp. Mun.'}</th><th style="text-align:right">IVA</th>
       <th style="text-align:right">Total</th><th style="text-align:right">Impactos</th>
     </tr></thead><tbody>${rows}</tbody></table>
     <div class="totals">
       <div><div class="t-label">Arrendamiento</div><div class="t-value">${sym} ${Math.round(totals.arr).toLocaleString('es-UY')}</div></div>
       <div><div class="t-label">Producción</div><div class="t-value">${sym} ${Math.round(totals.prod).toLocaleString('es-UY')}</div></div>
       <div><div class="t-label">IVA</div><div class="t-value">${sym} ${Math.round(totals.iva + (totals.prod * IVA_RATE / (1 + IVA_RATE))).toLocaleString('es-UY')}</div></div>
-      <div><div class="t-label">Imp. Municipal</div><div class="t-value">${sym} ${Math.round(totals.mun).toLocaleString('es-UY')}</div></div>
+      ${totals.mun || !totals.mtop ? `<div><div class="t-label">Imp. Municipal</div><div class="t-value">${sym} ${Math.round(totals.mun).toLocaleString('es-UY')}</div></div>` : ''}
+      ${totals.mtop ? `<div><div class="t-label">Imp. MTOP</div><div class="t-value">${sym} ${Math.round(totals.mtop).toLocaleString('es-UY')}</div></div>` : ''}
       <div><div class="t-label">TOTAL</div><div class="t-value">${sym} ${Math.round(totals.tot).toLocaleString('es-UY')}</div></div>
     </div>
     ${observaciones ? `<p style="margin-top:20px;font-size:11px;color:#374151"><strong>Observaciones:</strong> ${observaciones}</p>` : ''}
@@ -974,7 +978,7 @@ export default function CotizadorClient({
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10, fontSize: 11, color: '#6b7280' }}>
                             <span>Arrendam.: <strong style={{ color: '#111827' }}>{fmt(c.arr, moneda)}</strong></span>
                             {c.prod > 0 && <span>Producción: <strong style={{ color: '#111827' }}>{fmt(c.prod, moneda)}</strong></span>}
-                            {c.mun > 0 && <span>Imp. Mun.: <strong style={{ color: '#111827' }}>{fmt(c.mun, moneda)}</strong></span>}
+                            {c.mun > 0 && <span>{etiquetaImpuesto(item.soporte.tipo_cotizador)}: <strong style={{ color: '#111827' }}>{fmt(c.mun, moneda)}</strong></span>}
                             {(c.ivaArr + c.ivaProd) > 0 && <span>IVA: <strong style={{ color: '#111827' }}>{fmt(c.ivaArr + c.ivaProd, moneda)}</strong></span>}
                             {c.imp > 0 && <span>{c.imp.toLocaleString('es-UY')} impactos</span>}
                             {c.cpm > 0 && <span>CPM <strong style={{ color: '#111827' }}>${c.cpm.toFixed(2)}</strong></span>}
@@ -1009,7 +1013,8 @@ export default function CotizadorClient({
                 { label: 'Arrendam.', value: fmt(totals.arr, moneda) },
                 { label: 'Producción', value: fmt(totals.prod, moneda) },
                 { label: 'IVA', value: fmt(totals.iva + (totals.prod * IVA_RATE / (1 + IVA_RATE)), moneda) },
-                { label: 'Imp. Mun.', value: fmt(totals.mun, moneda) },
+                ...(totals.mun || !totals.mtop ? [{ label: 'Imp. Mun.', value: fmt(totals.mun, moneda) }] : []),
+                ...(totals.mtop ? [{ label: 'Imp. MTOP', value: fmt(totals.mtop, moneda) }] : []),
                 { label: 'TOTAL', value: fmt(totals.tot, moneda), bold: true },
               ].map(({ label, value, bold }) => (
                 <div key={label}>
@@ -1452,7 +1457,7 @@ function KpiTab({
 }: {
   plan: PlanItem[]
   calcs: { item: PlanItem; c: Calc }[]
-  totals: { arr: number; iva: number; prod: number; mun: number; imp: number; tot: number }
+  totals: { arr: number; iva: number; prod: number; mun: number; mtop: number; imp: number; tot: number }
   cpm: number | null
   moneda: string
 }) {
