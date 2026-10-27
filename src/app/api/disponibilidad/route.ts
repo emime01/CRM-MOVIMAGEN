@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { espaciosQueOcupa } from '@/lib/disponibilidad/espacios'
 
 export interface SoporteOcupacion {
   id: string
@@ -68,7 +69,7 @@ function addCliente(map: Map<string, string[]>, soporteId: string, nombre: strin
   if (!existing.includes(nombre)) map.set(soporteId, [...existing, nombre])
 }
 
-const ORDEN_ITEMS_SELECT = 'soporte_id, cantidad, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real'
+const ORDEN_ITEMS_SELECT = 'soporte_id, cantidad, salidas, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -86,6 +87,9 @@ export async function GET(req: NextRequest) {
     .eq('activo', true)
     .order('categoria')
     .order('nombre')
+
+  // Para contar espacios: en pantallas y circuitos, por lugar en la tanda.
+  const tipoDe = new Map<string, string | null>((soportes ?? []).map((s: any) => [s.id, s.tipo_cotizador ?? null]))
 
   if (mes) {
     const [y, m] = mes.split('-').map(Number)
@@ -123,7 +127,7 @@ export async function GET(req: NextRequest) {
           const desde = item.fecha_alta_real ?? r.fecha_desde
           const hasta = item.fecha_baja_real ?? r.fecha_hasta
           if (!desde || !hasta || desde > dateStr || hasta < dateStr) return
-          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
+          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
         })
       })
 
@@ -133,7 +137,7 @@ export async function GET(req: NextRequest) {
           const alta = efAlta(item, ord)
           const baja = efBaja(item, ord)
           if (!alta || !baja || alta > dateStr || baja < dateStr) return
-          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
+          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
         })
       })
 
@@ -177,7 +181,7 @@ export async function GET(req: NextRequest) {
       const desde = item.fecha_alta_real ?? r.fecha_desde
       const hasta = item.fecha_baja_real ?? r.fecha_hasta
       if (!desde || !hasta || desde > fecha || hasta < fecha) return
-      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
+      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
     })
   })
@@ -190,7 +194,7 @@ export async function GET(req: NextRequest) {
       const alta = efAlta(item, ord)
       const baja = efBaja(item, ord)
       if (!alta || !baja || alta > fecha || baja < fecha) return
-      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + (item.cantidad ?? 1))
+      reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
     })
   })

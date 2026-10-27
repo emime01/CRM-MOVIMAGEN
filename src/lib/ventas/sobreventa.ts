@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ESTADOS_VENTA_VIVA, ESTADOS_BLOQUEO_VIVO, altaEfectiva, bajaEfectiva } from './asignar-buses'
+import { espaciosQueOcupa } from '@/lib/disponibilidad/espacios'
 
 /**
  * Detecta si una venta compromete más espacio del que hay.
@@ -31,8 +32,8 @@ export async function detectarSobreventa(
   supabase: SupabaseClient,
   ordenId: string,
 ): Promise<Sobreventa[]> {
-  const SELECT_ITEMS = `id, soporte_id, cantidad, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
-      soportes(id, nombre, cap)`
+  const SELECT_ITEMS = `id, soporte_id, cantidad, salidas, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
+      soportes(id, nombre, cap, tipo_cotizador)`
 
   const { data: orden } = await supabase
     .from('ordenes_venta')
@@ -66,13 +67,14 @@ export async function detectarSobreventa(
     const hasta = bajaEfectiva(item, orden)
     if (!desde || !hasta) continue
 
-    let comprometido = Number(item.cantidad ?? 1)
+    const tipo = sop.tipo_cotizador ?? null
+    let comprometido = espaciosQueOcupa(tipo, item)
 
     for (const o of (otras ?? []) as any[]) {
       for (const it of (o.orden_items ?? []) as any[]) {
         if (it.soporte_id !== item.soporte_id) continue
         if (seSolapan(desde, hasta, altaEfectiva(it, o), bajaEfectiva(it, o))) {
-          comprometido += Number(it.cantidad ?? 1)
+          comprometido += espaciosQueOcupa(tipo, it)
         }
       }
     }
@@ -81,7 +83,7 @@ export async function detectarSobreventa(
       for (const it of (b.reserva_items ?? []) as any[]) {
         if (it.soporte_id !== item.soporte_id) continue
         if (seSolapan(desde, hasta, b.fecha_desde, b.fecha_hasta)) {
-          comprometido += Number(it.cantidad ?? 1)
+          comprometido += espaciosQueOcupa(tipo, it)
         }
       }
     }

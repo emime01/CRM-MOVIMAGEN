@@ -2,6 +2,7 @@ import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede, atiendeTareasDe, areasDeTarea, es } from '@/lib/auth/roles'
+import { espaciosQueOcupa } from '@/lib/disponibilidad/espacios'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -64,13 +65,14 @@ const handler = createMcpHandler(
         const supabase = createServerClient()
         const f = fecha ?? today()
         const [{ data: soportes }, { data: ordenes }, { data: reservas }] = await Promise.all([
-          supabase.from('soportes').select('id, nombre, categoria, tipo, seccion, ubicacion, cap').eq('activo', true).order('categoria').order('nombre'),
-          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id, cantidad, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)').in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
+          supabase.from('soportes').select('id, nombre, categoria, tipo, tipo_cotizador, seccion, ubicacion, cap').eq('activo', true).order('categoria').order('nombre'),
+          supabase.from('ordenes_venta').select('fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(soporte_id, cantidad, salidas, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)').in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
           supabase.from('reservas').select('clientes(nombre, empresa), reserva_items(soporte_id, cantidad)').in('estado', ['pendiente', 'aprobada', 'confirmada']).lte('fecha_desde', f).gte('fecha_hasta', f),
         ])
         // Acumular cantidades por soporte (mismo cálculo que el endpoint web).
         // El bug previo era contar booleanos en vez de sumar cantidad: un soporte con
         // cap=5 reservado en cantidad=1 aparecía como OCUPADO en MCP y como PARCIAL en web.
+        const tipoDe = new Map<string, string | null>((soportes ?? []).map((s: any) => [s.id, s.tipo_cotizador ?? null]))
         const ocupadoQty = new Map<string, number>()
         const reservadoQty = new Map<string, number>()
         const clientesPorSoporte = new Map<string, string[]>()
@@ -87,7 +89,7 @@ const handler = createMcpHandler(
             const baja = it.fecha_baja_real ?? it.fecha_baja_prevista ?? o.fecha_baja_real ?? o.fecha_baja_prevista
             if (!alta || !baja || alta > f || baja < f) return
             if (!it.soporte_id) return
-            ocupadoQty.set(it.soporte_id, (ocupadoQty.get(it.soporte_id) ?? 0) + (it.cantidad ?? 1))
+            ocupadoQty.set(it.soporte_id, (ocupadoQty.get(it.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(it.soporte_id), it))
             addCli(it.soporte_id, nombre)
           })
         })
@@ -96,7 +98,7 @@ const handler = createMcpHandler(
           const nombre = cli?.empresa ?? cli?.nombre ?? null
           ;(r.reserva_items ?? []).forEach((it: any) => {
             if (!it.soporte_id) return
-            reservadoQty.set(it.soporte_id, (reservadoQty.get(it.soporte_id) ?? 0) + (it.cantidad ?? 1))
+            reservadoQty.set(it.soporte_id, (reservadoQty.get(it.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(it.soporte_id), it))
             addCli(it.soporte_id, nombre)
           })
         })
