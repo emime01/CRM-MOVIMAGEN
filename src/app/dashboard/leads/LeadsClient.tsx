@@ -1016,7 +1016,8 @@ function MisClientesTab({ clienteObjetivos, leads }: { clienteObjetivos: Cliente
     return (
       <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-muted)' }}>
         <p style={{ fontSize: 14, fontWeight: 600 }}>No tenés clientes con objetivos asignados.</p>
-        <p style={{ fontSize: 13 }}>Importá el archivo de cuentas y objetivos desde <Link href="/dashboard/cuentas" style={{ color: '#eb691c' }}>Cuentas → Importar</Link>.</p>
+        {/* El vendedor no puede importar: se lo asignan gerencia o su asistente. */}
+        <p style={{ fontSize: 13 }}>Los clientes y sus objetivos los asigna gerencia desde Objetivos.</p>
       </div>
     )
   }

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { Plus, Search, Upload, X, Edit2, Trash2, History, Image as ImageIcon } from 'lucide-react'
+import { puede } from '@/lib/auth/roles'
 
 interface Cliente {
   id: string
@@ -287,12 +288,15 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => setImportModal({ open: true, type: 'cuentas' })}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--text-secondary)' }}
-          >
-            <Upload size={14} /> Importar
-          </button>
+          {/* Importar es de los roles que pueden (el endpoint le da 403 al vendedor). */}
+          {puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion']) && (
+            <button
+              onClick={() => setImportModal({ open: true, type: 'cuentas' })}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--text-secondary)' }}
+            >
+              <Upload size={14} /> Importar
+            </button>
+          )}
           <button
             onClick={() => {
               if (tab === 'clientes') setClienteModal({ open: true, data: {} })

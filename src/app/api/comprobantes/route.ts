@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
   const staticRegistros = fotoRegistros.filter(r => !soporteMap.get(r.soporte_id)?.bus_id)
 
   if (videoRegistros.length === 0 && fotoRegistros.length === 0) {
-    return NextResponse.json({ error: 'No hay registros subidos para esta reserva' }, { status: 400 })
+    return NextResponse.json({ error: 'No hay registros subidos para esta venta' }, { status: 400 })
   }
 
   const generated: { tipo: string; path: string }[] = []
