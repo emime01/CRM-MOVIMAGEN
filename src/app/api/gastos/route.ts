@@ -41,7 +41,13 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('gastos_tarjeta')
-    .insert({ fecha, monto, categoria, descripcion: body.descripcion?.trim() || null, orden_id: ordenId })
+    // mes y anio son obligatorios en la tabla (salen de la fecha), igual que
+    // la descripción: si no se escribe, va la categoría.
+    .insert({
+      fecha, monto, categoria, orden_id: ordenId,
+      mes: Number(fecha.slice(5, 7)), anio: Number(fecha.slice(0, 4)),
+      descripcion: body.descripcion?.trim() || categoria,
+    })
     .select('id')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

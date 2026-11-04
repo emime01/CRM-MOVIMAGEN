@@ -880,9 +880,10 @@ export default function CotizadorClient({
               <button onClick={() => setCatFilter('')} style={{ ...catBtnSt, background: !catFilter ? '#111827' : '#fff', color: !catFilter ? '#fff' : '#374151', borderColor: !catFilter ? '#111827' : '#d1d5db' }}>Todas</button>
               {categories.map(c => (
                 <button key={c} onClick={() => setCatFilter(c === catFilter ? '' : c)}
-                  style={{ ...catBtnSt, background: catFilter === c ? '#111827' : '#fff', color: catFilter === c ? '#fff' : '#374151', borderColor: catFilter === c ? '#111827' : '#d1d5db', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  style={{ ...catBtnSt, background: catFilter === c ? '#111827' : '#fff', color: catFilter === c ? '#fff' : '#374151', borderColor: catFilter === c ? '#111827' : '#d1d5db', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   title={c}>
-                  {c.split(' ').slice(0, 2).join(' ')}
+                  {/* Entero: cortado a dos palabras quedaban "BANNERS EN", "CARTELES EN". */}
+                  {c}
                 </button>
               ))}
             </div>
