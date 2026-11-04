@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Upload, Trash2, X, CheckCircle, XCircle, Clock, Plus, ChevronDown, ChevronRight, Eye } from 'lucide-react'
+import { Upload, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,39 +37,11 @@ interface Material {
   created_at: string
 }
 
-interface OrdenConSoportes {
-  id: string
-  numero: string | null
-  marca: string | null
-  estado: string
-  fecha_alta_prevista: string | null
-  fecha_baja_prevista: string | null
-  fecha_alta_real: string | null
-  fecha_baja_real: string | null
-  cliente_nombre: string
-  soportes: Array<{ id: string; nombre: string; tipo: string | null }>
-}
-
-interface Muestra {
-  id: string
-  orden_id: string
-  soporte_id: string | null
-  version: number
-  storage_path: string | null
-  nombre_archivo: string | null
-  estado: 'pendiente' | 'aprobado' | 'rechazado'
-  comentario: string | null
-  fecha_entrega: string | null
-  created_at: string
-}
-
 interface Props {
   soportes: Soporte[]
   campanasMap: Record<string, CampanaInfo[]>
-  ordenes: OrdenConSoportes[]
   supabaseUrl: string
   supabaseAnonKey: string
-  userId: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -95,20 +67,6 @@ const btnSecondary: React.CSSProperties = {
 function fmtFecha(d: string | null) {
   if (!d) return '—'
   return new Date(d + 'T00:00:00').toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
-
-function estadoBadge(estado: string) {
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    pendiente: { bg: '#fef9ec', color: '#b45309', label: 'Pendiente' },
-    aprobado:  { bg: '#f0fdf4', color: '#15803d', label: 'Aprobado' },
-    rechazado: { bg: '#fef2f2', color: '#dc2626', label: 'Rechazado' },
-  }
-  const s = map[estado] ?? map.pendiente
-  return (
-    <span style={{ background: s.bg, color: s.color, padding: '3px 8px', borderRadius: 5, fontSize: 11, fontWeight: 700 }}>
-      {s.label}
-    </span>
-  )
 }
 
 // ─── Tab: Planilla Digital ────────────────────────────────────────────────────
@@ -485,383 +443,20 @@ function PlanillaTab({
   )
 }
 
-// ─── Tab: Muestras de Impresión ───────────────────────────────────────────────
-
-function MuestrasTab({
-  ordenes, supabase, storageUrl,
-}: {
-  ordenes: OrdenConSoportes[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any
-  storageUrl: string
-}) {
-  const [muestrasMap, setMuestrasMap] = useState<Record<string, Muestra[]>>({})
-  const [loadedIds, setLoadedIds] = useState<Set<string>>(new Set())
-  const [uploading, setUploading] = useState<Record<string, boolean>>({})
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editComentario, setEditComentario] = useState('')
-  const [editFecha, setEditFecha] = useState('')
-  const [filterEstado, setFilterEstado] = useState<'todos' | 'pendiente' | 'aprobado' | 'rechazado'>('todos')
-  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
-
-  async function loadMuestras(ordenId: string) {
-    if (loadedIds.has(ordenId)) return
-    setLoadedIds(prev => new Set(prev).add(ordenId))
-    const res = await fetch(`/api/arte/muestras?orden_id=${ordenId}`)
-    if (!res.ok) return
-    const data: Muestra[] = await res.json()
-    setMuestrasMap(prev => ({ ...prev, [ordenId]: data }))
-  }
-
-  function toggle(id: string) {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) { next.delete(id) } else {
-        next.add(id)
-        loadMuestras(id)
-      }
-      return next
-    })
-  }
-
-  async function handleUpload(ordenId: string, soporteId: string | null, files: FileList | null) {
-    if (!files || files.length === 0) return
-    const key = `${ordenId}__${soporteId ?? 'general'}`
-    setUploading(prev => ({ ...prev, [key]: true }))
-
-    for (const file of Array.from(files)) {
-      const ext = file.name.split('.').pop() ?? 'bin'
-      const path = `muestras/${ordenId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-
-      const { error: storageErr } = await supabase.storage.from('arte').upload(path, file, { upsert: false })
-      if (storageErr) { alert(`Error subiendo ${file.name}: ${storageErr.message}`); continue }
-
-      const res = await fetch('/api/arte/muestras', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orden_id: ordenId, soporte_id: soporteId, storage_path: path, nombre_archivo: file.name }),
-      })
-      if (!res.ok) { alert('Error guardando muestra'); continue }
-      const created: Muestra = await res.json()
-      setMuestrasMap(prev => ({ ...prev, [ordenId]: [created, ...(prev[ordenId] ?? [])] }))
-    }
-
-    setUploading(prev => ({ ...prev, [key]: false }))
-  }
-
-  async function handleAddMuestra(ordenId: string) {
-    const res = await fetch('/api/arte/muestras', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orden_id: ordenId }),
-    })
-    if (!res.ok) { alert('Error'); return }
-    const created: Muestra = await res.json()
-    setMuestrasMap(prev => ({ ...prev, [ordenId]: [created, ...(prev[ordenId] ?? [])] }))
-    setEditingId(created.id)
-    setEditComentario('')
-    setEditFecha('')
-  }
-
-  async function handleEstado(muestra: Muestra, estado: 'aprobado' | 'rechazado' | 'pendiente') {
-    const res = await fetch(`/api/arte/muestras/${muestra.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ estado }),
-    })
-    if (!res.ok) { alert('Error'); return }
-    const updated: Muestra = await res.json()
-    setMuestrasMap(prev => ({
-      ...prev,
-      [muestra.orden_id]: (prev[muestra.orden_id] ?? []).map(m => m.id === updated.id ? updated : m),
-    }))
-  }
-
-  async function handleSaveEdit(muestra: Muestra) {
-    const res = await fetch(`/api/arte/muestras/${muestra.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comentario: editComentario || null, fecha_entrega: editFecha || null }),
-    })
-    if (!res.ok) { alert('Error'); return }
-    const updated: Muestra = await res.json()
-    setMuestrasMap(prev => ({
-      ...prev,
-      [muestra.orden_id]: (prev[muestra.orden_id] ?? []).map(m => m.id === updated.id ? updated : m),
-    }))
-    setEditingId(null)
-  }
-
-  async function handleDelete(muestra: Muestra) {
-    if (!confirm('¿Eliminar esta muestra?')) return
-    const res = await fetch(`/api/arte/muestras/${muestra.id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al eliminar'); return }
-    setMuestrasMap(prev => ({
-      ...prev,
-      [muestra.orden_id]: (prev[muestra.orden_id] ?? []).filter(m => m.id !== muestra.id),
-    }))
-  }
-
-  const ordenesFiltradas = useMemo(() => {
-    if (filterEstado === 'todos') return ordenes
-    return ordenes.filter(o => {
-      const muestras = muestrasMap[o.id] ?? []
-      if (muestras.length === 0) return filterEstado === 'pendiente'
-      return muestras.some(m => m.estado === filterEstado)
-    })
-  }, [ordenes, filterEstado, muestrasMap])
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
-        <select value={filterEstado} onChange={e => setFilterEstado(e.target.value as typeof filterEstado)} style={{ ...inputStyle, width: 180 }}>
-          <option value="todos">Todos los estados</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="aprobado">Aprobado</option>
-          <option value="rechazado">Rechazado</option>
-        </select>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          {ordenesFiltradas.length} orden{ordenesFiltradas.length !== 1 ? 'es' : ''}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {ordenesFiltradas.map(orden => {
-          const isExpanded = expanded.has(orden.id)
-          const muestras = muestrasMap[orden.id] ?? []
-          const pendientes = muestras.filter(m => m.estado === 'pendiente').length
-          const aprobadas = muestras.filter(m => m.estado === 'aprobado').length
-          const rechazadas = muestras.filter(m => m.estado === 'rechazado').length
-
-          return (
-            <div key={orden.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-              {/* Orden header */}
-              <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <button onClick={() => toggle(orden.id)} style={{ ...btnSecondary, padding: '4px 6px', minWidth: 28, justifyContent: 'center' }}>
-                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </button>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{orden.numero ?? '—'}</span>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{orden.cliente_nombre}</span>
-                    {orden.marca && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>{orden.marca}</span>}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                    {orden.soportes.map(s => s.nombre).join(', ')}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {loadedIds.has(orden.id) && (
-                    <>
-                      {pendientes > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: '#fef9ec', color: '#b45309' }}>{pendientes} pend.</span>}
-                      {aprobadas > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: '#f0fdf4', color: '#15803d' }}>{aprobadas} aprobada{aprobadas !== 1 ? 's' : ''}</span>}
-                      {rechazadas > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: '#fef2f2', color: '#dc2626' }}>{rechazadas} rechazada{rechazadas !== 1 ? 's' : ''}</span>}
-                    </>
-                  )}
-                  <button onClick={() => handleAddMuestra(orden.id)} style={btnPrimary}>
-                    <Plus size={12} /> Nueva muestra
-                  </button>
-                </div>
-              </div>
-
-              {/* Muestras list */}
-              {isExpanded && (
-                <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-app)' }}>
-                  {muestras.length === 0 ? (
-                    <p style={{ margin: 0, padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin muestras registradas.</p>
-                  ) : (
-                    muestras.map(muestra => {
-                      const soporteNombre = orden.soportes.find(s => s.id === muestra.soporte_id)?.nombre ?? (muestra.soporte_id ? 'Soporte' : 'General')
-                      const fileKey = `${orden.id}__${muestra.soporte_id ?? 'general'}`
-                      const isUploading = uploading[fileKey]
-                      const hasFile = !!muestra.storage_path
-                      const fileUrl = hasFile ? `${storageUrl}/${muestra.storage_path}` : null
-
-                      return (
-                        <div key={muestra.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                          {/* Version badge */}
-                          <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--orange-pale)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--orange)' }}>v{muestra.version}</span>
-                          </div>
-
-                          {/* Info */}
-                          <div style={{ flex: 1, minWidth: 200 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{soporteNombre}</span>
-                              {estadoBadge(muestra.estado)}
-                              {muestra.fecha_entrega && (
-                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  Entregada: {fmtFecha(muestra.fecha_entrega)}
-                                </span>
-                              )}
-                            </div>
-
-                            {editingId === muestra.id ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <input
-                                  placeholder="Comentario..."
-                                  value={editComentario}
-                                  onChange={e => setEditComentario(e.target.value)}
-                                  style={{ ...inputStyle, height: 32, width: '100%' }}
-                                />
-                                <input
-                                  type="date"
-                                  value={editFecha}
-                                  onChange={e => setEditFecha(e.target.value)}
-                                  style={{ ...inputStyle, height: 32, width: 160 }}
-                                />
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button onClick={() => handleSaveEdit(muestra)} style={{ ...btnPrimary, fontSize: 11 }}>Guardar</button>
-                                  <button onClick={() => setEditingId(null)} style={{ ...btnSecondary, fontSize: 11 }}>Cancelar</button>
-                                </div>
-                              </div>
-                            ) : (
-                              muestra.comentario && (
-                                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>{muestra.comentario}</p>
-                              )
-                            )}
-                          </div>
-
-                          {/* Actions */}
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                            {/* File upload */}
-                            {!hasFile ? (
-                              <>
-                                <button
-                                  onClick={() => fileRefs.current[muestra.id]?.click()}
-                                  disabled={isUploading}
-                                  style={{ ...btnSecondary, opacity: isUploading ? 0.6 : 1, fontSize: 11 }}
-                                >
-                                  <Upload size={11} /> {isUploading ? 'Subiendo...' : 'Adjuntar'}
-                                </button>
-                                <input
-                                  ref={el => { fileRefs.current[muestra.id] = el }}
-                                  type="file"
-                                  accept="image/*,.pdf"
-                                  style={{ display: 'none' }}
-                                  onChange={async e => {
-                                    const files = e.target.files
-                                    if (!files || files.length === 0) return
-                                    setUploading(prev => ({ ...prev, [muestra.id]: true }))
-                                    const file = files[0]
-                                    const ext = file.name.split('.').pop() ?? 'bin'
-                                    const path = `muestras/${orden.id}/${muestra.id}.${ext}`
-                                    const { error: sErr } = await supabase.storage.from('arte').upload(path, file, { upsert: true })
-                                    if (sErr) { alert(sErr.message); setUploading(prev => ({ ...prev, [muestra.id]: false })); return }
-                                    const res = await fetch(`/api/arte/muestras/${muestra.id}`, {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ storage_path: path, nombre_archivo: file.name } as Record<string, unknown>),
-                                    })
-                                    if (res.ok) {
-                                      const updated: Muestra = await res.json()
-                                      setMuestrasMap(prev => ({ ...prev, [orden.id]: (prev[orden.id] ?? []).map(m => m.id === updated.id ? updated : m) }))
-                                    }
-                                    setUploading(prev => ({ ...prev, [muestra.id]: false }))
-                                  }}
-                                />
-                              </>
-                            ) : (
-                              <a href={fileUrl!} target="_blank" rel="noopener noreferrer" style={{ ...btnSecondary, fontSize: 11, textDecoration: 'none' }}>
-                                <Eye size={11} /> Ver
-                              </a>
-                            )}
-
-                            {/* Approval buttons */}
-                            {muestra.estado === 'pendiente' && (
-                              <>
-                                <button
-                                  onClick={() => handleEstado(muestra, 'aprobado')}
-                                  style={{ ...btnSecondary, fontSize: 11, color: '#15803d', borderColor: '#15803d' }}
-                                >
-                                  <CheckCircle size={11} /> Aprobado
-                                </button>
-                                <button
-                                  onClick={() => handleEstado(muestra, 'rechazado')}
-                                  style={{ ...btnSecondary, fontSize: 11, color: '#dc2626', borderColor: '#dc2626' }}
-                                >
-                                  <XCircle size={11} /> Rechazado
-                                </button>
-                              </>
-                            )}
-                            {muestra.estado !== 'pendiente' && (
-                              <button
-                                onClick={() => handleEstado(muestra, 'pendiente')}
-                                style={{ ...btnSecondary, fontSize: 11 }}
-                              >
-                                <Clock size={11} /> Reabrir
-                              </button>
-                            )}
-
-                            {/* Edit / Delete */}
-                            <button onClick={() => { setEditingId(muestra.id); setEditComentario(muestra.comentario ?? ''); setEditFecha(muestra.fecha_entrega ?? '') }} style={{ ...btnSecondary, fontSize: 11 }}>
-                              Editar
-                            </button>
-                            <button onClick={() => handleDelete(muestra)} style={{ ...btnSecondary, fontSize: 11, color: '#dc2626', borderColor: '#dc2626' }}>
-                              <Trash2 size={11} />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
-
-        {ordenesFiltradas.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)', fontSize: 13 }}>
-            No hay ordenes que coincidan.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ArteClient({ soportes, campanasMap, ordenes, supabaseUrl, supabaseAnonKey, userId }: Props) {
+export default function ArteClient({ soportes, campanasMap, supabaseUrl, supabaseAnonKey }: Props) {
   const supabase = useMemo(() => createClient(supabaseUrl, supabaseAnonKey), [supabaseUrl, supabaseAnonKey])
   const storageUrl = `${supabaseUrl}/storage/v1/object/public/arte`
 
-  const [tab, setTab] = useState<'planilla' | 'muestras'>('planilla')
-
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: '8px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
-    borderBottom: active ? '2px solid var(--orange)' : '2px solid transparent',
-    background: 'none', color: active ? 'var(--orange)' : 'var(--text-muted)',
-    fontFamily: 'Montserrat, sans-serif',
-  })
-
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
-        <button style={tabStyle(tab === 'planilla')} onClick={() => setTab('planilla')}>Planilla Digital</button>
-        <button style={tabStyle(tab === 'muestras')} onClick={() => setTab('muestras')}>Muestras de Impresion</button>
-      </div>
-
-      {tab === 'planilla' && (
-        <PlanillaTab
-          soportes={soportes}
-          campanasMap={campanasMap}
-          supabase={supabase}
-          storageUrl={storageUrl}
-        />
-      )}
-      {tab === 'muestras' && (
-        <MuestrasTab
-          ordenes={ordenes}
-          supabase={supabase}
-          storageUrl={storageUrl}
-        />
-      )}
+      <PlanillaTab
+        soportes={soportes}
+        campanasMap={campanasMap}
+        supabase={supabase}
+        storageUrl={storageUrl}
+      />
     </div>
   )
 }
