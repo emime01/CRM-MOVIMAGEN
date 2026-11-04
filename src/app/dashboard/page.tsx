@@ -67,34 +67,34 @@ export default async function DashboardPage() {
   const vendedorId = session.user.id
   const rol = session.user.rol
   const quarter = getCurrentQuarter()
+  // El gerente y su asistente no venden: su inicio muestra el equipo entero.
+  // Antes veían sus propias ventas (ninguna): $0 y "No hay ventas".
+  const delEquipo = puede(rol, ['gerente_comercial', 'asistente_ventas'])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const propio = (q: any) => (delEquipo ? q : q.eq('vendedor_id', vendedorId))
 
   const [ordersRes, leadsRes, objetivoRes, facturadoRes] = await Promise.all([
-    supabase
+    propio(supabase
       .from('ordenes_venta')
-      .select('id, numero, monto_total, moneda, estado, created_at, clientes(nombre)')
-      .eq('vendedor_id', vendedorId)
+      .select('id, numero, monto_total, moneda, estado, created_at, clientes(nombre)'))
       .order('created_at', { ascending: false })
       .limit(5),
 
-    supabase
+    propio(supabase
       .from('leads')
-      .select('id, descripcion, estado, monto_potencial, clientes(nombre, empresa)')
-      .eq('vendedor_id', vendedorId)
+      .select('id, descripcion, estado, monto_potencial, clientes(nombre, empresa)'))
       .not('estado', 'in', '(ganado,perdido)')
       .order('created_at', { ascending: false })
       .limit(5),
 
-    supabase
+    propio(supabase
       .from('objetivos')
-      .select('objetivo_monto')
-      .eq('vendedor_id', vendedorId)
-      .eq('cuatrimestre', quarter.label)
-      .maybeSingle(),
+      .select('objetivo_monto'))
+      .eq('cuatrimestre', quarter.label),
 
-    supabase
+    propio(supabase
       .from('ordenes_venta')
-      .select('monto_total, moneda')
-      .eq('vendedor_id', vendedorId)
+      .select('monto_total, moneda'))
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .gte('created_at', quarter.start)
       .lte('created_at', `${quarter.end}T23:59:59`),
@@ -102,7 +102,7 @@ export default async function DashboardPage() {
 
   const recentOrders = ordersRes.data ?? []
   const activeLeads = leadsRes.data ?? []
-  const objetivo = Number(objetivoRes.data?.objetivo_monto ?? 0)
+  const objetivo = ((objetivoRes.data ?? []) as { objetivo_monto: number | null }[]).reduce((s, o) => s + Number(o.objetivo_monto ?? 0), 0)
   const facturadoItems = facturadoRes.data ?? []
   const facturado = sumarPorMoneda(facturadoItems)
   // Los objetivos vienen de la planilla en pesos, así que el avance se mide

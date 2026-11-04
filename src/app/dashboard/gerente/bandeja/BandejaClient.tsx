@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Check, X, Inbox, FileText, CalendarClock, ChevronRight } from 'lucide-react'
+import { es } from '@/lib/auth/roles'
 
 interface OrdenPend {
   id: string
@@ -57,7 +58,7 @@ export default function BandejaClient({
   const [rejectTarget, setRejectTarget] = useState<{ kind: 'orden' | 'reserva'; id: string } | null>(null)
   const [motivo, setMotivo] = useState('')
 
-  const puedeAprobarOIC = rol === 'gerente_comercial'
+  const puedeAprobarOIC = es(rol, 'gerente_comercial')
 
   async function aprobarOrden(id: string) {
     setLoadingId(id)

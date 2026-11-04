@@ -4,8 +4,9 @@ import { useState, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { puede } from '@/lib/auth/roles'
 import { X, Upload, Trash2, Play, FileText, Film, Loader2 } from 'lucide-react'
+import { esDigital } from '@/lib/soportes/digital'
 
-interface SoporteInfo { id: string; nombre: string; tipo: string | null; es_digital: boolean | null }
+interface SoporteInfo { id: string; nombre: string; tipo: string | null; es_digital: boolean | null; tipo_cotizador?: string | null }
 interface VentaItem { id: string; soporte_id: string; soportes: SoporteInfo | null }
 interface Venta {
   id: string
@@ -172,7 +173,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
     }
     if (filterTipo !== 'todos') {
       list = list.filter(r => r.items.some(it => {
-        const digital = it.soportes?.es_digital ?? false
+        const digital = esDigital(it.soportes)
         return filterTipo === 'digital' ? digital : !digital
       }))
     }
@@ -247,7 +248,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
           const cli = venta.clientes
           const items = venta.items.filter(it => {
             if (filterTipo === 'todos') return true
-            const digital = it.soportes?.es_digital ?? false
+            const digital = esDigital(it.soportes)
             return filterTipo === 'digital' ? digital : !digital
           })
 
@@ -329,7 +330,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
                 const regs = registrosMap[key]
                 const isLoaded = loadedKeys.has(key)
                 const isUploading = uploading[key]
-                const digital = soporte.es_digital ?? false
+                const digital = esDigital(soporte)
 
                 return (
                   <div key={item.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>

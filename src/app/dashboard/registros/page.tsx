@@ -25,14 +25,14 @@ export default async function RegistrosPage() {
         clientes(id, nombre, empresa),
         orden_items(
           id, soporte_id,
-          soportes(id, nombre, tipo, es_digital)
+          soportes(id, nombre, tipo, es_digital, tipo_cotizador)
         )
       `)
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .order('fecha_alta_prevista', { ascending: false }),
     supabase
       .from('soportes')
-      .select('id, nombre, tipo, es_digital')
+      .select('id, nombre, tipo, es_digital, tipo_cotizador')
       .eq('activo', true)
       .order('nombre'),
   ])

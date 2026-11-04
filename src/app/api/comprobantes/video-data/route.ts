@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { esDigital } from '@/lib/soportes/digital'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,7 @@ type SoporteInfo = {
   categoria: string | null
   ubicacion: string | null
   es_digital: boolean | null
+  tipo_cotizador: string | null
   bus_id: string | null
 }
 
@@ -60,7 +62,7 @@ export async function GET(req: NextRequest) {
       clientes(nombre, empresa),
       orden_items(
         soporte_id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
-        soportes(id, nombre, categoria, ubicacion, es_digital, bus_id)
+        soportes(id, nombre, categoria, ubicacion, es_digital, tipo_cotizador, bus_id)
       )
     `)
     .eq('id', ordenId)
@@ -78,7 +80,7 @@ export async function GET(req: NextRequest) {
   }>
 
   // Sólo soportes digitales sin bus: esos son los que llevan video.
-  const digitales = items.filter(it => it.soportes?.es_digital && !it.soportes?.bus_id)
+  const digitales = items.filter(it => esDigital(it.soportes) && !it.soportes?.bus_id)
   const infoPorSoporte = new Map(digitales.map(it => [it.soporte_id, it]))
 
   const { data: registros } = await supabase

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient()
   let query = supabase
     .from('registros')
-    .select('*, soportes(nombre, tipo, es_digital), perfiles(nombre)')
+    .select('*, soportes(nombre, tipo, es_digital, tipo_cotizador), perfiles(nombre)')
     .order('created_at', { ascending: false })
 
   if (ordenId) query = query.eq('orden_id', ordenId)
