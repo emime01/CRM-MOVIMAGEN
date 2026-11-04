@@ -448,7 +448,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+      <div className="grid-resp" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         <div>
           {/* Datos principales */}
           <div style={sectionStyle}>
