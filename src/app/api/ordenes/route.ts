@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
 import { armarPlanDeFacturas, CONDICION_PAGO_POR_DEFECTO } from '@/lib/ventas/facturas'
+import { notificarOicPendiente } from '@/lib/ventas/crear-orden'
 
 interface OrdenItem {
   soporteId: string
@@ -187,6 +188,10 @@ export async function POST(req: NextRequest) {
     estado_nuevo: body.estado,
     comentario: body.estado === 'borrador' ? 'Orden guardada como borrador' : 'Orden enviada para aprobación',
   })
+
+  // Igual que la venta que sale de una cotización: el gerente se entera de
+  // que tiene algo para aprobar. La cargada a mano no le avisaba.
+  if (body.estado === 'pendiente_aprobacion') await notificarOicPendiente(supabase, orden.id)
 
   return NextResponse.json({ id: orden.id }, { status: 201 })
 }
