@@ -3,12 +3,15 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import NuevaOrdenForm from './NuevaOrdenForm'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
 export default async function NuevaOrdenPage({ searchParams }: { searchParams: { lead?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  // Los mismos roles que deja crear el POST de /api/ordenes.
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) redirect('/dashboard/ventas')
 
   const supabase = createServerClient()
 

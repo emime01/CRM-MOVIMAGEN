@@ -4,12 +4,14 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import RegistrosClient from './RegistrosClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
 export default async function RegistrosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!puede(session.user.rol, ['operaciones', 'administracion', 'vendedor', 'asistente_ventas', 'gerente_comercial'])) redirect('/dashboard')
 
   const supabase = createServerClient()
 

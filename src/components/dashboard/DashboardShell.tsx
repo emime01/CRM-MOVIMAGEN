@@ -102,7 +102,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/leads', label: 'Leads', icon: <Filter size={16} />, roles: ['vendedor', 'gerente_comercial'] },
   { href: '/dashboard/cotizaciones', label: 'Cotizaciones', icon: <ClipboardList size={16} />, roles: ['vendedor', 'asistente_ventas'] },
   { href: '/dashboard/disponibilidad', label: 'Disponibilidad', icon: <Calendar size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'administracion'] },
-  { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'asistente_administracion'] },
+  { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
   { href: '/dashboard/reportes', label: 'Reportes', icon: <BarChart2 size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
   { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion'] },
   { href: '/dashboard/gerente', label: 'Mi Equipo', icon: <Users size={16} />, roles: ['gerente_comercial', 'administracion'] },
@@ -130,6 +130,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/ventas': 'Ventas',
   '/dashboard/ventas/nueva': 'Nueva Orden',
   '/dashboard/leads': 'Leads',
+  '/dashboard/cotizaciones': 'Cotizaciones',
   '/dashboard/disponibilidad': 'Disponibilidad',
   '/dashboard/reportes': 'Reportes',
   '/dashboard/cuentas': 'Cuentas',
@@ -151,6 +152,15 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/config': 'Configuración',
   '/dashboard/perfil': 'Mi Perfil',
 }
+
+// Pantallas de detalle (/dashboard/ventas/<id>, …): sin esto decían "Dashboard".
+const TITULOS_DETALLE: [string, string][] = [
+  ['/dashboard/ventas/', 'Venta'],
+  ['/dashboard/leads/', 'Lead'],
+  ['/dashboard/cotizaciones/', 'Cotización'],
+  ['/dashboard/cuentas/', 'Cuenta'],
+  ['/dashboard/gerente/', 'Mi Equipo'],
+]
 
 const ROL_LABELS: Record<Rol, string> = {
   vendedor: 'Vendedor',
@@ -331,7 +341,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   // puede() expande el rol mixto a ventas + operaciones, así que ve las
   // secciones de las dos áreas sin tener que listarlo en cada ítem.
   const navItems = testMode ? NAV_ITEMS : NAV_ITEMS.filter(item => puede(user.rol, item.roles))
-  const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
+  const pageTitle = PAGE_TITLES[pathname] ?? TITULOS_DETALLE.find(([pre]) => pathname.startsWith(pre))?.[1] ?? 'Dashboard'
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
