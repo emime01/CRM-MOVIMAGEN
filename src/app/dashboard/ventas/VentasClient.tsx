@@ -241,7 +241,7 @@ export default function VentasClient({ ordenes, userRol }: Props) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--gray-100)' }}>
-                {['N° Orden', 'Cliente', 'Agencia', 'Monto', 'Estado', 'Fecha alta', 'Vendedor'].map(h => (
+                {['N° Orden', 'Cliente', 'Agencia', 'Monto', 'Estado', 'Fecha venta', 'Vendedor'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>

@@ -153,7 +153,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   const [esCanje, setEsCanje] = useState(false)
   const [incluirReportes, setIncluirReportes] = useState(true)
   const [asignadoAId, setAsignadoAId] = useState(currentUserId)
-  const [moneda, setMoneda] = useState<'USD' | 'UYU'>('USD')
+  const [moneda, setMoneda] = useState<'USD' | 'UYU'>('UYU') // los precios del catálogo están en pesos, como en el cotizador
   const [fechaAltaPrevista, setFechaAltaPrevista] = useState('')
   const [fechaBajaPrevista, setFechaBajaPrevista] = useState('')
 

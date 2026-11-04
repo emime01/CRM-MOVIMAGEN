@@ -221,7 +221,9 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
   const canApprove = es(userRol, 'gerente_comercial') && orden.estado === 'pendiente_aprobacion'
   const canUploadDoc = true
   const vendedorDeLaOrden = (Array.isArray(orden.perfiles) ? orden.perfiles[0] : orden.perfiles)?.id
-  const canSendToApproval = orden.estado === 'borrador' && (
+  // Una rechazada se puede volver a mandar (llegó la orden de compra, se
+  // corrigió lo que faltaba) sin rehacerla de cero.
+  const canSendToApproval = (orden.estado === 'borrador' || orden.estado === 'rechazada') && (
     vendedorDeLaOrden === userId ||
     puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
   )
@@ -403,7 +405,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               disabled={actionLoading}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
             >
-              Enviar para aprobación
+              {orden.estado === 'rechazada' ? 'Volver a enviar para aprobación' : 'Enviar para aprobación'}
             </button>
           )}
           {canApprove && (
