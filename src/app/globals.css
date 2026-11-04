@@ -56,6 +56,11 @@ body {
 .dash-overlay { display: none; }
 
 @media (max-width: 768px) {
+  /* Grillas de varias columnas: en el celular, una debajo de la otra (las
+     tarjetas del inicio, de a dos). Pisan el gridTemplateColumns inline. */
+  .grid-resp { grid-template-columns: minmax(0, 1fr) !important; }
+  .grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
   /* El sidebar pasa a slide-over: oculto por defecto, entra al abrir */
   .dash-sidebar {
     transform: translateX(-100%);

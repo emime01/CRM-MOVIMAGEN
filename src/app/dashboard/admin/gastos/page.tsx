@@ -3,6 +3,8 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { es, haceAdministracion } from '@/lib/auth/roles'
+import { hoyUY } from '@/lib/fechas'
+import { NuevoGasto, BorrarGasto } from './GastosAcciones'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,6 +119,8 @@ export default async function GastosPage() {
         </div>
       </div>
 
+      <NuevoGasto hoy={hoyUY()} />
+
       {/* Transaction list */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -125,7 +129,7 @@ export default async function GastosPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-              {['Fecha', 'Vendedor', 'Categoría', 'Descripción', 'Venta', 'Monto'].map((h, i) => (
+              {['Fecha', 'Vendedor', 'Categoría', 'Descripción', 'Venta', 'Monto', ''].map((h, i) => (
                 <th key={h} style={{ padding: '9px 14px', textAlign: i >= 5 ? 'right' : 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase' }}>{h}</th>
               ))}
             </tr>
@@ -134,12 +138,13 @@ export default async function GastosPage() {
             {ultimos.map(g => {
               return (
                 <tr key={g.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{g.fecha ? new Date(g.fecha).toLocaleDateString('es-UY') : '—'}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{g.fecha ? new Date(String(g.fecha).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-UY') : '—'}</td>
                   <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>{vendedorDe(g) ?? '—'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{g.categoria ?? '—'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.descripcion ?? '—'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{ventaDe(g)?.numero ? `#${ventaDe(g)!.numero}` : '—'}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(Number(g.monto ?? 0))}</td>
+                  <td style={{ padding: '10px 8px', width: 28 }}><BorrarGasto id={g.id} /></td>
                 </tr>
               )
             })}
