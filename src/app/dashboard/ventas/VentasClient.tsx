@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { puede } from '@/lib/auth/roles'
 import { useRouter } from 'next/navigation'
 import { Plus, Download, Search } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -90,6 +91,8 @@ interface Props {
 }
 
 export default function VentasClient({ ordenes, userRol }: Props) {
+  // Los mismos roles que deja crear el POST de /api/ordenes.
+  const puedeCrear = puede(userRol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [estado, setEstado] = useState('')
@@ -151,20 +154,22 @@ export default function VentasClient({ ordenes, userRol }: Props) {
             <Download size={15} />
             Exportar Excel
           </button>
-          <Link
-            href="/dashboard/ventas/nueva"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 16px', borderRadius: 8,
-              background: 'var(--orange)',
-              color: '#fff',
-              fontSize: 13, fontWeight: 600,
-              textDecoration: 'none',
-            }}
-          >
-            <Plus size={15} />
-            Nueva orden
-          </Link>
+          {puedeCrear && (
+            <Link
+              href="/dashboard/ventas/nueva"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 16px', borderRadius: 8,
+                background: 'var(--orange)',
+                color: '#fff',
+                fontSize: 13, fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              <Plus size={15} />
+              Nueva orden
+            </Link>
+          )}
         </div>
       </div>
 

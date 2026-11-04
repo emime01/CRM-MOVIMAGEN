@@ -57,6 +57,11 @@ export default async function DashboardPage() {
   if (!session?.user) redirect('/login')
   // La asistente administrativa no vende: su inicio es lo que hay que facturar.
   if (session.user.rol === 'asistente_administracion') redirect('/dashboard/admin/facturacion')
+  // El tablero es de ventas (facturado, objetivo, leads del que entra). Arte,
+  // operaciones y administración arrancan en lo suyo.
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial'])) {
+    redirect(es(session.user.rol, 'administracion') ? '/dashboard/admin/facturacion' : '/dashboard/tasks')
+  }
 
   const supabase = createServerClient()
   const vendedorId = session.user.id

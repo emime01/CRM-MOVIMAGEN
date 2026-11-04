@@ -3,12 +3,14 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import LeadsClient from './LeadsClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LeadsPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial'])) redirect('/dashboard')
 
   const supabase = createServerClient()
   const rol = session.user.rol

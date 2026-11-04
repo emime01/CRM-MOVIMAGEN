@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       clientes(nombre, empresa),
       orden_items(
         soporte_id, bus_id,
-        soportes(id, nombre, es_digital, bus_id, buses(numero))
+        soportes(id, nombre, es_digital, bus_id, buses!bus_id(numero))
       )
     `)
     .eq('id', orden_id)

@@ -111,7 +111,7 @@ export default async function OicPage() {
       id, cantidad, semanas, requiere_grabado, requiere_produccion,
       estado_grabado, estado_produccion, bus_id,
       soportes(nombre, seccion, ubicacion),
-      buses(numero),
+      buses!bus_id(numero),
       ordenes_venta!inner(
         id, numero, estado, marca, referencia,
         fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real,
