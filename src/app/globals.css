@@ -60,6 +60,9 @@ body {
      tarjetas del inicio, de a dos). Pisan el gridTemplateColumns inline. */
   .grid-resp { grid-template-columns: minmax(0, 1fr) !important; }
   .grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  /* El panel de Movi espera cerrado fuera de la pantalla, a la derecha: sin
+     esto la página se podía arrastrar de costado unos 40px. */
+  html, body { overflow-x: hidden; }
 
   /* El sidebar pasa a slide-over: oculto por defecto, entra al abrir */
   .dash-sidebar {

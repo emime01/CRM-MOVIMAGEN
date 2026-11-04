@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const { data: reserva } = await supabase
     .from('ordenes_venta')
     .select(`
-      id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
+      id, numero, campana, marca, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
       clientes(nombre, empresa),
       orden_items(
         soporte_id, bus_id,
@@ -56,10 +56,14 @@ export async function POST(req: NextRequest) {
 
   const cli = Array.isArray(reserva.clientes) ? reserva.clientes[0] : reserva.clientes
   // Manda la fecha real cuando existe: el comprobante muestra lo que pasó.
-  const fechaDesde = reserva.fecha_alta_real ?? reserva.fecha_alta_prevista ?? ''
-  const fechaHasta = reserva.fecha_baja_real ?? reserva.fecha_baja_prevista ?? ''
+  // dd/mm/aaaa: el comprobante lo lee el cliente (antes salía 2026-12-01).
+  const fechaUY = (f: string | null) => (f ? f.slice(0, 10).split('-').reverse().join('/') : '')
+  const fechaDesde = fechaUY(reserva.fecha_alta_real ?? reserva.fecha_alta_prevista)
+  const fechaHasta = fechaUY(reserva.fecha_baja_real ?? reserva.fecha_baja_prevista)
   const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'Cliente'
-  const numeroCampana = orden_id.slice(0, 8)
+  // Lo que el cliente reconoce: la campaña, si no la marca, si no la OIC.
+  // Antes era un pedazo del id interno ("c7133bd0").
+  const numeroCampana = [reserva.campana, reserva.marca].filter(Boolean).join(' · ') || (reserva.numero ? `OIC #${reserva.numero}` : '—')
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const registrosBase = `${supabaseUrl}/storage/v1/object/public/registros`
   const assetsBase = `${supabaseUrl}/storage/v1/object/public/assets`
