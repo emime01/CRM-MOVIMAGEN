@@ -21,6 +21,8 @@ export async function POST(req: NextRequest) {
     cuatrimestre?: string
     estado?: string
     notas?: string
+    proximaGestion?: string | null
+    notaGestion?: string | null
   }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
@@ -44,6 +46,10 @@ export async function POST(req: NextRequest) {
       cuatrimestre: body.cuatrimestre || null,
       estado: body.estado || 'nuevo',
       notas: body.notas || null,
+      // La fecha de la próxima gestión se carga al crear el lead; antes se
+      // perdía y había que editarlo para que apareciera en el semáforo.
+      proxima_gestion: body.proximaGestion || null,
+      nota_gestion: body.notaGestion || null,
     })
     .select('id')
     .single()

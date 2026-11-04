@@ -359,8 +359,12 @@ export default function CotizadorClient({
     const acc = { arr: 0, iva: 0, prod: 0, mun: 0, mtop: 0, imp: 0, tot: 0 }
     calcs.forEach(({ item, c }) => {
       acc.arr  += c.arr
-      acc.iva  += c.ivaArr
-      acc.prod += c.prod + c.ivaProd
+      // IVA del arrendamiento y de la producción juntos; la producción, neta.
+      // Antes la producción llevaba su IVA adentro: se guardaba así en
+      // monto_neto y monto_produccion, y en la barra los cuadros no sumaban
+      // el total (el IVA de producción figuraba dos veces).
+      acc.iva  += c.ivaArr + c.ivaProd
+      acc.prod += c.prod
       if (esImpuestoMTOP(item.soporte.tipo_cotizador)) acc.mtop += c.mun
       else acc.mun += c.mun
       acc.imp  += c.imp
@@ -624,7 +628,7 @@ export default function CotizadorClient({
     <div class="totals">
       <div><div class="t-label">Arrendamiento</div><div class="t-value">${sym} ${Math.round(totals.arr).toLocaleString('es-UY')}</div></div>
       <div><div class="t-label">Producción</div><div class="t-value">${sym} ${Math.round(totals.prod).toLocaleString('es-UY')}</div></div>
-      <div><div class="t-label">IVA</div><div class="t-value">${sym} ${Math.round(totals.iva + (totals.prod * IVA_RATE / (1 + IVA_RATE))).toLocaleString('es-UY')}</div></div>
+      <div><div class="t-label">IVA</div><div class="t-value">${sym} ${Math.round(totals.iva).toLocaleString('es-UY')}</div></div>
       ${totals.mun || !totals.mtop ? `<div><div class="t-label">Imp. Municipal</div><div class="t-value">${sym} ${Math.round(totals.mun).toLocaleString('es-UY')}</div></div>` : ''}
       ${totals.mtop ? `<div><div class="t-label">Imp. MTOP</div><div class="t-value">${sym} ${Math.round(totals.mtop).toLocaleString('es-UY')}</div></div>` : ''}
       <div><div class="t-label">TOTAL</div><div class="t-value">${sym} ${Math.round(totals.tot).toLocaleString('es-UY')}</div></div>
@@ -1012,7 +1016,7 @@ export default function CotizadorClient({
               {[
                 { label: 'Arrendam.', value: fmt(totals.arr, moneda) },
                 { label: 'Producción', value: fmt(totals.prod, moneda) },
-                { label: 'IVA', value: fmt(totals.iva + (totals.prod * IVA_RATE / (1 + IVA_RATE)), moneda) },
+                { label: 'IVA', value: fmt(totals.iva, moneda) },
                 ...(totals.mun || !totals.mtop ? [{ label: 'Imp. Mun.', value: fmt(totals.mun, moneda) }] : []),
                 ...(totals.mtop ? [{ label: 'Imp. MTOP', value: fmt(totals.mtop, moneda) }] : []),
                 { label: 'TOTAL', value: fmt(totals.tot, moneda), bold: true },
@@ -1534,7 +1538,7 @@ function KpiTab({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Inversión Bruta', value: fmt(totals.arr + totals.prod, moneda), sub: 'Arrendam. + Producción' },
-          { label: 'Total con Impuestos', value: fmt(totals.tot, moneda), sub: `IVA ${fmt(totals.iva + totals.prod * IVA_RATE / (1 + IVA_RATE), moneda)}` },
+          { label: 'Total con Impuestos', value: fmt(totals.tot, moneda), sub: `IVA ${fmt(totals.iva, moneda)}` },
           { label: 'Impactos', value: fmtM(totals.imp), sub: 'Estimados' },
           ...(cpm != null ? [{ label: 'CPM', value: fmt(cpm, moneda), sub: 'Costo por mil' }] : []),
           { label: 'Soportes', value: String(plan.length), sub: `${plan.reduce((a, it) => a + it.cantidadSoportes, 0)} unidades` },

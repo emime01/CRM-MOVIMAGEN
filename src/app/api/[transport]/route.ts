@@ -585,11 +585,11 @@ const handler = createMcpHandler(
         const { plan, errores } = await armarPlan(args.items)
         if (errores.length) return text(`No pude armar la cotización:\n${errores.map(e => '• ' + e).join('\n')}`)
 
-        const { IVA_RATE } = await import('@/lib/cotizador/calcular')
         const tot = plan.reduce((s, p) => s + p.calc.tot, 0)
         const imp = plan.reduce((s, p) => s + p.calc.imp, 0)
         const arr = plan.reduce((s, p) => s + p.calc.arr, 0)
         const prod = plan.reduce((s, p) => s + p.calc.prod, 0)
+        const mun = plan.reduce((s, p) => s + p.calc.mun, 0)
 
         // Numeración
         const numero = await proximoNumeroCotizacion(supabase)
@@ -607,7 +607,11 @@ const handler = createMcpHandler(
             fecha_inicio:   args.fecha_inicio ?? null,
             fecha_fin:      args.fecha_fin ?? null,
             moneda:         args.moneda ?? 'UYU',
-            monto_neto:     arr + prod - (prod * IVA_RATE / (1 + IVA_RATE)),
+            // Igual que el cotizador web: arrendamiento, producción e
+            // impuestos, todo sin IVA (calcularItem ya los da netos).
+            monto_neto:     arr + prod + mun,
+            monto_arrendamiento: arr,
+            monto_produccion:    prod,
             monto_total:    tot,
             monto_impactos: imp,
           })
