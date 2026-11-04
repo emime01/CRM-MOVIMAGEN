@@ -119,10 +119,10 @@ function drawStaticCover(page: PDFPage, cliente: string, regular: PDFFont, bold:
   page.drawText('movimagen', { x: 34, y: splitY + orangeH * 0.38, size: 54, font: bold, color: WHT })
   page.drawText('Publicidad OOH', { x: PW - 160, y: splitY + orangeH * 0.21, size: 13, font: regular, color: rgb(1, 0.88, 0.78) })
 
-  // White section: "COMPROBANTE DE CAMPANA"
+  // White section: "COMPROBANTE DE CAMPAÑA"
   const titleY = splitY * 0.70
   page.drawText('COMPROBANTE', { x: PP, y: titleY,      size: 30, font: bold, color: ORA })
-  page.drawText('DE CAMPANA',  { x: PP, y: titleY - 34, size: 30, font: bold, color: ORA })
+  page.drawText('DE CAMPAÑA',  { x: PP, y: titleY - 34, size: 30, font: bold, color: ORA })
 
   // Client badge bottom-right
   const label = cliente.toUpperCase().slice(0, 16)
@@ -134,14 +134,14 @@ function drawStaticCover(page: PDFPage, cliente: string, regular: PDFFont, bold:
 function drawStaticHeader(page: PDFPage, data: PdfComprobante, regular: PDFFont, bold: PDFFont) {
   page.drawRectangle({ x: 0, y: PH - 64, width: PW, height: 64, color: ORA })
   page.drawText('MOVIMAGEN', { x: PP, y: PH - 28, size: 22, font: bold, color: WHT })
-  page.drawText('Comprobante de campana publicitaria', { x: PP, y: PH - 48, size: 10, font: regular, color: rgb(1, 0.88, 0.78) })
+  page.drawText('Comprobante de campaña publicitaria', { x: PP, y: PH - 48, size: 10, font: regular, color: rgb(1, 0.88, 0.78) })
 
   const mY = PH - 82
   page.drawText('Cliente:',  { x: PP,       y: mY,      size: 9, font: bold,    color: DARK })
   page.drawText(data.cliente, { x: PP + 46,  y: mY,      size: 9, font: regular, color: DARK })
-  page.drawText('Campana:',  { x: PP,       y: mY - 14, size: 9, font: bold,    color: DARK })
+  page.drawText('Campaña:',  { x: PP,       y: mY - 14, size: 9, font: bold,    color: DARK })
   page.drawText(data.numeroCampana, { x: PP + 50, y: mY - 14, size: 9, font: regular, color: DARK })
-  page.drawText('Periodo:',  { x: 200,      y: mY - 14, size: 9, font: bold,    color: DARK })
+  page.drawText('Período:',  { x: 200,      y: mY - 14, size: 9, font: bold,    color: DARK })
   page.drawText(`${data.fechaDesde} al ${data.fechaHasta}`, { x: 248, y: mY - 14, size: 9, font: regular, color: DARK })
 
   page.drawLine({ start: { x: PP, y: PH - 120 }, end: { x: PW - PP, y: PH - 120 }, thickness: 0.5, color: LITE })
@@ -229,7 +229,7 @@ function drawBusCover(page: PDFPage, data: BusPdfData, regular: PDFFont, bold: P
   page.drawText('Publicidad OOH', { x: LW * 0.64, y: splitY + orangeH * 0.18, size: 18, font: regular, color: rgb(1, 0.88, 0.78) })
 
   // White section: "ALTA DE CAMPAÑA"
-  page.drawText('ALTA DE CAMPANA', { x: LP, y: splitY * 0.62, size: 36, font: bold, color: ORA })
+  page.drawText('ALTA DE CAMPAÑA', { x: LP, y: splitY * 0.62, size: 36, font: bold, color: ORA })
 
   // Client badge bottom-right
   const label = data.cliente.toUpperCase().slice(0, 14)
@@ -267,7 +267,7 @@ function drawBusListPage(page: PDFPage, grupo: BusSoporteGroup, data: BusPdfData
   // Header row
   page.drawRectangle({ x: LP, y: tableTop - rowH, width: tableW, height: rowH, color: ORA })
   page.drawText('N BUS',              { x: LP + colBus / 2 - 20,  y: tableTop - rowH + 9, size: 10, font: bold,    color: WHT })
-  page.drawText('CLIENTE / CAMPANA',  { x: LP + colBus + 20,      y: tableTop - rowH + 9, size: 10, font: bold,    color: WHT })
+  page.drawText('CLIENTE / CAMPAÑA',  { x: LP + colBus + 20,      y: tableTop - rowH + 9, size: 10, font: bold,    color: WHT })
 
   let curY = tableTop - rowH
   grupo.buses.forEach((num, idx) => {
@@ -285,7 +285,7 @@ function drawBusListPage(page: PDFPage, grupo: BusSoporteGroup, data: BusPdfData
   // Footer
   page.drawLine({ start: { x: LP, y: 22 }, end: { x: LW - LP, y: 22 }, thickness: 0.5, color: LITE })
   page.drawText(`Total soporte: ${grupo.buses.length} unidades`, { x: LP, y: 6, size: 9, font: regular, color: MID })
-  const pStr = `Periodo: ${data.fechaDesde} al ${data.fechaHasta}`
+  const pStr = `Período: ${data.fechaDesde} al ${data.fechaHasta}`
   page.drawText(pStr, { x: LW - LP - pStr.length * 4.8, y: 6, size: 9, font: regular, color: MID })
 }
 
