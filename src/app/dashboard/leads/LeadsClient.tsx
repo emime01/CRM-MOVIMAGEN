@@ -325,12 +325,16 @@ const COLUMNS: ColumnDef[] = [
 ]
 
 const _y = new Date().getFullYear()
+// Este año y el que viene: a fin de año los leads ya son para el siguiente.
 const QUARTER_OPTIONS = [
   { value: '', label: 'Todos los cuatrimestres' },
-  { value: `Q1-${_y}`, label: `Q1-${_y}` },
-  { value: `Q2-${_y}`, label: `Q2-${_y}` },
-  { value: `Q3-${_y}`, label: `Q3-${_y}` },
+  ...[_y, _y + 1].flatMap(y => [1, 2, 3].map(q => ({ value: `Q${q}-${y}`, label: `Q${q}-${y}` }))),
 ]
+/** El cuatrimestre en curso (Q1 ene–abr, Q2 may–ago, Q3 sep–dic). */
+const cuatrimestreActual = () => {
+  const d = new Date()
+  return `Q${d.getMonth() < 4 ? 1 : d.getMonth() < 8 ? 2 : 3}-${d.getFullYear()}`
+}
 
 const ESTADO_OPTIONS: { value: EstadoLead; label: string }[] = [
   { value: 'nuevo', label: 'Nuevo' },
@@ -402,7 +406,7 @@ function emptyForm(userId: string): LeadFormValues {
     descripcion: '',
     campana: '',
     montoPotencial: '',
-    cuatrimestre: `Q1-${new Date().getFullYear()}`,
+    cuatrimestre: cuatrimestreActual(),
     estado: 'nuevo',
     notas: '',
     motivoPerdida: '',
@@ -418,7 +422,7 @@ function leadToForm(lead: LeadRow, userId: string): LeadFormValues {
     descripcion: lead.descripcion ?? '',
     campana: lead.campana ?? '',
     montoPotencial: lead.monto_potencial != null ? String(lead.monto_potencial) : '',
-    cuatrimestre: lead.cuatrimestre ?? `Q1-${new Date().getFullYear()}`,
+    cuatrimestre: lead.cuatrimestre ?? cuatrimestreActual(),
     estado: (lead.estado as EstadoLead) ?? 'nuevo',
     notas: lead.notas ?? '',
     motivoPerdida: '',
