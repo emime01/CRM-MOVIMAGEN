@@ -16,7 +16,7 @@ export default async function ArteDigitalPage() {
   const supabase = createServerClient()
   const today = new Date().toISOString().split('T')[0]
 
-  const [{ data: soportes }, { data: items }, { data: ordenesRaw }] = await Promise.all([
+  const [{ data: soportes }, { data: items }] = await Promise.all([
     supabase
       .from('soportes')
       .select('id, nombre, seccion, ubicacion, salidas_por_hora')
@@ -27,15 +27,6 @@ export default async function ArteDigitalPage() {
       .from('orden_items')
       .select('soporte_id, ordenes_venta(id, numero, marca, estado, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, clientes(nombre, empresa))')
       .not('ordenes_venta', 'is', null),
-    supabase
-      .from('ordenes_venta')
-      .select(`
-        id, numero, marca, estado, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real,
-        clientes(nombre, empresa),
-        orden_items(soporte_id, soportes(id, nombre, tipo))
-      `)
-      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
-      .order('fecha_alta_prevista', { ascending: false }),
   ])
 
   // Build campanas map (soporte_id → all active campaigns)
@@ -77,40 +68,12 @@ export default async function ArteDigitalPage() {
     }
   })
 
-  // Build ordenes with their static soportes (for muestras tab)
-  const ordenes = (ordenesRaw ?? []).map((ord: any) => {
-    const cli = Array.isArray(ord.clientes) ? ord.clientes[0] : ord.clientes
-    const soportesDeOrden = (ord.orden_items ?? [])
-      .map((it: any) => {
-        const s = Array.isArray(it.soportes) ? it.soportes[0] : it.soportes
-        return s ? { id: s.id, nombre: s.nombre, tipo: s.tipo } : null
-      })
-      .filter(Boolean)
-      .filter((s: any) => s.tipo !== 'led')
-
-    if (soportesDeOrden.length === 0) return null
-    return {
-      id: ord.id,
-      numero: ord.numero,
-      marca: ord.marca,
-      estado: ord.estado,
-      fecha_alta_prevista: ord.fecha_alta_prevista,
-      fecha_baja_prevista: ord.fecha_baja_prevista,
-      fecha_alta_real: ord.fecha_alta_real,
-      fecha_baja_real: ord.fecha_baja_real,
-      cliente_nombre: cli?.empresa ?? cli?.nombre ?? '—',
-      soportes: soportesDeOrden,
-    }
-  }).filter(Boolean)
-
   return (
     <ArteClient
       soportes={soportes ?? []}
       campanasMap={campanasMap}
-      ordenes={ordenes as any}
       supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL!}
       supabaseAnonKey={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}
-      userId={session.user.id}
     />
   )
 }
