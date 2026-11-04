@@ -17,6 +17,20 @@ function flagsPorTipo(tipo: string | null): { requiere_grabado: boolean; requier
   return { requiere_grabado: digital, requiere_produccion: impreso }
 }
 
+/**
+ * Hasta cuándo sale un ítem: el fin de la campaña, salvo que el ítem tenga más
+ * semanas (un banner con mínimo de 13 en una campaña de 4). Sin esto, la
+ * línea quedaba con la baja de la campaña y la disponibilidad liberaba el
+ * espacio antes de tiempo.
+ */
+function bajaDelItem(inicio: string | null, fin: string | null, semanas: number): string | null {
+  if (!inicio) return fin
+  const d = new Date(inicio + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + semanas * 7 - 1)
+  const porSemanas = d.toISOString().slice(0, 10)
+  return !fin || porSemanas > fin ? porSemanas : fin
+}
+
 export type ResultadoCrearOrden = {
   ok: boolean
   ordenId?: string
@@ -66,6 +80,12 @@ export async function crearOrdenDesdePropuesta(
     if (ag?.condicion_pago_dias != null) condicionPagoDias = ag.condicion_pago_dias
   }
 
+  const itemsCot = (propuesta.propuesta_items ?? []) as any[]
+  const inicio: string | null = propuesta.fecha_inicio ?? null
+  const bajas = itemsCot.map(it => bajaDelItem(inicio, propuesta.fecha_fin ?? null, it.semanas ?? 1))
+  // La venta termina cuando termina su último ítem.
+  const bajaVenta = bajas.reduce<string | null>((max, b) => (b && (!max || b > max) ? b : max), propuesta.fecha_fin ?? null)
+
   const { data: orden, error: ordenErr } = await supabase
     .from('ordenes_venta')
     .insert({
@@ -97,8 +117,8 @@ export async function crearOrdenDesdePropuesta(
       comision_agencia_pct:      propuesta.comision_agencia_pct ?? null,
       comision_agencia_prod_pct: propuesta.comision_agencia_prod_pct ?? null,
       condicion_pago_dias:  condicionPagoDias,
-      fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
-      fecha_baja_prevista:  propuesta.fecha_fin ?? null,
+      fecha_alta_prevista:  inicio,
+      fecha_baja_prevista:  bajaVenta,
       // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.
       // (ordenes_venta no tiene columna `notas`; usamos detalles_texto para la nota.)
       detalles_texto:       `Generada desde cotización ${propuesta.numero ?? ''}`.trim(),
@@ -111,9 +131,9 @@ export async function crearOrdenDesdePropuesta(
   }
 
   // Items: copiar de propuesta_items → orden_items con fechas por ítem
-  const items = (propuesta.propuesta_items ?? []) as any[]
+  const items = itemsCot
   if (items.length > 0) {
-    const itemRows = items.map((it: any) => ({
+    const itemRows = items.map((it: any, i: number) => ({
       orden_id:             orden.id,
       soporte_id:           it.soporte_id ?? null,
       cantidad:             it.cantidad_soportes ?? it.cantidad ?? 1,
@@ -122,8 +142,8 @@ export async function crearOrdenDesdePropuesta(
       precio_unitario:      it.precio_unitario ?? 0,
       descuento_pct:        0,
       nota:                 null,
-      fecha_alta_prevista:  propuesta.fecha_inicio ?? null,
-      fecha_baja_prevista:  propuesta.fecha_fin ?? null,
+      fecha_alta_prevista:  inicio,
+      fecha_baja_prevista:  bajas[i],
       ...flagsPorTipo(it.tipo_cotizador),
     }))
     const { error: itemsErr } = await supabase.from('orden_items').insert(itemRows)

@@ -12,7 +12,9 @@ export const dynamic = 'force-dynamic'
 
 function formatOrden(numero: number | null | undefined): string {
   if (!numero) return '—'
-  return `ORD-${new Date().getFullYear()}-${String(numero).padStart(4, '0')}`
+  // Como en el resto del CRM. Antes era "ORD-<año actual>-0008": otro
+  // formato, y con el año de hoy, no el de la venta.
+  return `OIC #${numero}`
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -125,7 +127,9 @@ export default async function OicPage() {
 
   // Summaries
   const total = rows.length
-  const pendienteGrabado = rows.filter(r => r.estado_grabado === 'pendiente').length
+  // Sólo lo digital se graba: los impresos también traen estado_grabado
+  // 'pendiente' por defecto y se contaban.
+  const pendienteGrabado = rows.filter(r => r.requiere_grabado && r.estado_grabado === 'pendiente').length
   const listos = rows.filter(
     r => r.estado_produccion === 'instalado' || r.estado_produccion === 'producido'
   ).length

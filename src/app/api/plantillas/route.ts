@@ -21,7 +21,7 @@ export async function GET() {
     .select('id, nombre, vendedor_id, items, created_at, perfiles:perfiles!plantillas_cotizacion_vendedor_id_fkey(nombre)')
     .order('created_at', { ascending: false })
 
-  if (!['gerente_comercial', 'administracion'].includes(session.user.rol)) {
+  if (!puede(session.user.rol, ['gerente_comercial', 'administracion'])) {
     query = query.or(`vendedor_id.eq.${session.user.id},vendedor_id.is.null`)
   }
 
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Solo los roles administrativos pueden crear plantillas globales.
-  const esGlobal = body.global === true && ['gerente_comercial', 'administracion'].includes(session.user.rol)
+  const esGlobal = body.global === true && puede(session.user.rol, ['gerente_comercial', 'administracion'])
 
   const supabase = createServerClient()
   const { data, error } = await supabase

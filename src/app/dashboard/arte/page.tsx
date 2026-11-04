@@ -5,6 +5,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import ArteClient from './ArteClient'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { es } from '@/lib/auth/roles'
+import { TIPOS_DIGITALES } from '@/lib/soportes/digital'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,9 @@ export default async function ArteDigitalPage() {
     supabase
       .from('soportes')
       .select('id, nombre, seccion, ubicacion, salidas_por_hora')
-      .eq('tipo', 'led')
+      // Pantallas y circuitos: `tipo` está vacío en el catálogo, el que está
+      // cargado es tipo_cotizador (ver lib/soportes/digital).
+      .in('tipo_cotizador', TIPOS_DIGITALES as unknown as string[])
       .eq('activo', true)
       .order('seccion'),
     supabase

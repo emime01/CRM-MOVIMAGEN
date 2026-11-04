@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import BandejaClient from './BandejaClient'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +12,7 @@ const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v)
 export default async function BandejaPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!['gerente_comercial', 'administracion'].includes(session.user.rol)) redirect('/dashboard')
+  if (!puede(session.user.rol, ['gerente_comercial', 'administracion'])) redirect('/dashboard')
 
   const supabase = createServerClient()
 

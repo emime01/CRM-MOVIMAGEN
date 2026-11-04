@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (!data) return NextResponse.json({ error: 'Plantilla no encontrada' }, { status: 404 })
 
   // El vendedor solo accede a las propias o globales.
-  const esAdmin = ['gerente_comercial', 'administracion'].includes(session.user.rol)
+  const esAdmin = puede(session.user.rol, ['gerente_comercial', 'administracion'])
   if (!esAdmin && data.vendedor_id && data.vendedor_id !== session.user.id) {
     return NextResponse.json({ error: 'Sin permisos sobre esta plantilla' }, { status: 403 })
   }
@@ -42,7 +43,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     .maybeSingle()
   if (!plantilla) return NextResponse.json({ error: 'Plantilla no encontrada' }, { status: 404 })
 
-  const esAdmin = ['gerente_comercial', 'administracion'].includes(session.user.rol)
+  const esAdmin = puede(session.user.rol, ['gerente_comercial', 'administracion'])
   if (!esAdmin && plantilla.vendedor_id !== session.user.id) {
     return NextResponse.json({ error: 'Sin permisos sobre esta plantilla' }, { status: 403 })
   }
