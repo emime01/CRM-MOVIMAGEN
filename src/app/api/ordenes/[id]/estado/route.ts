@@ -130,6 +130,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
+  // Aviso al vendedor (y al compartido) de lo que decidió el gerente: antes
+  // se enteraba sólo si entraba a mirar la venta.
+  if (body.estado === 'aprobada' || body.estado === 'rechazada') {
+    const { data: orden } = await supabase
+      .from('ordenes_venta').select('numero, vendedor_id, vendedor_compartido_id, clientes(nombre, empresa)')
+      .eq('id', params.id).maybeSingle()
+    const destinatarios = [orden?.vendedor_id, orden?.vendedor_compartido_id].filter((v): v is string => !!v && v !== session.user.id)
+    if (orden && destinatarios.length) {
+      const cli: any = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
+      const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'cliente'
+      const aprobada = body.estado === 'aprobada'
+      await supabase.from('notificaciones').insert(destinatarios.map(id => ({
+        user_id:   id,
+        tipo:      aprobada ? 'orden_aprobada' : 'orden_rechazada',
+        titulo:    aprobada ? 'Venta aprobada' : 'Venta rechazada',
+        mensaje:   `OIC #${orden.numero} · ${clienteNombre}${!aprobada && body.comentario ? ` — ${body.comentario}` : ''}`,
+        link:      `/dashboard/ventas/${params.id}`,
+        entity_id: params.id,
+      })))
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     tasks_creadas: tasksCreated,
