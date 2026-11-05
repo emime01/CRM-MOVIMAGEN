@@ -47,18 +47,28 @@ do $$ begin
   end if;
 end $$;
 
--- Bloqueos que hayan quedado ligados a la venta, la cotización o el lead.
-delete from reserva_items where reserva_id in (
-  select id from reservas
-   where orden_id in ('c7133bd0-629a-4207-9c86-252b76ed26e8', 'a8fd5286-e710-49ea-a209-7904cd1fd999')
-      or cliente_id = '6ec0bf23-bf1d-4600-a9b2-d5feead454b6'
-      or propuesta_id = 'd2787274-2aeb-431c-94ac-4b7e0ddf0ccb'
-      or lead_id = 'bb1569ee-5887-404a-b977-3e38361f30b5');
-delete from reservas
- where orden_id in ('c7133bd0-629a-4207-9c86-252b76ed26e8', 'a8fd5286-e710-49ea-a209-7904cd1fd999')
-    or cliente_id = '6ec0bf23-bf1d-4600-a9b2-d5feead454b6'
-    or propuesta_id = 'd2787274-2aeb-431c-94ac-4b7e0ddf0ccb'
-    or lead_id = 'bb1569ee-5887-404a-b977-3e38361f30b5';
+-- Bloqueos que hayan quedado ligados a las ventas, la cotización, el lead o
+-- el cliente de prueba (reservas.cliente_id se usa sólo si existe).
+do $$
+declare v_ids uuid[];
+begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'reservas' and column_name = 'cliente_id') then
+    execute $q$ select array_agg(id) from reservas
+      where orden_id in ('c7133bd0-629a-4207-9c86-252b76ed26e8', 'a8fd5286-e710-49ea-a209-7904cd1fd999')
+         or propuesta_id = 'd2787274-2aeb-431c-94ac-4b7e0ddf0ccb'
+         or lead_id = 'bb1569ee-5887-404a-b977-3e38361f30b5'
+         or cliente_id = '6ec0bf23-bf1d-4600-a9b2-d5feead454b6' $q$ into v_ids;
+  else
+    select array_agg(id) into v_ids from reservas
+      where orden_id in ('c7133bd0-629a-4207-9c86-252b76ed26e8', 'a8fd5286-e710-49ea-a209-7904cd1fd999')
+         or propuesta_id = 'd2787274-2aeb-431c-94ac-4b7e0ddf0ccb'
+         or lead_id = 'bb1569ee-5887-404a-b977-3e38361f30b5';
+  end if;
+  if v_ids is not null then
+    delete from reserva_items where reserva_id = any(v_ids);
+    delete from reservas      where id = any(v_ids);
+  end if;
+end $$;
 
 delete from orden_items   where orden_id in ('c7133bd0-629a-4207-9c86-252b76ed26e8', 'a8fd5286-e710-49ea-a209-7904cd1fd999');
 delete from ordenes_venta where id       in ('c7133bd0-629a-4207-9c86-252b76ed26e8', 'a8fd5286-e710-49ea-a209-7904cd1fd999');
@@ -68,7 +78,11 @@ delete from propuesta_items where propuesta_id = 'd2787274-2aeb-431c-94ac-4b7e0d
 delete from propuestas      where id = 'd2787274-2aeb-431c-94ac-4b7e0ddf0ccb';
 delete from leads           where id = 'bb1569ee-5887-404a-b977-3e38361f30b5';
 
-delete from contactos         where cliente_id = '6ec0bf23-bf1d-4600-a9b2-d5feead454b6';
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'contactos' and column_name = 'cliente_id') then
+    execute $q$ delete from contactos where cliente_id = '6ec0bf23-bf1d-4600-a9b2-d5feead454b6' $q$;
+  end if;
+end $$;
 delete from cliente_objetivos where cliente_id = '6ec0bf23-bf1d-4600-a9b2-d5feead454b6';
 delete from clientes          where id = '6ec0bf23-bf1d-4600-a9b2-d5feead454b6';
 
