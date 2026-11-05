@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { netoSinIva } from '@/lib/money'
 
 /**
  * Bono por objetivo.
@@ -42,7 +43,7 @@ export async function vendidoEnCuatrimestre(
   if (!r) return out
   const { data } = await supabase
     .from('ordenes_venta')
-    .select('vendedor_id, vendedor_compartido_id, monto_total, moneda')
+    .select('vendedor_id, vendedor_compartido_id, monto_total, monto_neto, moneda')
     .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .gte('created_at', r.start)
     .lte('created_at', `${r.end}T23:59:59`)
@@ -50,7 +51,8 @@ export async function vendidoEnCuatrimestre(
     // Los objetivos están en pesos; lo vendido en dólares no se convierte
     // porque no hay tipo de cambio en el sistema.
     if ((o.moneda ?? 'UYU') !== 'UYU' || !o.vendedor_id) continue
-    const monto = Number(o.monto_total ?? 0)
+    // Sin IVA: el objetivo no lo contempla.
+    const monto = netoSinIva(o)
     if (o.vendedor_compartido_id && o.vendedor_compartido_id !== o.vendedor_id) {
       out.set(o.vendedor_id, (out.get(o.vendedor_id) ?? 0) + monto / 2)
       out.set(o.vendedor_compartido_id, (out.get(o.vendedor_compartido_id) ?? 0) + monto / 2)

@@ -4,7 +4,8 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
 import { armarPlanDeFacturas, CONDICION_PAGO_POR_DEFECTO } from '@/lib/ventas/facturas'
-import { notificarOicPendiente } from '@/lib/ventas/crear-orden'
+import { notificarOicPendiente, flagsPorTipo } from '@/lib/ventas/crear-orden'
+import { montosDeLinea, sumarMontos, redondear } from '@/lib/ventas/montos-linea'
 
 interface OrdenItem {
   soporteId: string
@@ -17,6 +18,8 @@ interface OrdenItem {
   nota?: string
   requiereGrabado?: boolean
   requiereProduccion?: boolean
+  /** Producción por unidad; si no viene, la del catálogo. 0 = el cliente trae el material. */
+  produccionUnitario?: number | null
 }
 
 interface OrdenPayload {
@@ -94,14 +97,19 @@ export async function POST(req: NextRequest) {
   const puedeAsignar = puede(session.user.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
   const vendedorId = puedeAsignar ? (body.asignadoAId || session.user.id) : session.user.id
 
-  const montoNeto = Math.round((body.items ?? []).reduce((sum, item) => {
-    const lineTotal = item.precioUnitario * item.cantidad * item.semanas * (1 - (item.descuentoPct ?? 0) / 100)
-    return sum + lineTotal
-  }, 0) * 100) / 100
-  // El total lleva IVA, como el que muestra el formulario y como el de una
-  // venta que viene de cotización. Antes se guardaba el neto como total y
-  // las cuotas se facturaban 22% por debajo.
-  const montoTotal = Math.round(montoNeto * 1.22 * 100) / 100
+  // Montos con las mismas reglas que el cotizador: arrendamiento (con IVA si
+  // el soporte está gravado), producción con IVA e impuestos municipales /
+  // MTOP. Antes la venta manual era todo arrendamiento + 22%: sin producción
+  // ni impuestos, y con IVA también en los soportes exentos.
+  const items = (body.items ?? []).filter(i => i.soporteId)
+  const { data: catalogo } = items.length
+    ? await supabase.from('soportes').select('id, tipo_cotizador, tiene_iva, costo_produccion, impuestos_municipales').in('id', items.map(i => i.soporteId))
+    : { data: [] as any[] }
+  const soporteDe = new Map((catalogo ?? []).map((x: any) => [x.id, x]))
+  const montos = items.map(i => montosDeLinea(i, soporteDe.get(i.soporteId)))
+  const t = sumarMontos(montos)
+  const montoNeto = redondear(t.arr + t.prod + t.imp)
+  const montoTotal = redondear(t.total)
 
   const { data: orden, error: ordenError } = await supabase
     .from('ordenes_venta')
@@ -122,19 +130,18 @@ export async function POST(req: NextRequest) {
       moneda: body.moneda,
       estado: body.estado,
       monto_total: montoTotal,
-      // Las líneas vienen sin IVA: el neto es su suma.
+      // Neto = arrendamiento + producción + impuestos, sin IVA (igual que la
+      // venta que sale de una cotización).
       monto_neto: montoNeto,
-      // La carga manual no tiene producción con precio: las líneas son todo
-      // arrendamiento sin IVA.
-      monto_arrendamiento: montoNeto,
-      monto_produccion: 0,
+      monto_arrendamiento: redondear(t.arr),
+      monto_produccion: redondear(t.prod),
       fecha_alta_prevista: body.fechaAltaPrevista || null,
       fecha_baja_prevista: body.fechaBajaPrevista || null,
       validez: body.validez || null,
       es_canje: body.esCanje ?? false,
       incluir_reportes: body.incluirReportes ?? true,
       es_mensualizada: body.esMensualizada ?? false,
-      tiene_produccion: body.tieneProduccion ?? false,
+      tiene_produccion: t.prod > 0 || (body.tieneProduccion ?? false),
       tiene_digital: body.tieneDigital ?? false,
       forma_pago_arrend: body.formaPagoArrend || null,
       comentario_arrend: body.comentarioArrend || null,
@@ -152,11 +159,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: ordenError?.message ?? 'Error al crear la orden' }, { status: 500 })
   }
 
-  if (body.items && body.items.length > 0) {
+  if (items.length > 0) {
     const { error: itemsError } = await supabase
       .from('orden_items')
       .insert(
-        body.items.map(item => ({
+        items.map((item, idx) => ({
           orden_id: orden.id,
           soporte_id: item.soporteId,
           cantidad: item.cantidad,
@@ -166,8 +173,11 @@ export async function POST(req: NextRequest) {
           precio_unitario: item.precioUnitario,
           descuento_pct: item.descuentoPct ?? 0,
           nota: item.nota || null,
-          requiere_grabado: item.requiereGrabado ?? false,
-          requiere_produccion: item.requiereProduccion ?? false,
+          // Como en la venta desde cotización: lo decide el tipo de soporte
+          // (impreso → producción, digital → grabado), no lo que mande el form.
+          ...(soporteDe.get(item.soporteId)?.tipo_cotizador
+            ? flagsPorTipo(soporteDe.get(item.soporteId).tipo_cotizador)
+            : { requiere_grabado: item.requiereGrabado ?? false, requiere_produccion: (item.requiereProduccion ?? false) || montos[idx].prod > 0 }),
         }))
       )
 

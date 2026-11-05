@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
-import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos } from '@/lib/money'
+import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, comoNeto } from '@/lib/money'
 import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
@@ -28,8 +28,8 @@ export default async function CeoDashboardPage() {
   const yearStart = `${new Date().getFullYear()}-01-01`
   const yearEnd = `${new Date().getFullYear()}-12-31`
 
-  const [{ data: ordenes }, { data: leads }, { data: objetivos }, { data: vendedores }, { data: cobradas }] = await Promise.all([
-    supabase.from('ordenes_venta').select('monto_total, moneda, estado, created_at, fecha_cobro, vendedor_id').gte('created_at', yearStart).lte('created_at', `${yearEnd}T23:59:59`),
+  const [{ data: ordenesRaw }, { data: leads }, { data: objetivos }, { data: vendedores }, { data: cobradas }] = await Promise.all([
+    supabase.from('ordenes_venta').select('monto_total, monto_neto, moneda, estado, created_at, fecha_cobro, vendedor_id').gte('created_at', yearStart).lte('created_at', `${yearEnd}T23:59:59`),
     supabase.from('leads').select('estado, monto_potencial, vendedor_id'),
     supabase.from('objetivos').select('objetivo_monto, cuatrimestre, vendedor_id').in('cuatrimestre', quarters.map(q => q.label)),
     supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
@@ -40,6 +40,8 @@ export default async function CeoDashboardPage() {
   ])
 
   const activeStates = ESTADOS_VENTA_VIVA as unknown as string[]
+  // Lo vendido, sin IVA: es lo que se compara con los objetivos.
+  const ordenes = comoNeto(ordenesRaw ?? [])
 
   // YTD metrics
   const facturadoYTD = sumarPorMoneda(ordenes?.filter(o => activeStates.includes(o.estado ?? '')) ?? [])
@@ -94,7 +96,7 @@ export default async function CeoDashboardPage() {
       {/* KPI cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
         {[
-          { label: `Vendido ${new Date().getFullYear()}`, value: formatTotales(facturadoYTD), sub: 'Año en curso' },
+          { label: `Vendido ${new Date().getFullYear()}`, value: formatTotales(facturadoYTD), sub: 'Año en curso · sin IVA' },
           { label: 'Cobrado YTD', value: formatTotales(cobradoYTD), sub: 'Efectivamente cobrado' },
           { label: 'Pipeline activo', value: formatMoney(pipeline, 'UYU'), sub: 'Leads en curso' },
           { label: 'Tasa de cierre', value: `${convRate}%`, sub: `${leadsGanados} de ${leadsTotal} leads` },

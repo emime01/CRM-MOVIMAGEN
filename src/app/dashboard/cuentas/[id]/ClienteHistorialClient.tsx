@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, X } from 'lucide-react'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { netoSinIva } from '@/lib/money'
 
 const fmt = (n: number | null) =>
   n == null ? '—' : '$' + Number(n).toLocaleString('es-UY', { maximumFractionDigits: 0 })
@@ -41,7 +42,7 @@ interface Lead {
 }
 
 interface Orden {
-  id: string; estado: string; monto_total: number | null
+  id: string; estado: string; monto_total: number | null; monto_neto?: number | null
   cuatrimestre_asociado: string | null; created_at: string
   perfiles: JR<{ nombre: string }>
 }
@@ -119,7 +120,8 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
     [ordenes, cuatrimestre])
 
   const vendedor = jn(cliente.perfiles)?.nombre ?? '—'
-  const totalVentas = ordenes.filter(o => (ESTADOS_VENTA_VIVA as unknown as string[]).includes(o.estado)).reduce((s, o) => s + Number(o.monto_total ?? 0), 0)
+  // Sin IVA, porque se compara con los objetivos del cliente.
+  const totalVentas = ordenes.filter(o => (ESTADOS_VENTA_VIVA as unknown as string[]).includes(o.estado)).reduce((s, o) => s + netoSinIva(o), 0)
   const leadsGanados = leads.filter(l => l.estado === 'ganado').length
 
   const tabBtn = (t: typeof tab): React.CSSProperties => ({
@@ -170,7 +172,7 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
           {/* KPIs */}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {[
-              { label: 'Total ventas', value: fmt(totalVentas), color: 'var(--orange)' },
+              { label: 'Total ventas s/IVA', value: fmt(totalVentas), color: 'var(--orange)' },
               { label: 'Leads ganados', value: String(leadsGanados), color: '#15803d' },
               { label: 'Total leads', value: String(leads.length), color: 'var(--text-primary)' },
             ].map(k => (

@@ -30,7 +30,7 @@ export default async function NuevaOrdenPage({ searchParams }: { searchParams: {
   const [soportesRes, clientesRes, agenciasRes, vendedoresRes, configRes] = await Promise.all([
     supabase
       .from('soportes')
-      .select('id, nombre, categoria, tipo, ubicacion, precio_base, precio_semanal, costo_produccion')
+      .select('id, nombre, categoria, tipo, ubicacion, precio_base, precio_semanal, costo_produccion, tiene_iva, impuestos_municipales, tipo_cotizador')
       .eq('activo', true)
       .order('categoria')
       .order('nombre'),

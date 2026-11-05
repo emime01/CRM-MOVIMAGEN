@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { puede } from '@/lib/auth/roles'
+import { comoNeto } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,14 +24,17 @@ export default async function GerentePage() {
   const supabase = createServerClient()
   const q = getCurrentQuarter()
 
-  const [{ data: vendedores }, { data: ordenes }, { data: leads }, { data: objetivos }] = await Promise.all([
+  const [{ data: vendedores }, { data: ordenesRaw }, { data: leads }, { data: objetivos }] = await Promise.all([
     supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
-    supabase.from('ordenes_venta').select('vendedor_id, monto_total, estado, created_at')
+    supabase.from('ordenes_venta').select('vendedor_id, monto_total, monto_neto, estado, created_at')
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .gte('created_at', q.start).lte('created_at', q.end),
     supabase.from('leads').select('vendedor_id, estado, monto_potencial'),
     supabase.from('objetivos').select('vendedor_id, objetivo_monto').eq('cuatrimestre', q.label),
   ])
+
+  // Contra el objetivo se mide lo vendido sin IVA.
+  const ordenes = comoNeto(ordenesRaw ?? [])
 
   const ROL_LABELS: Record<string, string> = { vendedor: 'Vendedor', asistente_ventas: 'Asistente de Ventas' }
 
@@ -95,7 +99,7 @@ export default async function GerentePage() {
             </div>
             <div style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-                <span>Facturado: <strong style={{ color: 'var(--text-primary)' }}>{fmt(v.facturado)}</strong></span>
+                <span>Vendido s/IVA: <strong style={{ color: 'var(--text-primary)' }}>{fmt(v.facturado)}</strong></span>
                 <span>Objetivo: <strong style={{ color: 'var(--text-primary)' }}>{v.objetivo > 0 ? fmt(v.objetivo) : '—'}</strong></span>
               </div>
               <div style={{ height: 8, background: 'var(--bg-app)', borderRadius: 4, overflow: 'hidden' }}>
