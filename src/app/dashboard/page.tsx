@@ -7,7 +7,7 @@ import ApprovalButtons from '@/components/dashboard/ApprovalButtons'
 import SemaforoGestiones from '@/components/dashboard/SemaforoGestiones'
 import { puede, es } from '@/lib/auth/roles'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
-import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda } from '@/lib/money'
+import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda, comoNeto } from '@/lib/money'
 
 type EstadoOrden =
   | 'borrador'
@@ -94,7 +94,7 @@ export default async function DashboardPage() {
 
     propio(supabase
       .from('ordenes_venta')
-      .select('monto_total, moneda'))
+      .select('monto_total, monto_neto, moneda'))
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .gte('created_at', quarter.start)
       .lte('created_at', `${quarter.end}T23:59:59`),
@@ -104,7 +104,8 @@ export default async function DashboardPage() {
   const activeLeads = leadsRes.data ?? []
   const objetivo = ((objetivoRes.data ?? []) as { objetivo_monto: number | null }[]).reduce((s, o) => s + Number(o.objetivo_monto ?? 0), 0)
   const facturadoItems = facturadoRes.data ?? []
-  const facturado = sumarPorMoneda(facturadoItems)
+  // Sin IVA: los objetivos no lo contemplan.
+  const facturado = sumarPorMoneda(comoNeto(facturadoItems))
   // Los objetivos vienen de la planilla en pesos, así que el avance se mide
   // contra lo vendido en pesos. Lo vendido en dólares se avisa aparte: sin
   // tipo de cambio en el sistema, convertirlo sería inventar un número.
@@ -138,7 +139,7 @@ export default async function DashboardPage() {
       const [teamOrdersRes, teamObjetivosRes] = await Promise.all([
         supabase
           .from('ordenes_venta')
-          .select('vendedor_id, monto_total, moneda')
+          .select('vendedor_id, monto_total, monto_neto, moneda')
           .in('vendedor_id', teamIds)
           .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
           .gte('created_at', quarter.start)
@@ -151,7 +152,7 @@ export default async function DashboardPage() {
           .eq('cuatrimestre', quarter.label),
       ])
 
-      const teamOrders = teamOrdersRes.data ?? []
+      const teamOrders = comoNeto(teamOrdersRes.data ?? [])
       const teamObjetivos = teamObjetivosRes.data ?? []
 
       teamData = team.map(member => {
@@ -189,7 +190,7 @@ export default async function DashboardPage() {
             <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--orange-pale)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <DollarSign size={18} color="var(--orange)" />
             </div>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Facturado {quarter.displayLabel}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Vendido {quarter.displayLabel} · sin IVA</span>
           </div>
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>
             {formatTotales(facturado)}
@@ -373,7 +374,7 @@ export default async function DashboardPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--gray-100)' }}>
-                    {['Vendedor', 'Facturado', 'Objetivo', '% Avance'].map(h => (
+                    {['Vendedor', 'Vendido s/IVA', 'Objetivo', '% Avance'].map(h => (
                       <th key={h} style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         {h}
                       </th>

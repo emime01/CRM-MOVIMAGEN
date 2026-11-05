@@ -70,3 +70,18 @@ export function montoEnPesos(totales: TotalPorMoneda): number {
 export function hayOtraMoneda(totales: TotalPorMoneda): boolean {
   return (totales.USD ?? 0) !== 0
 }
+
+/**
+ * Lo vendido sin IVA: es contra lo que se miden los objetivos y los bonos
+ * (que no contemplan IVA). Neto = arrendamiento + producción + impuestos.
+ * Las ventas viejas sin monto_neto se aproximan sacándole el 22% al total.
+ */
+export function netoSinIva(o: { monto_neto?: unknown; monto_total?: unknown }): number {
+  if (o.monto_neto != null && o.monto_neto !== '') return Number(o.monto_neto) || 0
+  return (Number(o.monto_total) || 0) / 1.22
+}
+
+/** Las mismas filas, con monto_total = neto sin IVA (para sumarPorMoneda). */
+export function comoNeto<T extends { monto_neto?: unknown; monto_total?: unknown }>(rows: readonly T[]): (T & { monto_total: number })[] {
+  return rows.map(r => ({ ...r, monto_total: netoSinIva(r) }))
+}

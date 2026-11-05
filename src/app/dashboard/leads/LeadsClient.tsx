@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, X, Pencil, ShoppingCart, Gift, Check, XCircle, ChevronLeft, ChevronRight, CalendarPlus, ClipboardList } from 'lucide-react'
 import { puede } from '@/lib/auth/roles'
+import BuscadorSelect from '@/components/ui/BuscadorSelect'
 
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 const DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -273,6 +274,7 @@ export interface LeadRow {
   nota_gestion: string | null
   created_at: string
   updated_at?: string | null
+  agencia_id?: string | null
   clientes: JoinedRow<{ nombre: string | null; empresa: string | null }>
   agencias: JoinedRow<{ nombre: string }>
   perfiles: JoinedRow<{ nombre: string }>
@@ -308,7 +310,8 @@ interface Props {
   isGerente: boolean
   userId: string
   userRol: string
-  clientes: { id: string; nombre: string; empresa: string | null }[]
+  clientes: { id: string; nombre: string; empresa: string | null; agencia_id?: string | null }[]
+  agencias: { id: string; nombre: string }[]
   vendedores: { id: string; nombre: string }[]
   clienteObjetivos: ClienteObjetivo[]
 }
@@ -366,12 +369,8 @@ function vendorName(lead: LeadRow): string {
 
 function formatMonto(val: number | null): string {
   if (val == null) return '—'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(val)
+  // En pesos, como el resto del CRM (antes "US$" con formato en inglés).
+  return '$ ' + val.toLocaleString('es-UY', { maximumFractionDigits: 0 })
 }
 
 function truncate(str: string | null | undefined, max: number): string {
@@ -388,6 +387,7 @@ interface ModalState {
 
 interface LeadFormValues {
   clienteId: string
+  agenciaId: string
   descripcion: string
   campana: string
   montoPotencial: string
@@ -403,6 +403,7 @@ interface LeadFormValues {
 function emptyForm(userId: string): LeadFormValues {
   return {
     clienteId: '',
+    agenciaId: '',
     descripcion: '',
     campana: '',
     montoPotencial: '',
@@ -419,6 +420,7 @@ function emptyForm(userId: string): LeadFormValues {
 function leadToForm(lead: LeadRow, userId: string): LeadFormValues {
   return {
     clienteId: lead.cliente_id ?? '',
+    agenciaId: lead.agencia_id ?? '',
     descripcion: lead.descripcion ?? '',
     campana: lead.campana ?? '',
     montoPotencial: lead.monto_potencial != null ? String(lead.monto_potencial) : '',
@@ -439,6 +441,7 @@ function LeadModal({
   isGerente,
   userId,
   clientes,
+  agencias,
   vendedores,
 }: {
   modal: ModalState
@@ -447,6 +450,7 @@ function LeadModal({
   isGerente: boolean
   userId: string
   clientes: Props['clientes']
+  agencias: Props['agencias']
   vendedores: Props['vendedores']
 }) {
   const isEdit = modal.lead != null
@@ -467,6 +471,8 @@ function LeadModal({
 
     const body: Record<string, unknown> = {
       clienteId: form.clienteId || undefined,
+      // La agencia viaja del lead a la cotización y a la venta (comisión de agencia).
+      agenciaId: form.agenciaId || null,
       descripcion: form.descripcion || undefined,
       campana: form.campana || null,
       montoPotencial: form.montoPotencial !== '' ? Number(form.montoPotencial) : null,
@@ -571,18 +577,32 @@ function LeadModal({
           {/* Cliente */}
           <div style={fieldStyle}>
             <label style={labelStyle}>Cliente</label>
-            <select
+            {/* Con buscador: son más de 500 clientes. */}
+            <BuscadorSelect
+              opciones={clientes.map(c => ({ id: c.id, label: c.empresa || c.nombre, extra: c.empresa && c.empresa !== c.nombre ? c.nombre : null }))}
               value={form.clienteId}
-              onChange={e => set('clienteId', e.target.value)}
+              onChange={id => {
+                const cli = clientes.find(c => c.id === id)
+                // Si el cliente trabaja con una agencia, se propone esa.
+                setForm(prev => ({ ...prev, clienteId: id, agenciaId: !prev.agenciaId && cli?.agencia_id ? cli.agencia_id : prev.agenciaId }))
+              }}
+              placeholder="Buscar cliente…"
+              vacio="— Sin cliente —"
               style={inputStyle}
-            >
-              <option value="">— Sin cliente —</option>
-              {clientes.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.empresa ? `${c.empresa} (${c.nombre})` : c.nombre}
-                </option>
-              ))}
-            </select>
+            />
+          </div>
+
+          {/* Agencia */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Agencia</label>
+            <BuscadorSelect
+              opciones={agencias.map(a => ({ id: a.id, label: a.nombre }))}
+              value={form.agenciaId}
+              onChange={id => set('agenciaId', id)}
+              placeholder="Buscar agencia…"
+              vacio="— Directo (sin agencia) —"
+              style={inputStyle}
+            />
           </div>
 
           {/* Descripción */}
@@ -612,7 +632,7 @@ function LeadModal({
           {/* Monto + Cuatrimestre row */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Monto potencial (USD)</label>
+              <label style={labelStyle}>Monto potencial</label>
               <input
                 type="number"
                 value={form.montoPotencial}
@@ -1203,7 +1223,7 @@ function CalendarioTab({ leads }: { leads: LeadRow[] }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function LeadsClient({ leads, isGerente, userId, userRol, clientes, vendedores, clienteObjetivos }: Props) {
+export default function LeadsClient({ leads, isGerente, userId, userRol, clientes, agencias, vendedores, clienteObjetivos }: Props) {
   const puedeCrearLeads = puede(userRol, ['vendedor', 'gerente_comercial'])
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -1308,6 +1328,7 @@ export default function LeadsClient({ leads, isGerente, userId, userRol, cliente
           isGerente={isGerente}
           userId={userId}
           clientes={clientes}
+          agencias={agencias}
           vendedores={vendedores}
         />
       )}

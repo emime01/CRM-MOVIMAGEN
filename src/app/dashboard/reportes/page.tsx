@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { puede } from '@/lib/auth/roles'
-import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda } from '@/lib/money'
+import { formatMoney, sumarPorMoneda, formatTotales, montoEnPesos, hayOtraMoneda, comoNeto } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +25,7 @@ export default async function ReportesPage() {
   const q = getCurrentQuarter()
   const isGerente = puede(session.user.rol, ['gerente_comercial', 'administracion'])
 
-  let ordQuery = supabase.from('ordenes_venta').select('monto_total, moneda, estado, created_at, fecha_facturacion, clientes(nombre, empresa)')
+  let ordQuery = supabase.from('ordenes_venta').select('monto_total, monto_neto, moneda, estado, created_at, fecha_facturacion, clientes(nombre, empresa)')
     .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
   if (!isGerente) ordQuery = ordQuery.eq('vendedor_id', session.user.id)
 
@@ -66,7 +66,8 @@ export default async function ReportesPage() {
 
   // Q metrics
   const delQ = ordenes?.filter(o => o.created_at && o.created_at >= q.start && o.created_at <= `${q.end}T23:59:59`) ?? []
-  const facturadoQ = sumarPorMoneda(delQ)
+  // Sin IVA, como el objetivo.
+  const facturadoQ = sumarPorMoneda(comoNeto(delQ))
   const objetivoQ = Number(objetivo?.objetivo_monto ?? 0)
   // Los objetivos están en pesos; el avance se mide contra los pesos.
   const avancePct = objetivoQ > 0 ? Math.min(Math.round((montoEnPesos(facturadoQ) / objetivoQ) * 100), 100) : 0
@@ -106,7 +107,7 @@ export default async function ReportesPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
         {[
-          { label: `Vendido ${q.label}`, value: formatTotales(facturadoQ), sub: hayOtraMoneda(facturadoQ) ? 'el avance sólo cuenta los pesos' : '' },
+          { label: `Vendido ${q.label}`, value: formatTotales(facturadoQ), sub: hayOtraMoneda(facturadoQ) ? 'sin IVA · el avance sólo cuenta los pesos' : 'sin IVA' },
           { label: 'Objetivo Q', value: objetivoQ > 0 ? formatMoney(objetivoQ, 'UYU') : 'Sin objetivo', sub: '' },
           { label: 'Avance', value: `${avancePct}%`, sub: 'del objetivo', bar: avancePct },
           { label: 'Pipeline activo', value: formatMoney(pipeline, 'UYU'), sub: 'leads en curso' },

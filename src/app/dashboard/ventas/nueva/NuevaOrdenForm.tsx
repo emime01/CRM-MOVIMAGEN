@@ -3,6 +3,9 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, ChevronLeft, Sparkles, Send, X, Paperclip } from 'lucide-react'
+import { montosDeLinea, sumarMontos } from '@/lib/ventas/montos-linea'
+import { esImpuestoMTOP } from '@/lib/cotizador/calcular'
+import { esDigital as soporteDigital } from '@/lib/soportes/digital'
 
 interface Soporte {
   id: string
@@ -13,6 +16,9 @@ interface Soporte {
   precio_base: number | null
   precio_semanal: number | null
   costo_produccion: number | null
+  tiene_iva?: boolean | null
+  impuestos_municipales?: number | null
+  tipo_cotizador?: string | null
 }
 
 interface Cliente {
@@ -44,6 +50,8 @@ interface ItemRow {
   segundos: number
   precioUnitario: number
   descuentoPct: number
+  /** Producción por unidad (precargada del catálogo; 0 si el cliente trae el material). */
+  produccionUnitario: number
   nota: string
   requiereGrabado: boolean
   requiereProduccion: boolean
@@ -114,6 +122,7 @@ function emptyItem(): ItemRow {
     segundos: 0,
     precioUnitario: 0,
     descuentoPct: 0,
+    produccionUnitario: 0,
     nota: '',
     requiereGrabado: false,
     requiereProduccion: false,
@@ -186,26 +195,23 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatFileInputRef = useRef<HTMLInputElement>(null)
 
-  // Totals
+  // Totals — mismas reglas que el cotizador (lib/ventas/montos-linea).
+  const montosItem = (item: ItemRow) => montosDeLinea(item, soportes.find(s => s.id === item.soporteId))
   const totals = useMemo(() => {
-    let subtotal = 0
-    let totalDescuento = 0
-    items.forEach(item => {
-      if (!item.soporteId) return
-      const bruto = item.precioUnitario * item.cantidad * item.semanas
-      const descuento = bruto * (item.descuentoPct / 100)
-      subtotal += bruto - descuento
-      totalDescuento += descuento
-    })
-    const iva = subtotal * IVA_RATE
-    const total = subtotal + iva
-    return { subtotal, totalDescuento, iva, total }
-  }, [items])
+    const conSoporte = items.filter(i => i.soporteId)
+    const m = sumarMontos(conSoporte.map(montosItem))
+    const totalDescuento = conSoporte.reduce((a, i) => a + i.precioUnitario * i.cantidad * i.semanas * (i.descuentoPct / 100), 0)
+    const mtop = conSoporte.reduce((a, i) => {
+      const s = soportes.find(x => x.id === i.soporteId)
+      return esImpuestoMTOP(s?.tipo_cotizador) ? a + montosItem(i).imp : a
+    }, 0)
+    return { ...m, totalDescuento, mtop, mun: m.imp - mtop, iva: m.ivaArr + m.ivaProd }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, soportes])
 
   function itemLineTotal(item: ItemRow): number {
     if (!item.soporteId) return 0
-    const bruto = item.precioUnitario * item.cantidad * item.semanas
-    return bruto * (1 - item.descuentoPct / 100)
+    return montosItem(item).arr
   }
 
   function updateItem(id: string, changes: Partial<ItemRow>) {
@@ -214,12 +220,13 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
   function handleSoporteChange(itemId: string, soporteId: string) {
     const soporte = soportes.find(s => s.id === soporteId)
-    const esDigital = soporte?.tipo?.toLowerCase().includes('digital') ?? false
+    const esDigital = soporteDigital(soporte)
     const precio = soporte?.precio_semanal ?? soporte?.precio_base ?? 0
     updateItem(itemId, {
       soporteId,
       esDigital,
       precioUnitario: precio,
+      produccionUnitario: Number(soporte?.costo_produccion ?? 0),
       requiereProduccion: !!soporte?.costo_produccion,
     })
   }
@@ -303,6 +310,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
               segundos: i.esDigital ? i.segundos : undefined,
               precioUnitario: i.precioUnitario,
               descuentoPct: i.descuentoPct,
+              produccionUnitario: i.produccionUnitario,
               nota: i.nota || undefined,
               requiereGrabado: i.requiereGrabado,
               requiereProduccion: i.requiereProduccion,
@@ -402,7 +410,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
         if (f.items && f.items.length > 0) {
           setItems(f.items.map(item => {
             const soporte = soportes.find(s => s.id === item.soporteId)
-            const esDigital = soporte?.tipo?.toLowerCase().includes('digital') ?? false
+            const esDigital = soporteDigital(soporte)
             const precio = item.precioUnitario ?? soporte?.precio_semanal ?? soporte?.precio_base ?? 0
             return {
               id: uid(),
@@ -413,6 +421,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
               segundos: 0,
               precioUnitario: precio,
               descuentoPct: item.descuentoPct ?? 0,
+              produccionUnitario: Number(soporte?.costo_produccion ?? 0),
               nota: item.nota ?? '',
               requiereGrabado: false,
               requiereProduccion: !!soporte?.costo_produccion,
@@ -682,10 +691,10 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
         {/* Items table */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
             <thead>
               <tr style={{ background: 'var(--gray-100)' }}>
-                {['Soporte', 'Cant.', 'Semanas', 'P. Unitario', '% Desc.', 'Total', 'Nota', ''].map(h => (
+                {['Soporte', 'Cant.', 'Semanas', 'P. Unitario', '% Desc.', 'Arrendam.', 'Prod. unit.', 'Imp.', 'Nota', ''].map(h => (
                   <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
@@ -738,6 +747,15 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
                   <td style={{ padding: '8px 10px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', minWidth: 100 }}>
                     {item.soporteId ? fmt(itemLineTotal(item)) : '—'}
                   </td>
+                  <td style={{ padding: '8px 10px', width: 110 }}>
+                    <input type="number" min={0} step={0.01} value={item.produccionUnitario} title="Producción por unidad (0 si el cliente trae el material)"
+                      onChange={e => updateItem(item.id, { produccionUnitario: Math.max(0, +e.target.value) })}
+                      style={{ ...inputStyle, height: 34, fontSize: 12 }} />
+                  </td>
+                  <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+                    title={esImpuestoMTOP(soportes.find(s => s.id === item.soporteId)?.tipo_cotizador) ? 'Impuesto MTOP' : 'Impuesto municipal'}>
+                    {item.soporteId && montosItem(item).imp > 0 ? fmt(montosItem(item).imp) : '—'}
+                  </td>
                   <td style={{ padding: '8px 10px', minWidth: 160 }}>
                     <input type="text" value={item.nota} onChange={e => updateItem(item.id, { nota: e.target.value })}
                       placeholder="Nota opcional" style={{ ...inputStyle, height: 34, fontSize: 12 }} />
@@ -769,9 +787,12 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
         <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
           <div style={{ width: 280 }}>
             {[
-              { label: 'Subtotal', value: fmt(totals.subtotal + totals.totalDescuento), muted: false },
-              { label: 'Descuentos', value: `– ${fmt(totals.totalDescuento)}`, muted: true },
-              { label: 'Neto', value: fmt(totals.subtotal), muted: false },
+              { label: 'Arrendamiento', value: fmt(totals.arr + totals.totalDescuento), muted: false },
+              ...(totals.totalDescuento > 0 ? [{ label: 'Descuentos', value: `– ${fmt(totals.totalDescuento)}`, muted: true }] : []),
+              { label: 'Producción', value: fmt(totals.prod), muted: false },
+              ...(totals.mun > 0 ? [{ label: 'Imp. municipales', value: fmt(totals.mun), muted: false }] : []),
+              ...(totals.mtop > 0 ? [{ label: 'Imp. MTOP', value: fmt(totals.mtop), muted: false }] : []),
+              { label: 'Neto (sin IVA)', value: fmt(totals.arr + totals.prod + totals.imp), muted: false },
               { label: `IVA (${(IVA_RATE * 100).toFixed(0)}%)`, value: fmt(totals.iva), muted: true },
             ].map(row => (
               <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13, color: row.muted ? 'var(--text-muted)' : 'var(--text-secondary)' }}>

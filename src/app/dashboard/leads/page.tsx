@@ -20,7 +20,7 @@ export default async function LeadsPage() {
   let leadsQuery = supabase
     .from('leads')
     .select(
-      'id, cliente_id, vendedor_id, descripcion, campana, monto_potencial, cuatrimestre, estado, notas, proxima_gestion, nota_gestion, created_at, updated_at, clientes(nombre, empresa), agencias(nombre), perfiles!leads_vendedor_id_fkey(nombre)'
+      'id, cliente_id, agencia_id, vendedor_id, descripcion, campana, monto_potencial, cuatrimestre, estado, notas, proxima_gestion, nota_gestion, created_at, updated_at, clientes(nombre, empresa), agencias(nombre), perfiles!leads_vendedor_id_fkey(nombre)'
     )
     .order('created_at', { ascending: false })
 
@@ -30,9 +30,9 @@ export default async function LeadsPage() {
 
   const year = new Date().getFullYear()
 
-  const [{ data: leads }, { data: clientes }, vendedoresRes, clienteObjetivosRes] = await Promise.all([
+  const [{ data: leads }, { data: clientes }, vendedoresRes, clienteObjetivosRes, { data: agencias }] = await Promise.all([
     leadsQuery,
-    supabase.from('clientes').select('id, nombre, empresa').eq('activo', true).order('nombre'),
+    supabase.from('clientes').select('id, nombre, empresa, agencia_id').eq('activo', true).order('nombre'),
     isGerente
       ? supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true).order('nombre')
       : Promise.resolve({ data: [] }),
@@ -43,6 +43,7 @@ export default async function LeadsPage() {
           .eq('vendedor_id', userId)
           .eq('year', year)
       : Promise.resolve({ data: [] }),
+    supabase.from('agencias').select('id, nombre').order('nombre'),
   ])
 
   return (
@@ -52,6 +53,7 @@ export default async function LeadsPage() {
       userId={userId}
       userRol={rol}
       clientes={clientes ?? []}
+      agencias={agencias ?? []}
       vendedores={(vendedoresRes as any).data ?? []}
       clienteObjetivos={(clienteObjetivosRes as any).data ?? []}
     />

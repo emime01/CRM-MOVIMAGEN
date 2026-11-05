@@ -20,7 +20,7 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
   const [clienteRes, leadsRes, ordenesRes, objetivoRes] = await Promise.all([
     supabase.from('clientes').select('id, nombre, empresa, email, telefono, rut, tipo_cliente, vendedor_id, logo_url, perfiles!clientes_vendedor_id_fkey(nombre)').eq('id', id).single(),
     supabase.from('leads').select('id, estado, descripcion, monto_potencial, cuatrimestre, notas, created_at, perfiles!leads_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
-    supabase.from('ordenes_venta').select('id, estado, monto_total, cuatrimestre_asociado, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
+    supabase.from('ordenes_venta').select('id, estado, monto_total, monto_neto, cuatrimestre_asociado, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
     supabase.from('cliente_objetivos').select('objetivo_c1, objetivo_c2, objetivo_c3, ponderacion_pct, year').eq('cliente_id', id).order('year', { ascending: false }).limit(1).maybeSingle(),
   ])
 
