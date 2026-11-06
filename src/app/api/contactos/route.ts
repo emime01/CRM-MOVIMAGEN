@@ -46,11 +46,22 @@ export async function GET(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // El vendedor ve solo los cumpleaños de sus clientes (y de las agencias
+    // de esos clientes); gerencia y asistentes ven toda la agenda.
+    let contactos = data ?? []
+    const veTodo = puede(session.user.rol, ['gerente_comercial', 'asistente_ventas', 'administracion', 'asistente_administracion'])
+    if (!veTodo) {
+      const { data: mios } = await supabase.from('clientes').select('id, agencia_id').eq('vendedor_id', session.user.id)
+      const clientes = new Set((mios ?? []).map((c: any) => c.id))
+      const agencias = new Set((mios ?? []).map((c: any) => c.agencia_id).filter(Boolean))
+      contactos = contactos.filter((c: any) => c.tipo_cuenta === 'agencia' ? agencias.has(c.cuenta_id) : clientes.has(c.cuenta_id))
+    }
+
     const year = today.getFullYear()
     const cutoff = new Date(today.getTime() + dias * 24 * 60 * 60 * 1000)
     const MS_PER_DAY = 24 * 60 * 60 * 1000
 
-    const upcoming = (data ?? [])
+    const upcoming = contactos
       .map(c => {
         let bday = new Date(year, (c.cumple_mes ?? 1) - 1, c.cumple_dia ?? 1)
         if (bday < today) bday = new Date(year + 1, (c.cumple_mes ?? 1) - 1, c.cumple_dia ?? 1)

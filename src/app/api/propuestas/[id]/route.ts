@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { idEnOrden } from '@/lib/cotizador/orden-items'
 
 // GET /api/propuestas/[id]
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -140,7 +141,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (Array.isArray(body.items)) {
     await supabase.from('propuesta_items').delete().eq('propuesta_id', params.id)
     if (body.items.length > 0) {
-      const rows = body.items.map((it: any) => ({
+      const rows = body.items.map((it: any, i: number) => ({
+        id:                idEnOrden(i),
         propuesta_id:      params.id,
         soporte_id:        it.soporte_id ?? null,
         nombre_soporte:    it.nombre_soporte,

@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
 import { proximoNumeroCotizacion } from '@/lib/cotizaciones/numero'
+import { idEnOrden } from '@/lib/cotizador/orden-items'
 
 /**
  * POST /api/propuestas/[id]/duplicar
@@ -67,7 +68,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const items = (src.propuesta_items ?? []) as any[]
   if (items.length > 0) {
-    const rows = items.map(it => ({
+    const rows = [...items].sort((a, b) => String(a.id).localeCompare(String(b.id))).map((it, i) => ({
+      id:                idEnOrden(i),
       propuesta_id:      nueva.id,
       soporte_id:        it.soporte_id,
       nombre_soporte:    it.nombre_soporte,

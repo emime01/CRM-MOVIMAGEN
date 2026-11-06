@@ -11,7 +11,7 @@ import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
 import { puede, es } from '@/lib/auth/roles'
 import { formatMoney as fmtMoneda } from '@/lib/money'
-import { avisar } from '@/components/ui/dialogos'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 function formatMoney(amount: number | null, moneda?: string | null) {
   return amount == null ? '—' : fmtMoneda(amount, moneda)
@@ -230,6 +230,12 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     vendedorDeLaOrden === userId ||
     puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
   )
+  // Mientras espera aprobación, el vendedor puede retirarla (vuelve a
+  // borrador) para corregirla o porque el cliente se echó atrás.
+  const canRetirar = orden.estado === 'pendiente_aprobacion' && !canApprove && (
+    vendedorDeLaOrden === userId ||
+    puede(userRol, ['asistente_ventas', 'administracion'])
+  )
   // Facturación y cobro van por cuota (FacturacionVenta) y corren en
   // paralelo a la producción. Se factura sólo una venta aprobada.
   const estaAprobada = estaCerrada(orden.estado)
@@ -273,6 +279,11 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     await handleChangeEstado('rechazada', motivoRechazo)
     setShowReject(false)
     setMotivoRechazo('')
+  }
+
+  async function handleRetirar() {
+    if (!(await confirmar('¿Retirar la venta de aprobación? Queda en borrador y la podés volver a enviar cuando esté lista.'))) return
+    await handleChangeEstado('borrador', 'Retirada por el vendedor')
   }
 
   async function handleEnviarAprobacion() {
@@ -402,6 +413,15 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {canRetirar && (
+            <button
+              onClick={handleRetirar}
+              disabled={actionLoading}
+              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Retirar de aprobación
+            </button>
+          )}
           {canSendToApproval && (
             <button
               onClick={handleEnviarAprobacion}
