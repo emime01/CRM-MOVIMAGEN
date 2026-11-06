@@ -43,7 +43,8 @@ export default async function LeadsPage() {
           .eq('vendedor_id', userId)
           .eq('year', year)
       : Promise.resolve({ data: [] }),
-    supabase.from('agencias').select('id, nombre').order('nombre'),
+    // Sólo las activas: las desactivadas ("X / Directo", duplicados) no se ofrecen.
+    supabase.from('agencias').select('id, nombre').eq('activo', true).order('nombre'),
   ])
 
   return (
