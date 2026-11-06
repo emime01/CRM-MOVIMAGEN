@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
       monto_potencial: body.montoPotencial ?? null,
       cuatrimestre: body.cuatrimestre || null,
       estado: body.estado || 'nuevo',
-      notas: body.notas || null,
+      // La nota de gestión cargada al crear también queda en el historial.
+      notas: [body.notas, body.notaGestion ? `[${new Date().toLocaleDateString('es-UY', { timeZone: 'America/Montevideo', day: '2-digit', month: '2-digit', year: 'numeric' })}] ${body.notaGestion}` : null].filter(Boolean).join('\n') || null,
       // La fecha de la próxima gestión se carga al crear el lead; antes se
       // perdía y había que editarlo para que apareciera en el semáforo.
       proxima_gestion: body.proximaGestion || null,

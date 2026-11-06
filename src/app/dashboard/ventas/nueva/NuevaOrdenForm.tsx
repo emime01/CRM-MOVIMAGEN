@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, ChevronLeft, Sparkles, Send, X, Paperclip } from 'lucide-react'
 import { montosDeLinea, sumarMontos } from '@/lib/ventas/montos-linea'
+import BuscadorSelect from '@/components/ui/BuscadorSelect'
 import { esImpuestoMTOP } from '@/lib/cotizador/calcular'
 import { esDigital as soporteDigital } from '@/lib/soportes/digital'
 
@@ -226,7 +227,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
       soporteId,
       esDigital,
       precioUnitario: precio,
-      produccionUnitario: Number(soporte?.costo_produccion ?? 0),
+      produccionUnitario: Math.round(Number(soporte?.costo_produccion ?? 0) * 100) / 100,
       requiereProduccion: !!soporte?.costo_produccion,
     })
   }
@@ -324,7 +325,12 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
         return
       }
 
-      router.push('/dashboard/ventas')
+      // Se abre la venta recién creada. Volver a la lista mostraba la versión
+      // guardada en el navegador, sin la venta nueva, y el vendedor la cargaba
+      // otra vez (así salió una OIC duplicada en la prueba).
+      const creada = await res.json().catch(() => ({}))
+      router.refresh()
+      router.push(creada?.id ? `/dashboard/ventas/${creada.id}` : '/dashboard/ventas')
     } catch {
       setError('Error de red. Intentá de nuevo.')
     } finally {
@@ -421,7 +427,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
               segundos: 0,
               precioUnitario: precio,
               descuentoPct: item.descuentoPct ?? 0,
-              produccionUnitario: Number(soporte?.costo_produccion ?? 0),
+              produccionUnitario: Math.round(Number(soporte?.costo_produccion ?? 0) * 100) / 100,
               nota: item.nota ?? '',
               requiereGrabado: false,
               requiereProduccion: !!soporte?.costo_produccion,
@@ -564,12 +570,15 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
           <div>
             <label style={labelStyle}>Cuenta (cliente) *</label>
-            <select value={clienteId} onChange={e => setClienteId(e.target.value)} style={inputStyle}>
-              <option value="">— Seleccioná un cliente —</option>
-              {clientes.map(c => (
-                <option key={c.id} value={c.id}>{c.nombre}{c.empresa ? ` (${c.empresa})` : ''}</option>
-              ))}
-            </select>
+            {/* Con buscador, como en Leads: son más de 500 clientes. */}
+            <BuscadorSelect
+              opciones={clientes.map(c => ({ id: c.id, label: c.empresa || c.nombre, extra: c.empresa && c.empresa !== c.nombre ? c.nombre : null }))}
+              value={clienteId}
+              onChange={setClienteId}
+              placeholder="Buscar cliente…"
+              vacio="— Seleccioná un cliente —"
+              style={inputStyle}
+            />
           </div>
 
           <div>
@@ -691,7 +700,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
 
         {/* Items table */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1080 }}>
             <thead>
               <tr style={{ background: 'var(--gray-100)' }}>
                 {['Soporte', 'Cant.', 'Semanas', 'P. Unitario', '% Desc.', 'Arrendam.', 'Prod. unit.', 'Imp.', 'Nota', ''].map(h => (
@@ -728,26 +737,26 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
                       </div>
                     )}
                   </td>
-                  <td style={{ padding: '8px 10px', width: 70 }}>
+                  <td style={{ padding: '8px 10px', minWidth: 70 }}>
                     <input type="number" min={1} value={item.cantidad} onChange={e => updateItem(item.id, { cantidad: Math.max(1, +e.target.value) })}
                       style={{ ...inputStyle, height: 34, fontSize: 12 }} />
                   </td>
-                  <td style={{ padding: '8px 10px', width: 80 }}>
+                  <td style={{ padding: '8px 10px', minWidth: 78 }}>
                     <input type="number" min={1} value={item.semanas} onChange={e => updateItem(item.id, { semanas: Math.max(1, +e.target.value) })}
                       style={{ ...inputStyle, height: 34, fontSize: 12 }} />
                   </td>
-                  <td style={{ padding: '8px 10px', width: 110 }}>
+                  <td style={{ padding: '8px 10px', minWidth: 110 }}>
                     <input type="number" min={0} step={0.01} value={item.precioUnitario} onChange={e => updateItem(item.id, { precioUnitario: Math.max(0, +e.target.value) })}
                       style={{ ...inputStyle, height: 34, fontSize: 12 }} />
                   </td>
-                  <td style={{ padding: '8px 10px', width: 80 }}>
+                  <td style={{ padding: '8px 10px', minWidth: 78 }}>
                     <input type="number" min={0} max={100} step={0.5} value={item.descuentoPct} onChange={e => updateItem(item.id, { descuentoPct: Math.min(100, Math.max(0, +e.target.value)) })}
                       style={{ ...inputStyle, height: 34, fontSize: 12 }} />
                   </td>
                   <td style={{ padding: '8px 10px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', minWidth: 100 }}>
                     {item.soporteId ? fmt(itemLineTotal(item)) : '—'}
                   </td>
-                  <td style={{ padding: '8px 10px', width: 110 }}>
+                  <td style={{ padding: '8px 10px', minWidth: 110 }}>
                     <input type="number" min={0} step={0.01} value={item.produccionUnitario} title="Producción por unidad (0 si el cliente trae el material)"
                       onChange={e => updateItem(item.id, { produccionUnitario: Math.max(0, +e.target.value) })}
                       style={{ ...inputStyle, height: 34, fontSize: 12 }} />

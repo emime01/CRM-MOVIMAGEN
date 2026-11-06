@@ -66,6 +66,8 @@ interface Orden {
   moneda: string | null
   monto_total: number | null
   monto_neto: number | null
+  monto_arrendamiento?: number | null
+  monto_produccion?: number | null
   comision_agencia_pct?: number | null
   comision_agencia_prod_pct?: number | null
   created_at: string
@@ -582,9 +584,17 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
               <div style={{ width: 260, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-secondary)' }}><span>Neto</span><span>{formatMoney(neto, orden.moneda)}</span></div>
+                {/* Desglose: el neto ya incluye producción e impuestos municipales/MTOP;
+                    lo que falta para el total es el IVA. */}
+                {orden.monto_arrendamiento != null && (() => {
+                  const arr = Number(orden.monto_arrendamiento ?? 0), prod = Number(orden.monto_produccion ?? 0)
+                  const imp = neto - arr - prod
+                  const fila = (l: string, v: number) => <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--text-muted)' }}><span>{l}</span><span>{formatMoney(v, orden.moneda)}</span></div>
+                  return <>{fila('Arrendamiento', arr)}{prod >= 1 && fila('Producción', prod)}{imp >= 1 && fila('Impuestos (municipal / MTOP)', imp)}</>
+                })()}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-secondary)', fontWeight: 600 }}><span>Neto sin IVA</span><span>{formatMoney(neto, orden.moneda)}</span></div>
                 {Math.abs(otros) >= 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-muted)' }}><span>IVA e impuestos</span><span>{formatMoney(otros, orden.moneda)}</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--text-muted)' }}><span>IVA</span><span>{formatMoney(otros, orden.moneda)}</span></div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', marginTop: 4, borderTop: '2px solid var(--border)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
                   <span>Total</span>

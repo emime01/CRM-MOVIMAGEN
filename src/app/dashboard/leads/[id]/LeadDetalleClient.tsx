@@ -14,6 +14,7 @@ interface Lead {
   descripcion: string | null
   monto_potencial: number | null
   cuatrimestre: string | null
+  campana?: string | null
   estado: string
   notas: string | null
   motivo_perdida: string | null
@@ -103,7 +104,8 @@ export default function LeadDetalleClient({ lead, propuestas, userRol, userId }:
   const [guardandoGestion, setGuardandoGestion] = useState(false)
 
   const estadoBadge = ESTADO_BADGE[lead.estado] ?? { bg: '#f1f1ef', color: '#6e6a62', label: lead.estado }
-  const sem = semaforoColor(lead.proxima_gestion)
+  // Un lead ganado o perdido ya no tiene gestión pendiente.
+  const sem = lead.estado === 'ganado' || lead.estado === 'perdido' ? null : semaforoColor(lead.proxima_gestion)
 
   async function marcarGanadora(propuestaId: string) {
     if (!await confirmar('¿Marcar esta cotización como ganadora? El lead pasa a "ganado".')) return
@@ -121,7 +123,8 @@ export default function LeadDetalleClient({ lead, propuestas, userRol, userId }:
   async function guardarGestion() {
     if (!nuevaGestion.nota.trim()) return
     setGuardandoGestion(true); setErrorMsg(null)
-    const stamp = new Date().toISOString().slice(0, 10)
+    // dd/mm/aaaa, hora de Montevideo (antes "[2026-11-06]", en UTC).
+    const stamp = new Date().toLocaleDateString('es-UY', { timeZone: 'America/Montevideo', day: '2-digit', month: '2-digit', year: 'numeric' })
     const nuevaNotas = `${lead.notas ? lead.notas + '\n' : ''}[${stamp}] ${nuevaGestion.nota.trim()}`
     const body: Record<string, unknown> = { notas: nuevaNotas, notaGestion: nuevaGestion.nota.trim() }
     if (nuevaGestion.fecha) body.proximaGestion = nuevaGestion.fecha
@@ -172,6 +175,7 @@ export default function LeadDetalleClient({ lead, propuestas, userRol, userId }:
             <div style={{ ...meta, marginTop: 10, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
               <span>Vendedor: <strong style={{ color: 'var(--text-secondary)' }}>{v?.nombre ?? '—'}</strong></span>
               {ag && <span>Agencia: <strong style={{ color: 'var(--text-secondary)' }}>{ag.nombre}</strong></span>}
+              {lead.campana && <span>Campaña: <strong style={{ color: 'var(--text-secondary)' }}>{lead.campana}</strong></span>}
               <span>Potencial: <strong style={{ color: 'var(--text-secondary)' }}>{fmtMoney(lead.monto_potencial)}</strong></span>
             </div>
           </div>

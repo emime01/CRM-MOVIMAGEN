@@ -211,6 +211,7 @@ export default function CotizadorClient({
   const [nombre, setNombre] = useState('')
   const [marca, setMarca] = useState('')
   const [observaciones, setObservaciones] = useState('')
+  const [ordenGenerada, setOrdenGenerada] = useState<{ id: string; numero: number | null } | null>(null)
   // Comisión de la agencia pactada en esta venta. Se precarga con lo
   // recomendado de la agencia, pero lo que vale es lo que pone el vendedor:
   // se negocia venta por venta. Obligatoria cuando hay agencia.
@@ -264,6 +265,7 @@ export default function CotizadorClient({
       if (pData?.propuesta) {
         const p: PropuestaHeader = pData.propuesta
         setPropuesta(p)
+        setOrdenGenerada(pData.orden ?? null)
         setLeadInfo(p.leads ?? null)
         setNombre(p.nombre ?? '')
         setMarca(p.marca ?? '')
@@ -357,6 +359,21 @@ export default function CotizadorClient({
       : null
 
   const semanasGlobal = getSemanasFromDates(fechaInicio, fechaFin)
+
+  // Disponibilidad de los soportes del plan en las fechas de la campaña.
+  const [ocupacion, setOcupacion] = useState<Record<string, { estado: string; disponible: number; clientes: string[] }>>({})
+  const idsPlan = plan.map(it => it.soporte.id).filter(id => !id.startsWith('legacy-')).sort().join(',')
+  useEffect(() => {
+    if (!idsPlan || !fechaInicio || !fechaFin) { setOcupacion({}); return }
+    let vivo = true
+    fetch(`/api/disponibilidad?desde=${fechaInicio}&hasta=${fechaFin}`).then(r => r.ok ? r.json() : null).then(d => {
+      if (!vivo || !d?.soportes) return
+      const m: Record<string, { estado: string; disponible: number; clientes: string[] }> = {}
+      for (const x of d.soportes) if (idsPlan.includes(x.id)) m[x.id] = { estado: x.estado, disponible: x.disponible, clientes: x.clientes ?? [] }
+      setOcupacion(m)
+    }).catch(() => {})
+    return () => { vivo = false }
+  }, [idsPlan, fechaInicio, fechaFin])
 
   const calcs = useMemo(() => plan.map(it => ({ item: it, c: calcItem(it, fechaInicio) })), [plan, fechaInicio])
 
@@ -697,7 +714,13 @@ export default function CotizadorClient({
           </button>
         )}
 
-        {estado === 'aceptada' && !isNew && (
+        {estado === 'aceptada' && !isNew && ordenGenerada && (
+          <a href={`/dashboard/ventas/${ordenGenerada.id}`}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, background: '#15803d', color: '#fff', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+            <CheckCircle size={14} /> Ver venta OIC #{ordenGenerada.numero}
+          </a>
+        )}
+        {estado === 'aceptada' && !isNew && !ordenGenerada && (
           <button onClick={crearOrden} disabled={saving}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             <CheckCircle size={14} /> Crear orden de venta
@@ -915,6 +938,22 @@ export default function CotizadorClient({
                             <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{s.nombre}</span>
                           </div>
                           <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>{s.ubicacion}</div>
+                          {(() => {
+                            // Aviso si en estas fechas el soporte ya está vendido o bloqueado.
+                            const o = ocupacion[s.id]
+                            if (!o || o.estado === 'libre') return null
+                            const necesita = isLed(s) ? Math.max(1, Math.round((item.salidasElegidas ?? 30) / 30)) : isCircuito(s) ? Math.max(1, Math.round((item.salidasElegidas ?? 10) / 10)) : item.cantidadSoportes
+                            const falta = o.disponible < necesita
+                            return (
+                              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, padding: '4px 8px', borderRadius: 6,
+                                background: falta ? '#fee2e2' : '#fef3c7', color: falta ? '#b91c1c' : '#92400e' }}>
+                                {falta
+                                  ? `⚠ Ocupado en esas fechas${o.disponible > 0 ? ` (quedan ${o.disponible})` : ''}`
+                                  : `Parcialmente ocupado: quedan ${o.disponible}`}
+                                {o.clientes.length ? ` · ${o.clientes.slice(0, 3).join(', ')}` : ''}
+                              </div>
+                            )
+                          })()}
 
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
