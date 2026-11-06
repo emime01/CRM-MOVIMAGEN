@@ -487,7 +487,7 @@ const handler = createMcpHandler(
 
     type ItemInput = z.infer<typeof itemSchema>
 
-    const armarPlan = async (itemsInput: ItemInput[]) => {
+    const armarPlan = async (itemsInput: ItemInput[], inicio?: string | null) => {
       const supabase = createServerClient()
       const { calcularItem, salidasDefault } = await import('@/lib/cotizador/calcular')
       const plan: { soporte: any; semanas: number; cantidad: number; salidas: number | null; calc: ReturnType<typeof calcularItem> }[] = []
@@ -496,7 +496,8 @@ const handler = createMcpHandler(
       for (const it of itemsInput) {
         const { data: matches } = await supabase
           .from('soportes')
-          .select('id, nombre, ubicacion, categoria, tipo_cotizador, precio_semanal, tiene_iva, costo_produccion, impuestos_municipales, impactos_mensuales, semanas_minimas')
+          // '*': incluye el precio de temporada alta (v47) cuando exista.
+          .select('*')
           .ilike('nombre', `%${it.soporte_nombre}%`)
           .eq('activo', true)
           .limit(5)
@@ -509,7 +510,7 @@ const handler = createMcpHandler(
         const s = (exacto ?? matches[0]) as any
         const salidas = it.salidas ?? salidasDefault(s)
         const cantidad = it.cantidad ?? 1
-        const calc = calcularItem({ soporte: s, semanas: it.semanas, cantidad, salidas })
+        const calc = calcularItem({ soporte: s, semanas: it.semanas, cantidad, salidas, inicio })
         plan.push({ soporte: s, semanas: it.semanas, cantidad, salidas, calc })
       }
       return { plan, errores }
@@ -582,7 +583,7 @@ const handler = createMcpHandler(
         const cliente = clientes[0] as { id: string; nombre: string }
 
         // Plan con precios server-side
-        const { plan, errores } = await armarPlan(args.items)
+        const { plan, errores } = await armarPlan(args.items, args.fecha_inicio ?? null)
         if (errores.length) return text(`No pude armar la cotización:\n${errores.map(e => '• ' + e).join('\n')}`)
 
         const tot = plan.reduce((s, p) => s + p.calc.tot, 0)

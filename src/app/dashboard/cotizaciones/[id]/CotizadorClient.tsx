@@ -14,6 +14,7 @@ import {
 import { puede } from '@/lib/auth/roles'
 import { esImpuestoMTOP, etiquetaImpuesto } from '@/lib/cotizador/calcular'
 import { generarPdfCotizacion } from '@/lib/cotizador/pdf-cotizacion'
+import { precioDeSemanas, semanasMinimas } from '@/lib/cotizador/temporada'
 import { avisar, confirmar } from '@/components/ui/dialogos'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,6 +36,8 @@ interface Soporte {
   impuestos_municipales: number | null                  // flat $ per week per unit
   cantidad_default: number | null
   semanas_minimas: number | null
+  precio_semanal_alta?: number | null
+  semanas_minimas_alta?: number | null
   temporada_alta: boolean
   temporada_baja: boolean
   comentario: string | null
@@ -126,15 +129,16 @@ interface Calc {
   sem: number      // effective semanas (clamped to semanas_minimas)
 }
 
-function calcItem(item: PlanItem): Calc {
+function calcItem(item: PlanItem, inicio?: string | null): Calc {
   const s = item.soporte
-  const sem = Math.max(item.semanas, s.semanas_minimas || 1)
+  const sem = Math.max(item.semanas, semanasMinimas(s, inicio))
   const sal = item.salidasElegidas
   const cant = item.cantidadSoportes
   let mul = 1
   if (isCircuito(s) && sal) mul = sal / 10
   if (isLed(s)      && sal) mul = sal / 30
-  const arr     = (s.precio_semanal ?? 0) * sem * mul * cant
+  // Cada semana a su precio: en Punta del Este dic-feb es temporada alta.
+  const arr     = precioDeSemanas(s, sem, inicio) * mul * cant
   const ivaArr  = s.tiene_iva ? arr * IVA_RATE : 0
   const prod    = (s.costo_produccion ?? 0) * cant
   const ivaProd = prod * IVA_RATE
@@ -354,7 +358,7 @@ export default function CotizadorClient({
 
   const semanasGlobal = getSemanasFromDates(fechaInicio, fechaFin)
 
-  const calcs = useMemo(() => plan.map(it => ({ item: it, c: calcItem(it) })), [plan])
+  const calcs = useMemo(() => plan.map(it => ({ item: it, c: calcItem(it, fechaInicio) })), [plan, fechaInicio])
 
   const totals = useMemo(() => {
     // Municipales (pantallas, medianeras) y MTOP (ruteros) van por separado.
@@ -408,7 +412,7 @@ export default function CotizadorClient({
       return [...prev, {
         uid: ++uidRef.n,
         soporte: s,
-        semanas: Math.max(semanasGlobal, s.semanas_minimas || 1),
+        semanas: Math.max(semanasGlobal, semanasMinimas(s, fechaInicio)),
         salidasElegidas: isLed(s) ? 30 : isCircuito(s) ? 10 : null,
         cantidadSoportes: s.cantidad_default || 1,
       }]
@@ -449,7 +453,7 @@ export default function CotizadorClient({
       nuevos.push({
         uid: ++uidRef.n,
         soporte: s,
-        semanas: it.semanas ?? Math.max(semanasGlobal, s.semanas_minimas || 1),
+        semanas: it.semanas ?? Math.max(semanasGlobal, semanasMinimas(s, fechaInicio)),
         salidasElegidas: it.salidas_elegidas ?? (isLed(s) ? 30 : isCircuito(s) ? 10 : null),
         cantidadSoportes: it.cantidad_soportes ?? s.cantidad_default ?? 1,
       })
@@ -483,7 +487,8 @@ export default function CotizadorClient({
       cantidad_soportes: item.cantidadSoportes,
       salidas_elegidas:  item.salidasElegidas,
       semanas:           c.sem,
-      precio_unitario:   item.soporte.precio_semanal ?? 0,
+      // Precio semanal promedio: con temporada alta, mezcla los dos precios.
+      precio_unitario:   c.sem ? precioDeSemanas(item.soporte, c.sem, fechaInicio) / c.sem : (item.soporte.precio_semanal ?? 0),
       subtotal:          c.tot,
       impactos_calc:     c.imp,
     }))
@@ -860,6 +865,7 @@ export default function CotizadorClient({
                       $ {Math.round(s.precio_semanal ?? 0).toLocaleString('es-UY')}<span style={{ color: '#9ca3af' }}>/sem</span>
                       {s.costo_produccion && s.costo_produccion > 0 && <span style={{ color: '#9ca3af', marginLeft: 4 }}>+ prod. ${Math.round(s.costo_produccion).toLocaleString('es-UY')}</span>}
                       {s.semanas_minimas && s.semanas_minimas > 1 && <span style={{ color: '#dc2626', marginLeft: 4 }}>· mín {s.semanas_minimas}sem</span>}
+                      {s.precio_semanal_alta != null && <span style={{ color: '#b91c1c', marginLeft: 4 }}>· T. alta (dic-feb) ${Number(s.precio_semanal_alta).toLocaleString('es-UY')}/sem{s.semanas_minimas_alta ? `, mín ${s.semanas_minimas_alta}sem` : ''}</span>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 3, flexShrink: 0, flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -912,9 +918,9 @@ export default function CotizadorClient({
 
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <label style={miniLblSt}>Semanas{s.semanas_minimas && s.semanas_minimas > 1 ? ` (mín ${s.semanas_minimas})` : ''}</label>
-                              <input type="number" min={s.semanas_minimas ?? 1} value={item.semanas} style={miniInputSt}
-                                onChange={e => updItem(item.uid, 'semanas', Math.max(s.semanas_minimas ?? 1, Number(e.target.value) || 1))} />
+                              <label style={miniLblSt}>Semanas{semanasMinimas(s, fechaInicio) > 1 ? ` (mín ${semanasMinimas(s, fechaInicio)})` : ''}</label>
+                              <input type="number" min={semanasMinimas(s, fechaInicio)} value={item.semanas} style={miniInputSt}
+                                onChange={e => updItem(item.uid, 'semanas', Math.max(semanasMinimas(s, fechaInicio), Number(e.target.value) || 1))} />
                             </div>
                             {step && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

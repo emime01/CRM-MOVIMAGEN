@@ -18,7 +18,10 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('soportes')
-    .select('id, nombre, categoria, tipo, tipo_cotizador, seccion, ubicacion, precio_base, precio_semanal, tiene_iva, salidas_por_hora, horas_encendido, impactos_mensuales, costo_produccion, impuestos_municipales, cantidad_default, semanas_minimas, temporada_alta, temporada_baja, comentario, url_imagen, cotizador_id, activo, canon_shopping_id')
+    // Todas las columnas: así las de temporada alta (v47) aparecen apenas se
+    // corre la migración, sin romper mientras tanto. soportes no tiene datos
+    // sensibles.
+    .select('*')
     .order('categoria')
     .order('nombre')
 
