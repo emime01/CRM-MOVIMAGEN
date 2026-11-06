@@ -19,6 +19,8 @@ interface SoporteForm {
   tiene_iva: boolean
   es_digital: boolean
   cap: string
+  precio_semanal_alta: string
+  semanas_minimas_alta: string
 }
 
 interface ImportRow {
@@ -44,7 +46,7 @@ const TIPOS = ['estatico_shopping', 'banner_shopping', 'circuito', 'medianera', 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function emptyForm(): SoporteForm {
-  return { nombre: '', categoria: '', tipo: '', seccion: '', ubicacion: '', precio_base: '', precio_semanal: '', tiene_iva: false, es_digital: false, cap: '1' }
+  return { nombre: '', categoria: '', tipo: '', seccion: '', ubicacion: '', precio_base: '', precio_semanal: '', tiene_iva: false, es_digital: false, cap: '1', precio_semanal_alta: '', semanas_minimas_alta: '' }
 }
 
 function soporteToForm(s: SoporteRow): SoporteForm {
@@ -59,6 +61,8 @@ function soporteToForm(s: SoporteRow): SoporteForm {
     tiene_iva: s.tiene_iva,
     es_digital: s.es_digital ?? false,
     cap: String(s.cap ?? 1),
+    precio_semanal_alta: (s as any).precio_semanal_alta != null ? String((s as any).precio_semanal_alta) : '',
+    semanas_minimas_alta: (s as any).semanas_minimas_alta != null ? String((s as any).semanas_minimas_alta) : '',
   }
 }
 
@@ -103,6 +107,12 @@ function SoporteModal({ soporte, onClose, onSaved }: {
       tiene_iva: form.tiene_iva,
       es_digital: form.es_digital,
       cap: form.cap !== '' ? Math.max(1, parseInt(form.cap) || 1) : 1,
+      // Temporada alta (dic-feb): sólo se manda si se cargó o se está editando
+      // uno que ya la tiene, para no romper antes de la migración v47.
+      ...(form.precio_semanal_alta !== '' || (soporte as any)?.precio_semanal_alta != null ? {
+        precio_semanal_alta: form.precio_semanal_alta !== '' ? Number(form.precio_semanal_alta) : null,
+        semanas_minimas_alta: form.semanas_minimas_alta !== '' ? Math.max(1, parseInt(form.semanas_minimas_alta) || 1) : null,
+      } : {}),
     }
 
     const res = await fetch(
@@ -174,12 +184,24 @@ function SoporteModal({ soporte, onClose, onSaved }: {
           {/* Precios */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
-              <label style={lbl}>Precio base (ARS)</label>
+              <label style={lbl}>Precio base ($)</label>
               <input type="number" value={form.precio_base} onChange={e => set('precio_base', e.target.value)} placeholder="0" min={0} style={inp} />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={lbl}>Precio semanal (ARS)</label>
+              <label style={lbl}>Precio semanal ($)</label>
               <input type="number" value={form.precio_semanal} onChange={e => set('precio_semanal', e.target.value)} placeholder="0" min={0} style={inp} />
+            </div>
+          </div>
+
+          {/* Temporada alta (Punta del Este, dic-feb) */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Precio semanal temporada alta (dic-feb)</label>
+              <input type="number" value={form.precio_semanal_alta} onChange={e => set('precio_semanal_alta', e.target.value)} placeholder="Igual todo el año" min={0} style={inp} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Mínimo de semanas en alta</label>
+              <input type="number" value={form.semanas_minimas_alta} onChange={e => set('semanas_minimas_alta', e.target.value)} placeholder="—" min={1} style={inp} />
             </div>
           </div>
 

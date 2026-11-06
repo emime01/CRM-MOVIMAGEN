@@ -4,6 +4,7 @@
  * hay que actualizar ambos lados (la web calcula client-side para el preview
  * interactivo; el MCP y cualquier API usan esta).
  */
+import { precioDeSemanas, semanasMinimas } from './temporada'
 
 export const IVA_RATE = 0.22
 export const HORAS_MES = 4.33 // semanas por mes para prorratear impactos
@@ -29,6 +30,9 @@ export interface SoportePrecio {
   impuestos_municipales: number | null
   impactos_mensuales: number | null
   semanas_minimas: number | null
+  /** Temporada alta (dic-feb) de Punta del Este; ver lib/cotizador/temporada. */
+  precio_semanal_alta?: number | null
+  semanas_minimas_alta?: number | null
 }
 
 export interface ItemPlan {
@@ -36,6 +40,8 @@ export interface ItemPlan {
   semanas: number
   cantidad: number
   salidas: number | null
+  /** Fecha de inicio: decide qué semanas caen en temporada alta. */
+  inicio?: string | null
 }
 
 export interface CalcResultado {
@@ -62,13 +68,13 @@ export function salidasDefault(s: SoportePrecio): number | null {
 
 export function calcularItem(item: ItemPlan): CalcResultado {
   const s = item.soporte
-  const sem = Math.max(item.semanas, s.semanas_minimas || 1)
+  const sem = Math.max(item.semanas, semanasMinimas(s, item.inicio))
   const sal = item.salidas
   const cant = item.cantidad
   let mul = 1
   if (esCircuito(s) && sal) mul = sal / 10
   if (esLed(s) && sal) mul = sal / 30
-  const arr     = (s.precio_semanal ?? 0) * sem * mul * cant
+  const arr     = precioDeSemanas(s, sem, item.inicio) * mul * cant
   const ivaArr  = s.tiene_iva ? arr * IVA_RATE : 0
   const prod    = (s.costo_produccion ?? 0) * cant
   const ivaProd = prod * IVA_RATE
