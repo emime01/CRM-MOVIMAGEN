@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import TasksClient from './TasksClient'
 import { puede } from '@/lib/auth/roles'
+import AvisoBuses from '@/components/dashboard/AvisoBuses'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,5 +14,11 @@ export default async function TasksPage() {
   if (!session?.user) redirect('/login')
   if (!puede(session.user.rol, ALLOWED)) redirect('/dashboard')
 
-  return <TasksClient userRol={session.user.rol} userId={session.user.id} />
+  return (
+    <>
+      {/* Emilia y Magaly (operaciones): lo que falta asignar en Buses. */}
+      {puede(session.user.rol, ['operaciones']) && <AvisoBuses />}
+      <TasksClient userRol={session.user.rol} userId={session.user.id} />
+    </>
+  )
 }

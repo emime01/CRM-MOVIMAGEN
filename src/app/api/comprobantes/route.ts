@@ -19,6 +19,7 @@ type SoporteInfo = {
   id: string
   nombre: string
   es_digital: boolean | null
+  tipo_cotizador?: string | null
   bus_id: string | null
   buses: { numero: string | null } | null
 }
@@ -45,8 +46,8 @@ export async function POST(req: NextRequest) {
       id, numero, campana, marca, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
       clientes(nombre, empresa),
       orden_items(
-        soporte_id, bus_id,
-        soportes(id, nombre, es_digital, bus_id, buses!bus_id(numero))
+        id, soporte_id, bus_id,
+        soportes(id, nombre, es_digital, tipo_cotizador, bus_id, buses!bus_id(numero))
       )
     `)
     .eq('id', orden_id)
@@ -71,9 +72,27 @@ export async function POST(req: NextRequest) {
   const outroUrl = `${assetsBase}/comprobantes/outro.mp4`
 
   const items = (reserva.orden_items as unknown as Array<{
+    id: string
     soporte_id: string
     soportes: SoporteInfo | null
   }>)
+
+  // Los buses de cada línea ("FullBus × 3" → tres buses, v46). Si la tabla
+  // todavía no existe, se usa el bus del soporte como antes.
+  const busesPorSoporte = new Map<string, string[]>()
+  {
+    const { data: rel } = await supabase.from('orden_item_buses').select('orden_item_id, buses(numero)').in('orden_item_id', items.map(i => i.id))
+    const soporteDeItem = new Map(items.map(i => [i.id, i.soporte_id]))
+    for (const r of (rel ?? []) as any[]) {
+      const b = Array.isArray(r.buses) ? r.buses[0] : r.buses
+      const sid = soporteDeItem.get(r.orden_item_id)
+      if (b?.numero && sid) (busesPorSoporte.get(sid) ?? busesPorSoporte.set(sid, []).get(sid)!).push(String(b.numero))
+    }
+  }
+  const esDeBus = (sid: string) => {
+    const s = soporteMap.get(sid)
+    return s?.bus_id != null || s?.tipo_cotizador === 'estatico_bus' || busesPorSoporte.has(sid)
+  }
 
   const soporteIds = items.map(it => it.soporte_id).filter(Boolean)
   const { data: registros } = await supabase
@@ -87,8 +106,8 @@ export async function POST(req: NextRequest) {
 
   const videoRegistros  = (registros ?? []).filter(r => r.tipo === 'video')
   const fotoRegistros   = (registros ?? []).filter(r => r.tipo === 'foto')
-  const busRegistros    = fotoRegistros.filter(r => soporteMap.get(r.soporte_id)?.bus_id != null)
-  const staticRegistros = fotoRegistros.filter(r => !soporteMap.get(r.soporte_id)?.bus_id)
+  const busRegistros    = fotoRegistros.filter(r => esDeBus(r.soporte_id))
+  const staticRegistros = fotoRegistros.filter(r => !esDeBus(r.soporte_id))
 
   if (videoRegistros.length === 0 && fotoRegistros.length === 0) {
     return NextResponse.json({ error: 'No hay registros subidos para esta venta' }, { status: 400 })
@@ -110,10 +129,13 @@ export async function POST(req: NextRequest) {
       for (const r of busRegistros) {
         const s = soporteMap.get(r.soporte_id)
         const nombre   = s?.nombre ?? r.soporte_id
-        const busNumero = s?.buses?.numero ?? 'N/A'
+        const asignados = busesPorSoporte.get(r.soporte_id) ?? []
+        const busNumero = asignados.length === 1 ? asignados[0] : (s?.buses?.numero ?? (asignados.length ? null : 'N/A'))
         if (!grupoMap.has(nombre)) grupoMap.set(nombre, { buses: new Set(), fotos: [] })
         const g = grupoMap.get(nombre)!
-        g.buses.add(busNumero)
+        // El listado lleva todos los buses asignados a la línea.
+        for (const n of asignados) g.buses.add(n)
+        if (!asignados.length && busNumero) g.buses.add(busNumero)
         g.fotos.push({ url: `${registrosBase}/${r.storage_path}`, soporteNombre: nombre, busNumero, fechaRegistro: r.fecha_registro })
       }
       const grupos: BusSoporteGroup[] = Array.from(grupoMap.entries()).map(([nombre, { buses, fotos }]) => ({
