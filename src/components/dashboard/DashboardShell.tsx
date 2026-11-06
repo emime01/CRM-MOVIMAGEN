@@ -524,7 +524,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           >
             <Menu size={18} />
           </button>
-          <h1 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1 }}>
+          <h1 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {pageTitle}
           </h1>
 
@@ -534,6 +534,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           <div ref={bellRef} style={{ position: 'relative' }}>
             <button
               onClick={() => setBellOpen(v => !v)}
+              aria-label="Notificaciones"
+              title="Notificaciones"
               style={{
                 width: 36, height: 36,
                 borderRadius: 8,
@@ -563,7 +565,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
             {/* Bell dropdown */}
             {bellOpen && (
-              <div style={{
+              <div className="campanita-panel" style={{
                 position: 'absolute', top: 44, right: 0,
                 width: 360,
                 background: 'var(--bg-card)',

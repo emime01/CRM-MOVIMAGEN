@@ -206,10 +206,15 @@ export default function CalendarioClient({
   const primerDia = (new Date(y, m - 1, 1).getDay() + 6) % 7
   const celdas: (number | null)[] = [...Array(primerDia).fill(null), ...Array.from({ length: diasEnMes }, (_, i) => i + 1)]
 
-  const mover = (d: number) => setCursor(c => {
-    const t = new Date(c.y, c.m - 1 + d, 1)
-    return { y: t.getFullYear(), m: t.getMonth() + 1 }
-  })
+  // Al cambiar de mes, el panel del día pasa a ese mes (hoy si es el mes
+  // actual, si no el día 1): antes seguía mostrando el día del mes anterior.
+  const mover = (d: number) => {
+    const t = new Date(cursor.y, cursor.m - 1 + d, 1)
+    const y = t.getFullYear(), m = t.getMonth() + 1
+    setCursor({ y, m })
+    const clave = `${y}-${String(m).padStart(2, '0')}`
+    setSeleccionado(hoy.startsWith(clave) ? hoy : `${clave}-01`)
+  }
 
   function abrirNuevo(dia: string, lead = '') {
     setForm({ summary: '', description: '', start: `${dia}T09:00`, end: `${dia}T10:00`, crmType: 'reunion', crmLeadId: lead })

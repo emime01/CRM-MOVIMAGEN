@@ -45,7 +45,12 @@ export default async function ReportesPage() {
   const [{ data: ordenes }, { data: leads }, { data: objetivo }, { data: facturas }] = await Promise.all([
     ordQuery,
     leadsQuery,
-    supabase.from('objetivos').select('objetivo_monto').eq('vendedor_id', session.user.id).eq('cuatrimestre', q.label).maybeSingle(),
+    // Gerencia mira al equipo: lo vendido por todos contra la suma de los
+    // objetivos de todos (el mismo criterio que el Inicio). Antes comparaba
+    // el objetivo personal del gerente contra las ventas de todo el equipo.
+    isGerente
+      ? supabase.from('objetivos').select('objetivo_monto').eq('cuatrimestre', q.label)
+      : supabase.from('objetivos').select('objetivo_monto').eq('vendedor_id', session.user.id).eq('cuatrimestre', q.label),
     factQuery,
   ])
 
@@ -69,7 +74,7 @@ export default async function ReportesPage() {
   const delQ = ordenes?.filter(o => o.created_at && o.created_at >= q.start && o.created_at <= `${q.end}T23:59:59`) ?? []
   // Sin IVA, como el objetivo.
   const facturadoQ = sumarPorMoneda(comoNeto(delQ))
-  const objetivoQ = Number(objetivo?.objetivo_monto ?? 0)
+  const objetivoQ = ((objetivo ?? []) as { objetivo_monto: number | null }[]).reduce((t, o) => t + Number(o.objetivo_monto ?? 0), 0)
   // Los objetivos están en pesos; el avance se mide contra los pesos.
   const avancePct = objetivoQ > 0 ? Math.min(Math.round((montoEnPesos(facturadoQ) / objetivoQ) * 100), 100) : 0
   const pipeline = leads?.filter(l => !['ganado', 'perdido'].includes(l.estado ?? '')).reduce((s, l) => s + Number(l.monto_potencial ?? 0), 0) ?? 0
@@ -98,7 +103,7 @@ export default async function ReportesPage() {
     clientMap[nombre].count++
   })
   const topClientes = Object.values(clientMap)
-    .map(c => { const porMoneda = sumarPorMoneda(c.ventas ?? []); return { ...c, porMoneda, total: montoEnPesos(porMoneda) } })
+    .map(c => { const porMoneda = sumarPorMoneda(comoNeto(c.ventas ?? [])); return { ...c, porMoneda, total: montoEnPesos(porMoneda) } })
     .sort((a, b) => b.total - a.total)
     .slice(0, 5)
   const maxClient = Math.max(...topClientes.map(c => c.total), 1)
@@ -114,7 +119,7 @@ export default async function ReportesPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
         {[
           { label: `Vendido ${q.label}`, value: formatTotales(facturadoQ), sub: hayOtraMoneda(facturadoQ) ? 'sin IVA · el avance sólo cuenta los pesos' : 'sin IVA' },
-          { label: `Objetivo ${q.label}`, value: objetivoQ > 0 ? formatMoney(objetivoQ, 'UYU') : 'Sin objetivo', sub: '' },
+          { label: `Objetivo ${q.label}`, value: objetivoQ > 0 ? formatMoney(objetivoQ, 'UYU') : 'Sin objetivo', sub: isGerente ? 'del equipo' : '' },
           { label: 'Avance', value: `${avancePct}%`, sub: 'del objetivo', bar: avancePct },
           { label: 'Pipeline activo', value: formatMoney(pipeline, 'UYU'), sub: 'leads en curso' },
         ].map(s => (
@@ -167,7 +172,7 @@ export default async function ReportesPage() {
 
       {/* Top clients */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Top clientes</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Top clientes <span style={{ fontWeight: 500, color: 'var(--text-muted)', fontSize: 11 }}>· sin IVA</span></div>
         {topClientes.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Sin datos disponibles.</p>
         ) : (

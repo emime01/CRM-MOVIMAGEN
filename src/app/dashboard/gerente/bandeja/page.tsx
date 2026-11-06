@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import BandejaClient from './BandejaClient'
 import { puede } from '@/lib/auth/roles'
+import { detectarSobreventa, textoSobreventa } from '@/lib/ventas/sobreventa'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +39,22 @@ export default async function BandejaPage() {
       .order('created_at', { ascending: true }),
   ])
 
-  const ordenesPend = (ordenes ?? []).map((o: any) => {
+  // Para decidir sin abrir cada venta: lo que quedaría sobrevendido y el
+  // último comentario (el vendedor a veces pide ahí que se rechace).
+  const ids = (ordenes ?? []).map((o: any) => o.id)
+  const [sobreventas, { data: comentarios }] = await Promise.all([
+    Promise.all(ids.map(id => detectarSobreventa(supabase, id).catch(() => []))),
+    ids.length
+      ? supabase.from('comentarios_orden').select('orden_id, mensaje, created_at, perfiles(nombre)').in('orden_id', ids).order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
+  ])
+  const ultimoComentario: Record<string, { mensaje: string; autor: string }> = {}
+  for (const c of (comentarios ?? []) as any[]) {
+    if (ultimoComentario[c.orden_id]) continue
+    ultimoComentario[c.orden_id] = { mensaje: c.mensaje, autor: first<any>(c.perfiles)?.nombre ?? '' }
+  }
+
+  const ordenesPend = (ordenes ?? []).map((o: any, i: number) => {
     const cli = first<any>(o.clientes)
     const vend = first<any>(o.vendedor)
     return {
@@ -50,6 +66,8 @@ export default async function BandejaPage() {
       created_at: o.created_at as string,
       cliente: cli?.empresa ?? cli?.nombre ?? '—',
       vendedor: vend?.nombre ?? '—',
+      sobreventa: (sobreventas[i] ?? []).map(textoSobreventa),
+      comentario: ultimoComentario[o.id] ?? null,
     }
   })
 

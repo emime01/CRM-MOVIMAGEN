@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Check, X, Upload, FileText, ChevronDown, ChevronRight, FolderOpen } from 'lucide-react'
@@ -270,7 +270,15 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     }
   }
 
+  // Lo que quedaría sobrevendido al aprobar: se avisa antes, no después.
+  const [sobreventa, setSobreventa] = useState<string[]>([])
+  useEffect(() => {
+    if (!canApprove) return
+    fetch(`/api/ordenes/${orden.id}/sobreventa`).then(r => r.json()).then(d => setSobreventa(d.avisos ?? [])).catch(() => {})
+  }, [canApprove, orden.id])
+
   async function handleAprobar() {
+    if (sobreventa.length && !(await confirmar(`Si aprobás esta venta queda sobrevendido:\n\n${sobreventa.join('\n')}\n\n¿Aprobar igual?`))) return
     await handleChangeEstado('aprobada', 'Aprobada por gerente')
   }
 
@@ -279,6 +287,23 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     await handleChangeEstado('rechazada', motivoRechazo)
     setShowReject(false)
     setMotivoRechazo('')
+  }
+
+  // Un duplicado o una venta cargada por error se borra (nunca una aprobada).
+  const canBorrar = (orden.estado === 'borrador' || orden.estado === 'rechazada') && (
+    vendedorDeLaOrden === userId ||
+    puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
+  )
+  async function handleBorrar() {
+    if (!(await confirmar(`¿Borrar la venta ${numero}? Se borra con sus líneas, comentarios y documentos. No se puede deshacer.`))) return
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/ordenes/${orden.id}`, { method: 'DELETE' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { avisar(d.error ?? 'No se pudo borrar la venta'); return }
+      router.push('/dashboard/ventas')
+      router.refresh()
+    } finally { setActionLoading(false) }
   }
 
   async function handleRetirar() {
@@ -413,6 +438,15 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {canBorrar && (
+            <button
+              onClick={handleBorrar}
+              disabled={actionLoading}
+              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e6b8b8', background: '#fff', color: '#c82f2f', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Borrar venta
+            </button>
+          )}
           {canRetirar && (
             <button
               onClick={handleRetirar}
@@ -451,6 +485,14 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
           )}
         </div>
       </div>
+
+      {canApprove && sobreventa.length > 0 && (
+        <div style={{ background: '#fdecec', border: '1px solid #f3c2c2', color: '#a32020', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+          <strong>Si se aprueba, queda sobrevendido:</strong>
+          {sobreventa.map((t, k) => <div key={k} style={{ marginTop: 4 }}>⚠ {t}</div>)}
+          <div style={{ marginTop: 6, fontSize: 12, color: '#6e2a2a' }}>Revisá Disponibilidad antes de aprobar, o coordiná con operaciones mover la instalación.</div>
+        </div>
+      )}
 
       {/* Reject modal */}
       {showReject && (

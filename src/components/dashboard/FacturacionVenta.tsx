@@ -244,8 +244,8 @@ export default function FacturacionVenta({
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 760 }}>
             <thead>
               <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-                {['Cuota', 'Mes', 'Arrend.', 'Prod.', 'Total', 'Estado', 'Nº factura', 'Emisión', 'Vence', 'Cobro', ''].map(h => (
-                  <th key={h} style={{ padding: '9px 12px', textAlign: ['Arrend.', 'Prod.', 'Total'].includes(h) ? 'right' : 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                {['Cuota', 'Mes', 'Arrend. s/IVA', 'Prod. s/IVA', 'Total c/IVA', 'Estado', 'Nº factura', 'Emisión', 'Vence', 'Cobro', ''].map(h => (
+                  <th key={h} style={{ padding: '9px 12px', textAlign: ['Arrend. s/IVA', 'Prod. s/IVA', 'Total c/IVA'].includes(h) ? 'right' : 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>

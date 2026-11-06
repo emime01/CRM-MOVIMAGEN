@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
-import { puede } from '@/lib/auth/roles'
+import { puede, rolesDe } from '@/lib/auth/roles'
 import { comoNeto } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
@@ -25,10 +25,10 @@ export default async function GerentePage() {
   const q = getCurrentQuarter()
 
   const [{ data: vendedores }, { data: ordenesRaw }, { data: leads }, { data: objetivos }] = await Promise.all([
-    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
+    supabase.from('perfiles').select('id, nombre, rol').eq('activo', true),
     supabase.from('ordenes_venta').select('vendedor_id, monto_total, monto_neto, estado, created_at')
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
-      .gte('created_at', q.start).lte('created_at', q.end),
+      .gte('created_at', q.start).lte('created_at', `${q.end}T23:59:59`),
     supabase.from('leads').select('vendedor_id, estado, monto_potencial'),
     supabase.from('objetivos').select('vendedor_id, objetivo_monto').eq('cuatrimestre', q.label),
   ])
@@ -36,7 +36,7 @@ export default async function GerentePage() {
   // Contra el objetivo se mide lo vendido sin IVA.
   const ordenes = comoNeto(ordenesRaw ?? [])
 
-  const ROL_LABELS: Record<string, string> = { vendedor: 'Vendedor', asistente_ventas: 'Asistente de Ventas' }
+  const ROL_LABELS: Record<string, string> = { vendedor: 'Vendedor', asistente_ventas: 'Asistente de Ventas', gerente_comercial: 'Gerente comercial' }
 
   const STAGES = ['nuevo', 'en_conversacion', 'propuesta_enviada', 'negociacion', 'ganado', 'perdido'] as const
   const STAGE_LABELS: Record<string, string> = {
@@ -48,7 +48,14 @@ export default async function GerentePage() {
     negociacion: '#eb691c', ganado: '#15803d', perdido: '#dc2626',
   }
 
-  const stats = vendedores?.map(v => {
+  // El equipo es quien vende o tiene objetivo en el cuatrimestre (el gerente
+  // también vende), así el total coincide con el del Inicio. Antes sólo
+  // entraban los perfiles con rol exacto de vendedor.
+  const conObjetivo = new Set((objetivos ?? []).map(o => o.vendedor_id))
+  const conVentas = new Set(ordenes.map(o => o.vendedor_id))
+  const equipo = (vendedores ?? []).filter(v =>
+    rolesDe(v.rol).some(r => r === 'vendedor' || r === 'asistente_ventas') || conObjetivo.has(v.id) || conVentas.has(v.id))
+  const stats = equipo.map(v => {
     const myOrds = ordenes?.filter(o => o.vendedor_id === v.id) ?? []
     const facturado = myOrds.reduce((s, o) => s + Number(o.monto_total ?? 0), 0)
     const myLeads = leads?.filter(l => l.vendedor_id === v.id) ?? []
@@ -60,7 +67,7 @@ export default async function GerentePage() {
     const byStage: Record<string, number> = {}
     for (const s of STAGES) byStage[s] = myLeads.filter(l => l.estado === s).length
     return { ...v, facturado, objetivo, avance, leadsActivos, pipeline, byStage }
-  }) ?? []
+  })
 
   const totalFact = stats.reduce((s, v) => s + v.facturado, 0)
   const totalObj = stats.reduce((s, v) => s + v.objetivo, 0)
@@ -71,7 +78,7 @@ export default async function GerentePage() {
       {/* Team summary */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', marginBottom: 24, display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Equipo facturado {q.label}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Equipo vendido {q.label} · sin IVA</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(totalFact)}</div>
         </div>
         <div>

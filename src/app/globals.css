@@ -59,7 +59,11 @@ body {
   /* Grillas de varias columnas: en el celular, una debajo de la otra (las
      tarjetas del inicio, de a dos). Pisan el gridTemplateColumns inline. */
   .grid-resp { grid-template-columns: minmax(0, 1fr) !important; }
-  .grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  /* Tarjetas de a dos: menos relleno y montos que achican o cortan línea
+     en vez de salirse de la tarjeta ("$ 100.500.000"). */
+  .grid-kpi > div { padding: 14px !important; min-width: 0; overflow-wrap: anywhere; }
+  .grid-kpi > div > div[style*="font-size: 22px"] { font-size: 17px !important; }
   /* El panel de Movi espera cerrado fuera de la pantalla, a la derecha: sin
      esto la página se podía arrastrar de costado unos 40px. */
   html, body { overflow-x: hidden; }
@@ -74,6 +78,12 @@ body {
 
   /* El contenido ocupa todo el ancho */
   .dash-main { margin-left: 0 !important; }
+
+  /* Cabecera: el buscador queda como ícono para que la campanita entre en
+     pantalla, y el panel de avisos ocupa el ancho sin correr la cabecera. */
+  .busqueda-global { min-width: 0 !important; padding: 0 !important; width: 36px; height: 36px; justify-content: center; flex-shrink: 0; }
+  .busqueda-texto { display: none; }
+  .campanita-panel { position: fixed !important; top: 60px !important; left: 8px !important; right: 8px !important; width: auto !important; max-height: calc(100vh - 80px); overflow-y: auto !important; }
 
   /* Botón hamburguesa visible solo en mobile */
   .dash-hamburger { display: flex !important; }

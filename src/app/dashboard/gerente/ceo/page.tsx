@@ -112,7 +112,7 @@ export default async function CeoDashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         {/* Revenue vs objective per quarter */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Facturado vs Objetivo por cuatrimestre</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Vendido vs objetivo por cuatrimestre (sin IVA)</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {qStats.map(q => (
               <div key={q.label}>
@@ -131,7 +131,7 @@ export default async function CeoDashboardPage() {
               </div>
             ))}
             <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 6, background: 'var(--orange)', borderRadius: 2, display: 'inline-block' }} /> Facturado</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 6, background: 'var(--orange)', borderRadius: 2, display: 'inline-block' }} /> Vendido</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 4, background: '#0284c7', opacity: 0.5, borderRadius: 2, display: 'inline-block' }} /> Objetivo</span>
             </div>
           </div>
@@ -161,7 +161,7 @@ export default async function CeoDashboardPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-              {['Vendedor', 'Facturado', 'Objetivo total', 'Avance'].map(h => (
+              {['Vendedor', 'Vendido s/IVA', 'Objetivo total', 'Avance'].map(h => (
                 <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Vendedor' ? 'left' : 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
               ))}
             </tr>
