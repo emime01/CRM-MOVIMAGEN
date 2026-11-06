@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       incluir_reportes: body.incluirReportes ?? true,
       es_mensualizada: body.esMensualizada ?? false,
       tiene_produccion: t.prod > 0 || (body.tieneProduccion ?? false),
-      tiene_digital: body.tieneDigital ?? false,
+      tiene_digital: (body.tieneDigital ?? false) || items.some(i => ['led', 'circuito'].includes(soporteDe.get(i.soporteId)?.tipo_cotizador)),
       forma_pago_arrend: body.formaPagoArrend || null,
       comentario_arrend: body.comentarioArrend || null,
       forma_pago_prod: body.formaPagoProd || null,

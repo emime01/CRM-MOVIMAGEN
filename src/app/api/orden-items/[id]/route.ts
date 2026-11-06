@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { hoyUY } from '@/lib/fechas'
 
 const ESTADOS_GRABADO = ['pendiente', 'grabado']
 const ESTADOS_PRODUCCION = ['pendiente', 'en_produccion', 'producido', 'instalado']
@@ -57,7 +58,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const supabase = createServerClient()
+
+  // Marcar "Instalado" es la instalación: si no vino la fecha real de alta y
+  // la línea no la tiene, se toma la de hoy (se puede corregir después).
+  if (updates.estado_produccion === 'instalado' && body.fecha_alta_real === undefined) {
+    const { data: actual } = await supabase.from('orden_items').select('fecha_alta_real').eq('id', params.id).maybeSingle()
+    if (!actual?.fecha_alta_real) updates.fecha_alta_real = hoyUY()
+  }
+
   const { error } = await supabase.from('orden_items').update(updates).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+
+  // Lo impreso ya está: la tarea "Producir impreso" de esta línea se cierra
+  // sola (antes había que moverla a mano en Tareas).
+  if (updates.estado_produccion === 'producido' || updates.estado_produccion === 'instalado') {
+    await supabase.from('tasks').update({ estado: 'completada', completed_at: new Date().toISOString() })
+      .eq('orden_item_id', params.id).eq('tipo', 'ops_producir_impresos').neq('estado', 'completada')
+  }
+  return NextResponse.json({ ok: true, fecha_alta_real: updates.fecha_alta_real ?? undefined })
 }

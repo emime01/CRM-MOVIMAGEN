@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ItemEstadoControl from './ItemEstadoControl'
+import FechaRealItem from './FechaRealItem'
 import AvisoBuses from '@/components/dashboard/AvisoBuses'
 import { puede } from '@/lib/auth/roles'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
@@ -53,6 +54,8 @@ interface OrdenVenta {
 
 interface OrdenItem {
   id: string
+  fecha_alta_prevista?: string | null
+  fecha_alta_real?: string | null
   cantidad: number | null
   semanas: number | null
   requiere_grabado: boolean | null
@@ -113,6 +116,7 @@ export default async function OicPage() {
     .select(`
       id, cantidad, semanas, requiere_grabado, requiere_produccion,
       estado_grabado, estado_produccion, bus_id,
+      fecha_alta_prevista, fecha_alta_real,
       soportes(nombre, seccion, ubicacion),
       buses!bus_id(numero),
       ordenes_venta!inner(
@@ -192,7 +196,7 @@ export default async function OicPage() {
             }}>
               <thead>
                 <tr style={{ background: '#fafaf8', borderBottom: '1px solid #e5e3dc' }}>
-                  {['Orden #', 'Cliente', 'Soporte', 'Alta prevista', 'Grabado', 'Producción', 'Bus asignado'].map(col => (
+                  {['Orden #', 'Cliente', 'Soporte', 'Alta prevista', 'Alta real', 'Grabado', 'Producción', 'Bus asignado'].map(col => (
                     <th key={col} style={{
                       padding: '10px 16px',
                       textAlign: 'left',
@@ -255,10 +259,12 @@ export default async function OicPage() {
 
                       {/* Alta real o prevista */}
                       <td style={{ padding: '12px 16px', whiteSpace: 'nowrap', color: '#4a4845' }}>
-                        {formatDate(orden?.fecha_alta_real ?? orden?.fecha_alta_prevista)}
-                        {orden?.fecha_alta_real && orden?.fecha_alta_real !== orden?.fecha_alta_prevista && (
-                          <div style={{ fontSize: 10, color: '#b45309' }}>Prev: {formatDate(orden.fecha_alta_prevista)}</div>
-                        )}
+                        {formatDate(item.fecha_alta_prevista ?? orden?.fecha_alta_prevista)}
+                      </td>
+
+                      {/* Alta real de la línea (instalación) */}
+                      <td style={{ padding: '10px 16px', whiteSpace: 'nowrap' }}>
+                        <FechaRealItem itemId={item.id} valor={item.fecha_alta_real ?? null} />
                       </td>
 
                       {/* Grabado */}

@@ -9,6 +9,7 @@ import VentaCompartida from '@/components/dashboard/VentaCompartida'
 import FacturacionVenta from '@/components/dashboard/FacturacionVenta'
 import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
+import { puedeVerFacturas } from '@/lib/ventas/facturas'
 import { puede, es } from '@/lib/auth/roles'
 import { formatMoney as fmtMoneda } from '@/lib/money'
 import { avisar, confirmar } from '@/components/ui/dialogos'
@@ -57,6 +58,7 @@ interface DocumentoItem {
   url: string
   tipo: string | null
   created_at: string
+  subido_por?: string | null
 }
 
 interface Orden {
@@ -732,9 +734,11 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
                   </a>
                   {isDrive && <span style={{ fontSize: 10, color: '#1a73e8', fontWeight: 600, background: '#e8f0fe', padding: '2px 6px', borderRadius: 4 }}>Drive</span>}
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDate(doc.created_at)}</span>
-                  <button onClick={() => handleDeleteDoc(doc.id)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#c82f2f' }}>
-                    <X size={14} />
-                  </button>
+{(doc.subido_por === userId || vendedorDeLaOrden === userId || puede(userRol, ['gerente_comercial', 'asistente_ventas', 'administracion', 'asistente_administracion'])) && (
+                    <button onClick={() => handleDeleteDoc(doc.id)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#c82f2f' }}>
+                      <X size={14} />
+                    </button>
+)}
                 </div>
               )
             })}
@@ -760,7 +764,10 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
             )}
           </div>
 
-          {/* Facturación por cuota: número, vencimiento y cobro de cada factura */}
+          {/* Facturación por cuota: número, vencimiento y cobro de cada factura.
+              Arte y operaciones no la ven (el pedido les daba 403). */}
+          {puedeVerFacturas(userRol, userId, vendedorDeLaOrden ?? null,
+            (Array.isArray(orden.compartido) ? orden.compartido[0] : orden.compartido)?.id ?? null) && (
           <div style={{ marginBottom: 16 }}>
             <FacturacionVenta
               ordenId={orden.id}
@@ -793,6 +800,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
               }}
             />
           </div>
+          )}
 
           {/* Comentarios — hilo de coordinación entre vendedor, arte y operaciones */}
           <div style={{ marginBottom: 16 }}>

@@ -97,6 +97,7 @@ function ElegirBuses({ venta, linea, buses, onClose }: { venta: VentaBus; linea:
       setElegidos(prev => prev.filter(id => !data.conflictos.some((c: any) => c.bus_id === id)))
       return
     }
+    if (data.aviso) { setMsg(data.aviso); return }
     onClose()
   }
 

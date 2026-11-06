@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
       id, numero, campana, marca, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
       clientes(nombre, empresa),
       orden_items(
-        id, soporte_id, bus_id,
+        id, soporte_id, bus_id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real,
+        buses!bus_id(numero),
         soportes(id, nombre, es_digital, tipo_cotizador, bus_id, buses!bus_id(numero))
       )
     `)
@@ -75,7 +76,21 @@ export async function POST(req: NextRequest) {
     id: string
     soporte_id: string
     soportes: SoporteInfo | null
+    buses?: { numero: string | number } | { numero: string | number }[] | null
+    fecha_alta_prevista: string | null; fecha_alta_real: string | null
+    fecha_baja_prevista: string | null; fecha_baja_real: string | null
   }>)
+
+  // El período de cada soporte (el de su línea; si no tiene, el de la venta).
+  const periodos: Record<string, { desde: string; hasta: string }> = {}
+  for (const it of items) {
+    const nombre = it.soportes?.nombre
+    if (!nombre) continue
+    periodos[nombre] = {
+      desde: fechaUY(it.fecha_alta_real ?? it.fecha_alta_prevista ?? reserva.fecha_alta_real ?? reserva.fecha_alta_prevista),
+      hasta: fechaUY(it.fecha_baja_real ?? it.fecha_baja_prevista ?? reserva.fecha_baja_real ?? reserva.fecha_baja_prevista),
+    }
+  }
 
   // Los buses de cada línea ("FullBus × 3" → tres buses, v46). Si la tabla
   // todavía no existe, se usa el bus del soporte como antes.
@@ -87,6 +102,12 @@ export async function POST(req: NextRequest) {
       const b = Array.isArray(r.buses) ? r.buses[0] : r.buses
       const sid = soporteDeItem.get(r.orden_item_id)
       if (b?.numero && sid) (busesPorSoporte.get(sid) ?? busesPorSoporte.set(sid, []).get(sid)!).push(String(b.numero))
+    }
+    // Sin la v46 (o sin filas ahí), el bus que guardó la línea.
+    for (const it of items) {
+      if (busesPorSoporte.has(it.soporte_id)) continue
+      const b = Array.isArray(it.buses) ? it.buses[0] : it.buses
+      if (b?.numero) busesPorSoporte.set(it.soporte_id, [String(b.numero)])
     }
   }
   const esDeBus = (sid: string) => {
@@ -130,7 +151,7 @@ export async function POST(req: NextRequest) {
         const s = soporteMap.get(r.soporte_id)
         const nombre   = s?.nombre ?? r.soporte_id
         const asignados = busesPorSoporte.get(r.soporte_id) ?? []
-        const busNumero = asignados.length === 1 ? asignados[0] : (s?.buses?.numero ?? (asignados.length ? null : 'N/A'))
+        const busNumero = asignados.length === 1 ? asignados[0] : (s?.buses?.numero ?? (asignados.length ? null : 'A ASIGNAR'))
         if (!grupoMap.has(nombre)) grupoMap.set(nombre, { buses: new Set(), fotos: [] })
         const g = grupoMap.get(nombre)!
         // El listado lleva todos los buses asignados a la línea.
@@ -171,7 +192,7 @@ export async function POST(req: NextRequest) {
       const buffer = await generateStaticPdfComprobante({
         cliente: clienteNombre, numeroCampana,
         fechaDesde: fechaDesde, fechaHasta: fechaHasta,
-        fotos,
+        fotos, periodos,
       })
       const pdfPath = `${orden_id}/comprobante_estaticos.pdf`
       const { error: upErr } = await supabase.storage.from('comprobantes').upload(pdfPath, buffer, { contentType: 'application/pdf', upsert: true })
@@ -213,6 +234,12 @@ export async function POST(req: NextRequest) {
     }
     const detail = errors.map(e => `${e.tipo}: ${e.message}`).join(' | ') || 'Error desconocido'
     return NextResponse.json({ error: `Error generando comprobante - ${detail}` }, { status: 500 })
+  }
+
+  // Con el comprobante hecho, su tarea se cierra sola.
+  if (generated.length) {
+    await supabase.from('tasks').update({ estado: 'completada', completed_at: new Date().toISOString() })
+      .eq('orden_id', orden_id).eq('tipo', 'ops_crear_comprobante').neq('estado', 'completada')
   }
 
   const publicBase = `${supabaseUrl}/storage/v1/object/public/comprobantes`

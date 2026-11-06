@@ -154,7 +154,7 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
       if (res.ok) setHistorial((await res.json()).gestiones ?? [])
     }
     if (m.tipo === 'promesa') setForm({ fecha: m.r.promesa ?? '', nota: '' })
-    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '' })
+    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '', monto: String(m.r.importe) })
   }
 
   async function guardar(quitarPromesa = false) {
@@ -182,7 +182,12 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
         res = await fetch(`/api/facturas/${modal.r.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accion: 'cobrar', fecha: form.fecha, metodo: form.metodo }),
+          body: JSON.stringify({
+            accion: 'cobrar', fecha: form.fecha, metodo: form.metodo,
+            // Pagó una parte: el saldo queda pendiente con el mismo número.
+            ...(modal.r.tipo !== 'nota_credito' && form.monto !== '' && Number(form.monto) < Number(modal.r.importe) - 0.005
+              ? { monto: Number(form.monto) } : {}),
+          }),
         })
       }
       if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'No se pudo guardar'); return }
@@ -273,7 +278,7 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
             {rows.length === 0 ? 'No hay facturas emitidas sin cobrar.' : 'Ninguna factura coincide con el filtro.'}
           </p>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 1080 }}>
+          <table className="tabla-deudores" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 1080 }}>
             <thead>
               <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
                 {['Agencia', 'Cliente', 'Mes', 'Fecha', 'Nº factura', 'Importe', 'Vence', 'Atraso', 'Última gestión', ''].map((h, i) => (
@@ -402,6 +407,12 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
                   <label style={lbl}>{modal.r.tipo === 'nota_credito' ? 'Fecha en que se aplicó' : 'Fecha en que entró el pago'}
                     <input type="date" value={form.fecha} max={hoy()} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} style={inp} />
                   </label>
+                  {modal.r.tipo !== 'nota_credito' && (
+                    <label style={lbl}>Importe cobrado
+                      <input type="number" step="0.01" min="0" max={modal.r.importe} value={form.monto ?? ''} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={inp} />
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>Si pagó una parte, el saldo queda pendiente con el mismo número de factura.</span>
+                    </label>
+                  )}
                   <label style={lbl}>Medio (opcional)
                     <input value={form.metodo} onChange={e => setForm(f => ({ ...f, metodo: e.target.value }))} placeholder="Transferencia, cheque…" style={inp} />
                   </label>

@@ -85,6 +85,20 @@ body {
   .busqueda-texto { display: none; }
   .campanita-panel { position: fixed !important; top: 60px !important; left: 8px !important; right: 8px !important; width: auto !important; max-height: calc(100vh - 80px); overflow-y: auto !important; }
 
+  /* Tareas: en el celular las columnas van una debajo de la otra (antes se
+     veía una sola y las demás quedaban escondidas a la derecha), y los
+     botones de mover tienen tamaño de dedo. */
+  .tablero-tareas { flex-direction: column; overflow-x: visible !important; }
+  .tablero-col { flex: 1 1 auto !important; min-width: 0 !important; max-width: none !important; width: 100%; box-sizing: border-box; }
+  .btn-mover { width: 40px !important; height: 36px !important; }
+
+  /* Deudores en el celular: sin Mes, Fecha ni Última gestión, así el
+     importe, el vencimiento y Cobrar entran en la pantalla. */
+  .tabla-deudores { min-width: 0 !important; }
+  .tabla-deudores th:nth-child(3), .tabla-deudores td:nth-child(3),
+  .tabla-deudores th:nth-child(4), .tabla-deudores td:nth-child(4),
+  .tabla-deudores th:nth-child(9), .tabla-deudores td:nth-child(9) { display: none; }
+
   /* Botón hamburguesa visible solo en mobile */
   .dash-hamburger { display: flex !important; }
 

@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ArteClient from './ArteClient'
+import { altaEfectiva, bajaEfectiva } from '@/lib/ventas/asignar-buses'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { es } from '@/lib/auth/roles'
 import { TIPOS_DIGITALES } from '@/lib/soportes/digital'
@@ -28,7 +29,7 @@ export default async function ArteDigitalPage() {
       .order('seccion'),
     supabase
       .from('orden_items')
-      .select('soporte_id, ordenes_venta(id, numero, marca, estado, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, clientes(nombre, empresa))')
+      .select('soporte_id, salidas, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, ordenes_venta(id, numero, marca, estado, fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real, clientes(nombre, empresa))')
       .not('ordenes_venta', 'is', null),
   ])
 
@@ -40,6 +41,7 @@ export default async function ArteDigitalPage() {
     desdePrevista: string | null            // only set when real differs
     hastaPrevista: string | null
     orden_id: string; reserva_id: string | null
+    numero: number | null; salidas: number | null
   }[]> = {}
 
   ;(items ?? []).forEach((item: any) => {
@@ -47,8 +49,14 @@ export default async function ArteDigitalPage() {
     const ord = Array.isArray(item.ordenes_venta) ? item.ordenes_venta[0] : item.ordenes_venta
     if (!ord || !(ESTADOS_VENTA_VIVA as unknown as string[]).includes(ord.estado)) return
 
-    const altaEf = (ord.fecha_alta_real ?? ord.fecha_alta_prevista) as string | null
-    const bajaEf = (ord.fecha_baja_real ?? ord.fecha_baja_prevista) as string | null
+    // Las fechas de la línea (una pantalla vendida por 8 semanas dentro de una
+    // venta de 13 termina antes); si la línea no tiene, las de la venta.
+    const altaEf = altaEfectiva(item, ord)
+    const bajaEf = bajaEfectiva(item, ord)
+    const altaPrev = item.fecha_alta_prevista ?? ord.fecha_alta_prevista ?? null
+    const bajaPrev = item.fecha_baja_prevista ?? ord.fecha_baja_prevista ?? null
+    const altaReal = item.fecha_alta_real ?? ord.fecha_alta_real ?? null
+    const bajaReal = item.fecha_baja_real ?? ord.fecha_baja_real ?? null
 
     // Skip if campaign ended (using effective baja)
     if (bajaEf && bajaEf < today) return
@@ -63,9 +71,11 @@ export default async function ArteDigitalPage() {
         marca: ord.marca ?? '—',
         desde: altaEf ?? '',
         hasta: bajaEf ?? '',
-        desdePrevista: ord.fecha_alta_real ? (ord.fecha_alta_prevista ?? null) : null,
-        hastaPrevista: ord.fecha_baja_real ? (ord.fecha_baja_prevista ?? null) : null,
+        desdePrevista: altaReal ? altaPrev : null,
+        hastaPrevista: bajaReal ? bajaPrev : null,
         orden_id: ord.id,
+        numero: ord.numero ?? null,
+        salidas: item.salidas ?? null,
         reserva_id: null,
       })
     }

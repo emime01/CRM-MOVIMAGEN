@@ -20,7 +20,7 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
   const [clienteRes, leadsRes, ordenesRes, objetivoRes] = await Promise.all([
     supabase.from('clientes').select('id, nombre, empresa, email, telefono, rut, tipo_cliente, vendedor_id, logo_url, perfiles!clientes_vendedor_id_fkey(nombre)').eq('id', id).single(),
     supabase.from('leads').select('id, estado, descripcion, monto_potencial, cuatrimestre, notas, created_at, perfiles!leads_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
-    supabase.from('ordenes_venta').select('id, estado, monto_total, monto_neto, cuatrimestre_asociado, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
+    supabase.from('ordenes_venta').select('id, numero, estado, monto_total, monto_neto, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
     supabase.from('cliente_objetivos').select('objetivo_c1, objetivo_c2, objetivo_c3, ponderacion_pct, year').eq('cliente_id', id).order('year', { ascending: false }).limit(1).maybeSingle(),
   ])
 
@@ -30,7 +30,15 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
     <ClienteHistorialClient
       cliente={clienteRes.data as any}
       leads={(leadsRes.data ?? []) as any}
-      ordenes={(ordenesRes.data ?? []) as any}
+      // El cuatrimestre sale de la fecha de la venta (Q1 ene–abr, Q2 may–ago,
+      // Q3 sep–dic). La consulta pedía una columna que no existe y fallaba
+      // callada: la cuenta mostraba "Ventas (0)".
+      ordenes={(ordenesRes.data ?? []).map((o: any) => ({
+        ...o,
+        cuatrimestre_asociado: o.created_at
+          ? `Q${Math.floor((Number(o.created_at.slice(5, 7)) - 1) / 4) + 1}-${o.created_at.slice(0, 4)}`
+          : null,
+      })) as any}
       objetivo={objetivoRes.data ?? null}
     />
   )

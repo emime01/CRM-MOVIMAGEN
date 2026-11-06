@@ -50,9 +50,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         ordenes_venta!inner(numero, estado, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real))`)
       .in('bus_id', busIds)
       .neq('orden_item_id', params.id)
-    if (error) {
-      return NextResponse.json({ error: 'Falta correr la migración v46 (orden_item_buses) en Supabase.' }, { status: 503 })
-    }
+    if (error) return asignarSinV46(supabase, params.id, item, orden, busIds, desde, hasta)
     for (const u of (usados ?? []) as any[]) {
       const oi = Array.isArray(u.orden_items) ? u.orden_items[0] : u.orden_items
       const ov = Array.isArray(oi?.ordenes_venta) ? oi.ordenes_venta[0] : oi?.ordenes_venta
@@ -90,4 +88,51 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   return NextResponse.json({ ok: true, asignados: ok.length, cantidad, conflictos, venta_completa: completa })
+}
+
+/**
+ * Sin la migración v46 (orden_item_buses), cada línea guarda un solo bus en
+ * orden_items.bus_id: antes ni ése se guardaba y operaciones quedaba trabada.
+ * Se chequea el mismo conflicto (mismo bus y soporte en otra venta viva con
+ * fechas que se pisan) sobre esa columna.
+ */
+async function asignarSinV46(
+  supabase: ReturnType<typeof createServerClient>, itemId: string, item: any, orden: any,
+  busIds: string[], desde: string | null, hasta: string | null,
+) {
+  const elegido = busIds[0] ?? null
+  if (elegido) {
+    const { data: usados } = await supabase
+      .from('orden_items')
+      .select(`id, soporte_id, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, buses!bus_id(numero),
+        ordenes_venta!inner(numero, estado, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real)`)
+      .eq('bus_id', elegido).neq('id', itemId)
+    for (const oi of (usados ?? []) as any[]) {
+      const ov = Array.isArray(oi.ordenes_venta) ? oi.ordenes_venta[0] : oi.ordenes_venta
+      if (oi.soporte_id !== item.soporte_id || !(ESTADOS_VENTA_VIVA as readonly string[]).includes(ov?.estado)) continue
+      if (!cruzan(desde, hasta, altaEfectiva(oi, ov), bajaEfectiva(oi, ov))) continue
+      const b = Array.isArray(oi.buses) ? oi.buses[0] : oi.buses
+      return NextResponse.json({ ok: true, asignados: 0, cantidad: 1, sin_v46: true,
+        conflictos: [{ bus_id: elegido, numero: b?.numero ?? '?', motivo: `ya lo tiene la OIC #${ov?.numero ?? '?'} en esas fechas` }] })
+    }
+  }
+  const { error } = await supabase.from('orden_items').update({ bus_id: elegido }).eq('id', itemId)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // ¿Quedó algún bus por asignar en la venta? (con una sola columna, una
+  // línea cuenta como asignada si tiene su bus)
+  const { data: lineas } = await supabase
+    .from('orden_items').select('id, bus_id, soportes(tipo_cotizador, tipo)').eq('orden_id', item.orden_id)
+  const completa = (lineas ?? []).filter((l: any) => {
+    const s = Array.isArray(l.soportes) ? l.soportes[0] : l.soportes
+    return s && (s.tipo_cotizador === 'estatico_bus' || s.tipo === 'bus')
+  }).every((l: any) => !!l.bus_id)
+  if (completa) {
+    await supabase.from('tasks').update({ estado: 'completada', completed_at: new Date().toISOString() })
+      .eq('orden_id', item.orden_id).eq('tipo', 'ops_asignar_buses').neq('estado', 'completada')
+  }
+  return NextResponse.json({
+    ok: true, asignados: elegido ? 1 : 0, cantidad: 1, conflictos: [], venta_completa: completa, sin_v46: true,
+    aviso: busIds.length > 1 ? 'Hasta correr la migración v46 se guarda un solo bus por línea: quedó el primero.' : undefined,
+  })
 }
