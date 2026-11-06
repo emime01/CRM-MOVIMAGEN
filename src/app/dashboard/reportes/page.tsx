@@ -139,7 +139,7 @@ export default async function ReportesPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         {/* Monthly bar chart */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Facturado por mes — {q.label}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Facturado por mes — {q.label} · con IVA</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {monthlyRev.map(m => (
               <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

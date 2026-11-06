@@ -117,6 +117,10 @@ export async function crearOrdenDesdePropuesta(
       comision_agencia_pct:      propuesta.comision_agencia_pct ?? null,
       comision_agencia_prod_pct: propuesta.comision_agencia_prod_pct ?? null,
       condicion_pago_dias:  condicionPagoDias,
+      // Banderas de la venta según lo que lleva: arte y operaciones las usan
+      // para saber si hay material digital o impresión (quedaban en false).
+      tiene_digital:        (itemsCot as any[]).some(it => flagsPorTipo(it.tipo_cotizador).requiere_grabado),
+      tiene_produccion:     (itemsCot as any[]).some(it => flagsPorTipo(it.tipo_cotizador).requiere_produccion) || Number(propuesta.monto_produccion ?? 0) > 0,
       fecha_alta_prevista:  inicio,
       fecha_baja_prevista:  bajaVenta,
       // Provenance: la OIC ya queda vinculada a la cotización por propuesta_id.

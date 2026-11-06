@@ -34,6 +34,18 @@ export interface PdfComprobante {
   fechaDesde: string
   fechaHasta: string
   fotos: PhotoItem[]
+  /**
+   * Período propio de cada soporte ("dd/mm/aaaa"), por nombre, cuando no es
+   * el de toda la campaña: un rutero de 8 semanas dentro de una venta de 13
+   * no puede decir "hasta" la fecha del banner.
+   */
+  periodos?: Record<string, { desde: string; hasta: string }>
+}
+
+/** "15/12/2026"–"09/02/2027" → "15/12 AL 09/02" para la fila del listado. */
+function periodoCorto(p: { desde: string; hasta: string }): string {
+  const c = (f: string) => f.split('/').slice(0, 2).join('/')
+  return `${c(p.desde)} AL ${c(p.hasta)}`
 }
 
 export interface BusPhotoItem {
@@ -344,15 +356,25 @@ export async function generateStaticPdfComprobante(data: PdfComprobante): Promis
 
   // Listado de los soportes de la campaña.
   const soportes = Array.from(new Set(data.fotos.map(f => f.soporteNombre)))
+  const propio = (nombre: string) => {
+    const p = data.periodos?.[nombre]
+    return p && (p.desde !== data.fechaDesde || p.hasta !== data.fechaHasta) ? p : null
+  }
   hojasDeListado(pdfDoc, r, [{
     titulo: 'SOPORTE',
-    filas: soportes.map((s, i) => ({ numero: String(i + 1), texto: s.toUpperCase() })),
+    filas: soportes.map((s, i) => {
+      const p = propio(s)
+      return { numero: String(i + 1), texto: (p ? `${s} · ${periodoCorto(p)}` : s).toUpperCase() }
+    }),
   }], data.fechaDesde, data.fechaHasta)
 
-  await hojasDeFotos(pdfDoc, r, data.fotos.map(f => ({
-    url: f.url,
-    leyenda: [f.soporteNombre, fechaCorta(f.fechaRegistro)].filter(Boolean).join(' · '),
-  })))
+  await hojasDeFotos(pdfDoc, r, data.fotos.map(f => {
+    const p = propio(f.soporteNombre)
+    return {
+      url: f.url,
+      leyenda: [f.soporteNombre, p ? periodoCorto(p).toLowerCase() : null, fechaCorta(f.fechaRegistro)].filter(Boolean).join(' · '),
+    }
+  }))
 
   contratapa(pdfDoc, r)
   return Buffer.from(await pdfDoc.save())

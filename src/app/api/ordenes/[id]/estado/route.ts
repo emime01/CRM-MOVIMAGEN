@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { puede } from '@/lib/auth/roles'
+import { puede, haceAdministracion } from '@/lib/auth/roles'
+
+const aprobadaYa = (e: string) => e === 'aprobada'
 import { generarTasksDeOrden } from '@/lib/tasks/generar-desde-orden'
 import { cerrarBloqueoDeVenta } from '@/lib/reservas/confirmar'
 import { asignarBusesDeOrden } from '@/lib/ventas/asignar-buses'
@@ -159,6 +161,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         link:      `/dashboard/ventas/${params.id}`,
         entity_id: params.id,
       })))
+    }
+
+    // Administración se entera de que hay cuotas nuevas para facturar.
+    if (aprobadaYa(body.estado) && orden) {
+      const { data: perfiles } = await supabase.from('perfiles').select('id, rol').eq('activo', true)
+      const admin = (perfiles ?? []).filter((p: any) => haceAdministracion(p.rol) && p.id !== session.user.id)
+      if (admin.length) {
+        const cli: any = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
+        await supabase.from('notificaciones').insert(admin.map((p: any) => ({
+          user_id:   p.id,
+          tipo:      'orden_para_facturar',
+          titulo:    'Venta aprobada: cuotas para facturar',
+          mensaje:   `OIC #${orden.numero} · ${cli?.empresa ?? cli?.nombre ?? 'cliente'}`,
+          link:      `/dashboard/ventas/${params.id}`,
+          entity_id: params.id,
+        })))
+      }
     }
   }
 

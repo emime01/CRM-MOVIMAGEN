@@ -1,4 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { atiendeTareasDe } from '@/lib/auth/roles'
+
+/** Una fecha "AAAA-MM-DD" corrida n días (negativo = antes). */
+function correr(fecha: string | null, dias: number): string | null {
+  if (!fecha) return null
+  const d = new Date(fecha + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
+
+// Cuánto antes del alta tiene que estar cada cosa: el arte aprobado antes de
+// imprimir, lo impreso antes de instalar. Antes todo vencía el día del alta.
+const DIAS_ARTE_ANTES = 10
+const DIAS_IMPRESO_ANTES = 3
+const DIAS_BUSES_ANTES = 7
+// El comprobante se arma con las fotos de la instalación.
+const DIAS_COMPROBANTE_DESPUES = 7
 
 /**
  * Genera las tareas automáticas para arte y operaciones cuando una OIC se aprueba.
@@ -6,11 +23,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * Reglas:
  *   - Item con tipo_cotizador en (estatico_bus, estatico_shopping, medianera,
  *     rutero, banner_shopping) — los banners de shopping son lonas impresas
- *       → arte_muestra_color (enviar muestra por WeTransfer) + ops_producir_impresos
+ *       → arte_muestra_color (arte final + muestra por WeTransfer, alta − 10 días)
+ *         + ops_producir_impresos (alta − 3 días)
  *   - Item con tipo_cotizador en (led, circuito)
- *       → arte_chequear_material_digital                  (deadline: fecha_alta)
- *   - Siempre por ítem → ops_crear_comprobante           (deadline: fecha_baja)
- *   - Si la OIC tiene al menos un soporte tipo bus       → ops_asignar_buses  (uno por OIC)
+ *       → arte_chequear_material_digital                  (alta − 3 días)
+ *   - Uno por OIC → ops_crear_comprobante                 (alta + 7 días)
+ *   - Si la OIC tiene al menos un soporte tipo bus       → ops_asignar_buses  (alta − 7 días)
  *
  * Es idempotente: si ya hay tasks para esta orden, no genera nada.
  */
@@ -26,7 +44,7 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
       .single(),
     supabase
       .from('orden_items')
-      .select('id, soporte_id, fecha_alta_prevista, fecha_baja_prevista, soportes(nombre, tipo_cotizador, tipo)')
+      .select('id, soporte_id, cantidad, fecha_alta_prevista, fecha_baja_prevista, soportes(nombre, tipo_cotizador, tipo)')
       .eq('orden_id', ordenId),
   ])
 
@@ -57,17 +75,15 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
     const fechaAlta = it.fecha_alta_prevista ?? orden.fecha_alta_prevista ?? null
     const fechaBaja = it.fecha_baja_prevista ?? orden.fecha_baja_prevista ?? null
 
-    const base = `OIC #${ordenNumero} · ${clienteNombre} · ${soporteName}`
+    const cant = Math.max(1, Number(it.cantidad) || 1)
+    const base = `OIC #${ordenNumero} · ${clienteNombre} · ${soporteName}${cant > 1 ? ` ×${cant}` : ''}`
+    void fechaBaja
 
     if (tipoCot === 'estatico_bus' || tipoCot === 'estatico_shopping' || tipoCot === 'medianera' || tipoCot === 'rutero' || tipoCot === 'banner_shopping') {
-      toCreate.push({ tipo: 'arte_muestra_color',        asignado_a_rol: 'arte',        orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Enviar muestra por WeTransfer — ${base}`, fecha_limite: fechaAlta })
-      toCreate.push({ tipo: 'ops_producir_impresos',     asignado_a_rol: 'operaciones', orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Producir impreso — ${base}`, fecha_limite: fechaAlta })
+      toCreate.push({ tipo: 'arte_muestra_color',        asignado_a_rol: 'arte',        orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Arte final y muestra por WeTransfer — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_ARTE_ANTES) })
+      toCreate.push({ tipo: 'ops_producir_impresos',     asignado_a_rol: 'operaciones', orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Producir impreso — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_IMPRESO_ANTES) })
     } else if (tipoCot === 'led' || tipoCot === 'circuito') {
-      toCreate.push({ tipo: 'arte_chequear_material_digital', asignado_a_rol: 'arte',  orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Chequear materiales digitales — ${base}`, fecha_limite: fechaAlta })
-    }
-
-    if (it.soporte_id) {
-      toCreate.push({ tipo: 'ops_crear_comprobante', asignado_a_rol: 'operaciones', orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Crear comprobante — ${base}`, fecha_limite: fechaBaja })
+      toCreate.push({ tipo: 'arte_chequear_material_digital', asignado_a_rol: 'arte',  orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Chequear materiales digitales — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_IMPRESO_ANTES) })
     }
 
     if (tipoCot === 'estatico_bus' || tipo?.toLowerCase().includes('bus')) hasBus = true
@@ -79,7 +95,19 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
       asignado_a_rol: 'operaciones',
       orden_id: ordenId,
       descripcion: `Asignar buses — OIC #${ordenNumero} · ${clienteNombre}`,
-      fecha_limite: orden.fecha_alta_prevista ?? null,
+      fecha_limite: correr(orden.fecha_alta_prevista ?? null, -DIAS_BUSES_ANTES),
+    })
+  }
+
+  // Un comprobante por venta (el PDF es uno), una semana después del alta:
+  // antes había uno por soporte y vencía al final de la campaña.
+  if ((items ?? []).some((it: any) => it.soporte_id)) {
+    toCreate.push({
+      tipo: 'ops_crear_comprobante',
+      asignado_a_rol: 'operaciones',
+      orden_id: ordenId,
+      descripcion: `Crear comprobante — OIC #${ordenNumero} · ${clienteNombre}`,
+      fecha_limite: correr(orden.fecha_alta_prevista ?? null, DIAS_COMPROBANTE_DESPUES),
     })
   }
 
@@ -92,23 +120,24 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
   const porRol = new Map<string, number>()
   toCreate.forEach(t => porRol.set(t.asignado_a_rol, (porRol.get(t.asignado_a_rol) ?? 0) + 1))
 
-  const roles = Array.from(porRol.keys())
-  const { data: destinatarios } = await supabase
-    .from('perfiles')
-    .select('id, rol')
-    .in('rol', roles)
-
-  if (destinatarios?.length) {
-    const notifs = destinatarios.map((p: { id: string; rol: string }) => ({
+  // A cada persona que atiende esas áreas, también con rol mixto (Magaly es
+  // asistente de ventas y operaciones): antes sólo le llegaba al rol exacto.
+  const { data: perfiles } = await supabase.from('perfiles').select('id, rol').eq('activo', true)
+  const notifs = (perfiles ?? []).flatMap((p: { id: string; rol: string }) => {
+    const cuantas = Array.from(porRol.entries())
+      .filter(([area]) => atiendeTareasDe(p.rol, area))
+      .reduce((t, [, n]) => t + n, 0)
+    if (!cuantas) return []
+    return [{
       user_id:   p.id,
       tipo:      'tasks_nuevas',
       titulo:    'Nuevas tareas de producción',
-      mensaje:   `OIC #${ordenNumero} · ${clienteNombre} — ${porRol.get(p.rol)} tarea(s) para tu área`,
-      link:      '/dashboard/tasks',
+      mensaje:   `OIC #${ordenNumero} · ${clienteNombre} — ${cuantas} tarea(s) para tu área`,
+      link:      `/dashboard/ventas/${ordenId}`,
       entity_id: ordenId,
-    }))
-    await supabase.from('notificaciones').insert(notifs)
-  }
+    }]
+  })
+  if (notifs.length) await supabase.from('notificaciones').insert(notifs)
 
   return { created: toCreate.length }
 }

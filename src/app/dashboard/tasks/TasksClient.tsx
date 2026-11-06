@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { puede, es, areasDeTarea } from '@/lib/auth/roles'
 import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical, DollarSign } from 'lucide-react'
 import { avisar } from '@/components/ui/dialogos'
+import Link from 'next/link'
 
 interface Task {
   id: string
@@ -33,7 +34,7 @@ const COLUMNAS: { estado: Estado; titulo: string; color: string }[] = [
 ]
 
 const TIPO_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  arte_muestra_color:             { label: 'Enviar muestra',    icon: <Palette size={12} />,  color: '#a855f7' },
+  arte_muestra_color:             { label: 'Arte final + muestra',    icon: <Palette size={12} />,  color: '#a855f7' },
   arte_chequear_material_digital: { label: 'Chequear material', icon: <Sparkles size={12} />, color: '#3b82f6' },
   ops_asignar_buses:              { label: 'Asignar buses',     icon: <Truck size={12} />,    color: '#0891b2' },
   ops_producir_impresos:          { label: 'Producir impresos', icon: <Printer size={12} />,  color: '#d97706' },
@@ -196,7 +197,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
         </div>
       ) : (
         /* Tablero: en pantallas chicas las columnas se deslizan de costado */
-        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
+        <div className="tablero-tareas" style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
           {COLUMNAS.map(col => {
             const items = porColumna[col.estado]
             const visibles = col.estado === 'completada' ? items.slice(0, MAX_LISTO) : items
@@ -204,6 +205,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
             return (
               <div
                 key={col.estado}
+                className="tablero-col"
                 onDragOver={e => { if (canAct && arrastrando) { e.preventDefault(); setColumnaActiva(col.estado) } }}
                 onDragLeave={() => setColumnaActiva(prev => (prev === col.estado ? null : prev))}
                 onDrop={e => {
@@ -247,9 +249,9 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
                     const vencLabel = listo
                       ? (t.completed_at ? `Lista ${fmtDate(t.completed_at)}` : 'Lista')
                       : dv == null ? 'Sin fecha'
-                      : dv < 0 ? `Atrasada ${Math.abs(dv)}d`
-                      : dv === 0 ? 'Vence hoy'
-                      : `en ${dv}d`
+                      : dv < 0 ? `${fmtDate(t.fecha_limite)} · atrasada ${Math.abs(dv)}d`
+                      : dv === 0 ? `Vence hoy (${fmtDate(t.fecha_limite)})`
+                      : `${fmtDate(t.fecha_limite)} · en ${dv}d`
                     const vencColor = listo ? '#15803d'
                       : dv == null ? '#9a9895'
                       : dv <= 0 ? '#dc2626' : dv <= 3 ? '#d97706' : '#6e6a62'
@@ -280,7 +282,12 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
                           {cli?.empresa ?? cli?.nombre ?? '—'}
                         </div>
                         <div style={{ fontSize: 11.5, color: '#6e6a62' }}>
-                          OIC #{ord?.numero ?? '—'}{sop?.nombre ? ` · ${sop.nombre}` : ''}
+                          {/* La tarjeta lleva a la venta: ahí están las líneas, fechas,
+                              documentos y comentarios. */}
+                          {ord?.id
+                            ? <Link href={`/dashboard/ventas/${ord.id}`} style={{ color: 'var(--orange, #eb691c)', fontWeight: 700, textDecoration: 'none' }}>OIC #{ord.numero ?? '—'} →</Link>
+                            : <>OIC #—</>}
+                          {sop?.nombre ? ` · ${sop.nombre}` : ''}
                         </div>
                         {t.descripcion && (
                           <div style={{ fontSize: 11, color: '#8a8780', marginTop: 3 }}>{t.descripcion}</div>
@@ -301,12 +308,14 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
                                 onClick={() => moverRelativo(t, -1)}
                                 disabled={idx === 0 || moviendo === t.id}
                                 title="Mover a la izquierda"
+                                className="btn-mover"
                                 style={btnMover(idx === 0)}
                               ><ChevronLeft size={13} /></button>
                               <button
                                 onClick={() => moverRelativo(t, 1)}
                                 disabled={idx === COLUMNAS.length - 1 || moviendo === t.id}
                                 title="Mover a la derecha"
+                                className="btn-mover"
                                 style={btnMover(idx === COLUMNAS.length - 1)}
                               ><ChevronRight size={13} /></button>
                             </span>

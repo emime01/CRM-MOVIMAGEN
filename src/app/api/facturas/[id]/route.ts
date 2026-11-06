@@ -40,7 +40,7 @@ const importe = (v: unknown) => {
  *
  *   { accion: 'editar', mes_pauta?, importe_*?, fecha_vencimiento?, notas? }
  *   { accion: 'emitir', numero, fecha_emision?, importe_*? }
- *   { accion: 'cobrar', fecha?, metodo? }
+ *   { accion: 'cobrar', fecha?, metodo?, monto? }   (monto < total: cobro parcial)
  *   { accion: 'anular', motivo? }
  *   { accion: 'promesa', fecha_pago_prometida | null, nota? }
  *
@@ -203,20 +203,98 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     case 'cobrar': {
       if (!administra) return NextResponse.json({ error: 'Sólo Administración registra cobros' }, { status: 403 })
+
+      // Cobro parcial: la factura se parte en dos. Lo cobrado queda en esta
+      // fila (y la comisión sale sobre esa parte); el saldo pasa a una fila
+      // nueva con el mismo número, emitida y con el mismo vencimiento.
+      const total = Number(factura.importe_total ?? 0)
+      const monto = body.monto !== undefined && body.monto !== null && body.monto !== '' ? importe(body.monto) : null
+      let saldoId: string | null = null
+      if (monto !== null) {
+        if (factura.tipo !== 'factura' || factura.estado !== 'emitida') {
+          return NextResponse.json({ error: 'El cobro parcial es para una factura emitida' }, { status: 409 })
+        }
+        if (monto <= 0 || monto > total + 0.005) {
+          return NextResponse.json({ error: 'El importe cobrado tiene que ser mayor que 0 y no pasar el total de la factura' }, { status: 400 })
+        }
+      }
+      if (monto !== null && monto < total - 0.005) {
+        const { data: completa } = await supabase.from('facturas').select('*').eq('id', params.id).maybeSingle()
+        if (!completa) return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 })
+        const k = monto / total
+        const r2 = (n: unknown) => Math.round(Number(n ?? 0) * 100) / 100
+        const arrCobrado = r2(Number(completa.importe_arrendamiento ?? 0) * k)
+        const prodCobrado = r2(Number(completa.importe_produccion ?? 0) * k)
+        const { id: _id, created_at: _c, updated_at: _u, ...resto } = completa as Record<string, unknown>
+        const { data: saldo, error: sErr } = await supabase.from('facturas').insert({
+          ...resto,
+          estado: 'emitida',
+          importe_total: r2(total - monto),
+          importe_arrendamiento: r2(Number(completa.importe_arrendamiento ?? 0) - arrCobrado),
+          importe_produccion: r2(Number(completa.importe_produccion ?? 0) - prodCobrado),
+          notas: `Saldo de la factura ${completa.numero ?? ''} (cobro parcial de ${monto})`.trim(),
+        }).select('id').single()
+        if (sErr || !saldo) return NextResponse.json({ error: sErr?.message ?? 'No se pudo registrar el saldo' }, { status: 500 })
+        saldoId = saldo.id
+        const { error: pErr } = await supabase.from('facturas').update({
+          importe_total: monto, importe_arrendamiento: arrCobrado, importe_produccion: prodCobrado, updated_at: ahora,
+        }).eq('id', params.id).eq('estado', 'emitida')
+        if (pErr) {
+          await supabase.from('facturas').delete().eq('id', saldoId)
+          return NextResponse.json({ error: pErr.message }, { status: 500 })
+        }
+      }
+
       const r = await registrarCobroDeFactura(supabase, params.id, {
         fecha: fechaValida(body.fecha) ? body.fecha : undefined,
         metodo: typeof body.metodo === 'string' && body.metodo.trim() ? body.metodo.trim() : undefined,
         userId: session.user.id,
       })
-      if (!r.ok) return NextResponse.json({ error: r.error }, { status: 409 })
+      if (!r.ok) {
+        // Si no se pudo cobrar, se deshace la partición.
+        if (saldoId) {
+          await supabase.from('facturas').update({
+            importe_total: factura.importe_total, importe_arrendamiento: factura.importe_arrendamiento,
+            importe_produccion: factura.importe_produccion,
+          }).eq('id', params.id)
+          await supabase.from('facturas').delete().eq('id', saldoId)
+        }
+        return NextResponse.json({ error: r.error }, { status: 409 })
+      }
 
       await supabase.from('orden_historial').insert({
         orden_id: factura.orden_id,
         perfil_id: session.user.id,
         estado_nuevo: orden?.estado ?? null,
-        comentario: `Cobrada${typeof body.metodo === 'string' && body.metodo ? ` · ${body.metodo}` : ''}`,
+        comentario: `Cobrada${saldoId ? ` en parte (${monto} de ${total})` : ''}${typeof body.metodo === 'string' && body.metodo ? ` · ${body.metodo}` : ''}`,
       })
-      return NextResponse.json({ ok: true, comision_generada: r.comisionGenerada })
+      return NextResponse.json({ ok: true, comision_generada: r.comisionGenerada, saldo_id: saldoId })
+    }
+
+    case 'deshacer_cobro': {
+      // Un cobro cargado por error (otra factura, otro importe): vuelve a
+      // emitida y se borran el pago y la comisión que generó, si la comisión
+      // todavía no se liquidó ni pagó.
+      if (!administra) return NextResponse.json({ error: 'Sólo Administración corrige cobros' }, { status: 403 })
+      if (factura.estado !== 'cobrada') return NextResponse.json({ error: 'La factura no está cobrada' }, { status: 409 })
+      const { data: comisiones } = await supabase.from('comisiones').select('id, estado, pago_id').eq('factura_id', params.id)
+      if ((comisiones ?? []).some((c: any) => c.estado === 'liquidada' || c.estado === 'pagada')) {
+        return NextResponse.json({ error: 'La comisión de este cobro ya se liquidó: no se puede deshacer desde acá' }, { status: 409 })
+      }
+      const pagoIds = (comisiones ?? []).map((c: any) => c.pago_id).filter(Boolean)
+      if (comisiones?.length) await supabase.from('comisiones').delete().eq('factura_id', params.id)
+      if (pagoIds.length) await supabase.from('pagos').delete().in('id', pagoIds)
+      const { error: uErr } = await supabase.from('facturas').update({
+        estado: 'emitida', fecha_cobro: null, metodo_cobro: null, cobrada_por: null, updated_at: ahora,
+      }).eq('id', params.id).eq('estado', 'cobrada')
+      if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
+      await supabase.from('orden_historial').insert({
+        orden_id: factura.orden_id,
+        perfil_id: session.user.id,
+        estado_nuevo: orden?.estado ?? null,
+        comentario: 'Cobro deshecho: la factura vuelve a emitida',
+      })
+      return NextResponse.json({ ok: true })
     }
 
     case 'anular': {

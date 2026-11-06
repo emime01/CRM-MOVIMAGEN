@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Receipt, DollarSign, Printer, X, FileMinus, RefreshCw, Pencil } from 'lucide-react'
+import { Receipt, DollarSign, Printer, X, FileMinus, RefreshCw, Pencil, Undo2 } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import type { Factura } from '@/lib/ventas/facturas'
 import { hoyUY } from '@/lib/fechas'
@@ -122,7 +122,7 @@ export default function FacturacionVenta({
     setModal(m)
     if (!m) return
     if (m.tipo === 'emitir') setForm({ numero: '', fecha: hoy(), total: String(m.f.importe_total) })
-    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '' })
+    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '', monto: String(m.f.importe_total) })
     if (m.tipo === 'anular') setForm({ motivo: '' })
     if (m.tipo === 'editar') setForm({
       mes: m.f.mes_pauta.slice(0, 7),
@@ -144,7 +144,10 @@ export default function FacturacionVenta({
         ...(Number(form.total) !== Number(modal.f.importe_total) ? { importe_total: Number(form.total) } : {}),
       })
     } else if (modal.tipo === 'cobrar') {
-      ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', { accion: 'cobrar', fecha: form.fecha, metodo: form.metodo })
+      const parcial = modal.f.tipo !== 'nota_credito' && form.monto !== '' && Number(form.monto) < Number(modal.f.importe_total) - 0.005
+      ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', {
+        accion: 'cobrar', fecha: form.fecha, metodo: form.metodo, ...(parcial ? { monto: Number(form.monto) } : {}),
+      })
     } else if (modal.tipo === 'anular') {
       ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', { accion: 'anular', motivo: form.motivo })
     } else if (modal.tipo === 'editar') {
@@ -184,7 +187,9 @@ export default function FacturacionVenta({
     await enviar(`/api/ordenes/${ordenId}/facturas`, 'POST', { accion: 'condicion', dias: Number(condicionEdit) })
   }
 
-  const vivas = facturas.filter(f => f.estado !== 'anulada')
+  // Sólo las cuotas cuentan contra el total de la venta: una nota de crédito
+  // no es una cuota (contarla avisaba "faltan $X por planificar").
+  const vivas = facturas.filter(f => f.estado !== 'anulada' && f.tipo !== 'nota_credito')
   const sumaCuotas = vivas.reduce((s, f) => s + Number(f.importe_total), 0)
   const diferencia = montoTotal != null ? Math.round((Number(montoTotal) - sumaCuotas) * 100) / 100 : 0
   const hayEmitidas = facturas.some(f => f.tipo === 'factura' && (f.estado === 'emitida' || f.estado === 'cobrada'))
@@ -287,10 +292,19 @@ export default function FacturacionVenta({
                         )}
                         {f.estado === 'emitida' && puedeAdministrar && (
                           <>
-                            <button onClick={() => abrir({ tipo: 'cobrar', f })} disabled={ocupado} style={btn('#15803d')}><DollarSign size={12} /> Cobrar</button>
+                            <button onClick={() => abrir({ tipo: 'cobrar', f })} disabled={ocupado} style={btn('#15803d')}><DollarSign size={12} /> {f.tipo === 'nota_credito' ? 'Aplicar' : 'Cobrar'}</button>
                             <button onClick={() => abrir({ tipo: 'editar', f })} disabled={ocupado} style={btn('#fff', 'var(--text-secondary)')} title="Corregir vencimiento o mes"><Pencil size={12} /></button>
                             <button onClick={() => abrir({ tipo: 'anular', f })} disabled={ocupado} style={btn('#fff', '#c82f2f')} title="Anular"><X size={12} /></button>
                           </>
+                        )}
+                        {f.estado === 'cobrada' && puedeAdministrar && (
+                          <button
+                            onClick={async () => {
+                              if (!(await preguntar(`¿Deshacer el cobro de la factura ${f.numero ?? ''}? Vuelve a emitida y se borra la comisión que generó (si no se liquidó).`))) return
+                              await enviar(`/api/facturas/${f.id}`, 'PATCH', { accion: 'deshacer_cobro' })
+                            }}
+                            disabled={ocupado} style={btn('#fff', 'var(--text-secondary)')} title="Deshacer cobro"
+                          ><Undo2 size={12} /></button>
                         )}
                         {(f.estado === 'emitida' || f.estado === 'cobrada') && !nc && (
                           <button onClick={() => onImprimir(f)} style={btn('#fff', 'var(--text-secondary)')} title="Descargar factura"><Printer size={12} /></button>
@@ -338,6 +352,11 @@ export default function FacturacionVenta({
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>Se genera la comisión del vendedor sobre el arrendamiento de esta factura.</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <label style={lblSt}>Fecha de cobro<input id="fv-cobro" type="date" value={form.fecha ?? ''} onChange={e => setForm({ ...form, fecha: e.target.value })} style={inputSt} /></label>
+                  {modal.f.tipo !== 'nota_credito' && (
+                    <label style={lblSt}>Importe cobrado (si pagó una parte, el saldo queda pendiente con el mismo número)
+                      <input id="fv-monto" type="number" step="0.01" min="0" max={modal.f.importe_total} value={form.monto ?? ''} onChange={e => setForm({ ...form, monto: e.target.value })} style={inputSt} />
+                    </label>
+                  )}
                   <label style={lblSt}>Método (opcional)<input id="fv-metodo" value={form.metodo ?? ''} onChange={e => setForm({ ...form, metodo: e.target.value })} placeholder="Transferencia, cheque…" style={inputSt} /></label>
                 </div>
               </>

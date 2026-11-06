@@ -25,6 +25,8 @@ interface CampanaInfo {
   hastaPrevista: string | null
   orden_id: string
   reserva_id: string | null
+  numero?: number | null
+  salidas?: number | null
 }
 
 interface Material {
@@ -168,7 +170,10 @@ function PlanillaTab({
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const total = soportes.length
-  const ocupadas = soportes.filter(s => (campanasMap[s.id] ?? []).length > 0).length
+  // "Con campaña activa" cuenta sólo lo que está al aire hoy; lo que empieza
+  // más adelante figura igual en la lista, pero no ocupa la pantalla todavía.
+  const hoyISO = new Date().toISOString().slice(0, 10)
+  const ocupadas = soportes.filter(s => (campanasMap[s.id] ?? []).some(c => !c.desde || c.desde <= hoyISO)).length
 
   function handleFechaRealSaved(ordenId: string, altaReal: string | null, bajaReal: string | null) {
     setCampanasMap(prev => {
@@ -256,9 +261,9 @@ function PlanillaTab({
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         {[
-          { label: 'Total pantallas LED', value: total, color: 'var(--text-primary)' },
+          { label: 'Pantallas y circuitos', value: total, color: 'var(--text-primary)' },
           { label: 'Con campaña activa', value: ocupadas, color: 'var(--orange)' },
-          { label: 'Libres', value: total - ocupadas, color: '#15803d' },
+          { label: 'Libres hoy', value: total - ocupadas, color: '#15803d' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>{s.label}</div>
@@ -309,6 +314,10 @@ function PlanillaTab({
                                 {c.marca && c.marca !== '—' && (
                                   <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.marca}</span>
                                 )}
+                                {c.numero != null && (
+                                  <a href={`/dashboard/ventas/${c.orden_id}`} style={{ fontSize: 11, fontWeight: 700, color: 'var(--orange)', textDecoration: 'none' }}>OIC #{c.numero}</a>
+                                )}
+                                {c.salidas ? <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{c.salidas} salidas/h</span> : null}
                                 {/* Effective dates */}
                                 <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                   {fmtFecha(c.desde)} → {fmtFecha(c.hasta)}

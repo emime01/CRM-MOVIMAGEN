@@ -42,7 +42,7 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
         id, estado_nuevo, comentario, created_at,
         perfiles(nombre)
       ),
-      orden_documentos(id, nombre, url, tipo, created_at)
+      orden_documentos(id, nombre, url, tipo, created_at, subido_por)
     `)
     .eq('id', params.id)
     .single()
