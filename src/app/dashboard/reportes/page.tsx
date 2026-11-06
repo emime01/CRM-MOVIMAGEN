@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
@@ -104,11 +105,16 @@ export default async function ReportesPage() {
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <Link href="/dashboard/reportes/comparativo" style={{ padding: '7px 14px', borderRadius: 8, background: 'var(--orange)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+          Comparar con el año anterior →
+        </Link>
+      </div>
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
         {[
           { label: `Vendido ${q.label}`, value: formatTotales(facturadoQ), sub: hayOtraMoneda(facturadoQ) ? 'sin IVA · el avance sólo cuenta los pesos' : 'sin IVA' },
-          { label: 'Objetivo Q', value: objetivoQ > 0 ? formatMoney(objetivoQ, 'UYU') : 'Sin objetivo', sub: '' },
+          { label: `Objetivo ${q.label}`, value: objetivoQ > 0 ? formatMoney(objetivoQ, 'UYU') : 'Sin objetivo', sub: '' },
           { label: 'Avance', value: `${avancePct}%`, sub: 'del objetivo', bar: avancePct },
           { label: 'Pipeline activo', value: formatMoney(pipeline, 'UYU'), sub: 'leads en curso' },
         ].map(s => (
