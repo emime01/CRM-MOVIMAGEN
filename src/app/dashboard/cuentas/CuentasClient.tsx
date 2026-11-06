@@ -90,6 +90,10 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
   const supabase = useMemo(() => createClient(supabaseUrl, supabaseAnonKey), [supabaseUrl, supabaseAnonKey])
   const [tab, setTab] = useState<'clientes' | 'agencias' | 'contactos'>('clientes')
   const [search, setSearch] = useState('')
+  // Se dibujan de a 60 filas: con 568 clientes y más de mil contactos la
+  // tabla entera hacía lenta la pantalla, sobre todo en el celular.
+  const PAGINA = 60
+  const [limite, setLimite] = useState(PAGINA)
   const [clientes, setClientes] = useState(initialClientes)
   const [agencias, setAgencias] = useState(initialAgencias)
   const [contactos, setContactos] = useState(initialContactos)
@@ -280,7 +284,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 4 }}>
           {(['clientes', 'agencias', 'contactos'] as const).map(t => (
-            <button key={t} style={tabStyle(tab === t)} onClick={() => { setTab(t); setSearch('') }}>
+            <button key={t} style={tabStyle(tab === t)} onClick={() => { setTab(t); setSearch(''); setLimite(PAGINA) }}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
               <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.8 }}>
                 ({t === 'clientes' ? clientes.length : t === 'agencias' ? agencias.length : contactos.length})
@@ -315,7 +319,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
       <div style={{ position: 'relative', marginBottom: 14 }}>
         <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
         <input
-          type="text" value={search} onChange={e => setSearch(e.target.value)}
+          type="text" value={search} onChange={e => { setSearch(e.target.value); setLimite(PAGINA) }}
           placeholder={`Buscar ${tab}...`}
           style={{ ...inputStyle, paddingLeft: 32, height: 38 }}
         />
@@ -337,7 +341,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
             <tbody>
               {filteredClientes.length === 0 ? (
                 <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Sin clientes. Creá el primero o importá desde Excel.</td></tr>
-              ) : filteredClientes.map((c, i) => (
+              ) : filteredClientes.slice(0, limite).map((c, i) => (
                 <tr key={c.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                   <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                     {c.nombre}
@@ -358,6 +362,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
                 </tr>
               ))}
             </tbody>
+            {filteredClientes.length > limite && (<tfoot><tr><td colSpan={9} style={{ padding: 0 }}><button onClick={() => setLimite(l => l + PAGINA)} style={{ display: 'block', width: '100%', padding: 10, border: 'none', borderTop: '1px solid var(--border)', background: 'var(--bg-app)', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--orange)', fontFamily: 'Montserrat, sans-serif' }}>Mostrar más ({filteredClientes.length - limite} restantes)</button></td></tr></tfoot>)}
           </table>
         )}
 
@@ -374,7 +379,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
             <tbody>
               {filteredAgencias.length === 0 ? (
                 <tr><td colSpan={5} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Sin agencias. Creá la primera o importá desde Excel.</td></tr>
-              ) : filteredAgencias.map((a, i) => (
+              ) : filteredAgencias.slice(0, limite).map((a, i) => (
                 <tr key={a.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                   <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>{a.nombre}</td>
                   <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.email ?? '—'}</td>
@@ -387,6 +392,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
                 </tr>
               ))}
             </tbody>
+            {filteredAgencias.length > limite && (<tfoot><tr><td colSpan={9} style={{ padding: 0 }}><button onClick={() => setLimite(l => l + PAGINA)} style={{ display: 'block', width: '100%', padding: 10, border: 'none', borderTop: '1px solid var(--border)', background: 'var(--bg-app)', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--orange)', fontFamily: 'Montserrat, sans-serif' }}>Mostrar más ({filteredAgencias.length - limite} restantes)</button></td></tr></tfoot>)}
           </table>
         )}
 
@@ -403,7 +409,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
             <tbody>
               {filteredContactos.length === 0 ? (
                 <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Sin contactos. Creá el primero o importá desde Excel.</td></tr>
-              ) : filteredContactos.map((c, i) => {
+              ) : filteredContactos.slice(0, limite).map((c, i) => {
                 const cuentaNombre = c.cuenta_id ? (c.tipo_cuenta === 'agencia' ? agenciaMap.get(c.cuenta_id) : clienteMap.get(c.cuenta_id)) ?? '—' : '—'
                 return (
                   <tr key={c.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
@@ -427,6 +433,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
                 )
               })}
             </tbody>
+            {filteredContactos.length > limite && (<tfoot><tr><td colSpan={9} style={{ padding: 0 }}><button onClick={() => setLimite(l => l + PAGINA)} style={{ display: 'block', width: '100%', padding: 10, border: 'none', borderTop: '1px solid var(--border)', background: 'var(--bg-app)', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--orange)', fontFamily: 'Montserrat, sans-serif' }}>Mostrar más ({filteredContactos.length - limite} restantes)</button></td></tr></tfoot>)}
           </table>
         )}
       </div>
