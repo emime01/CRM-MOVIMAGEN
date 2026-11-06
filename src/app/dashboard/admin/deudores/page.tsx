@@ -29,8 +29,8 @@ export default async function DeudoresPage() {
     .select(`
       id, orden_id, cuota, cuotas_total, mes_pauta, tipo, numero, fecha_emision,
       importe_total, moneda, fecha_vencimiento, fecha_pago_prometida,
-      ordenes_venta(numero, marca, campana,
-        clientes(nombre, empresa), agencias(id, nombre), perfiles!vendedor_id(nombre))
+      ordenes_venta(numero, marca, campana, facturar_a,
+        clientes(nombre, empresa, email), agencias(id, nombre, email), perfiles!vendedor_id(nombre))
     `)
     .eq('estado', 'emitida')
     .order('fecha_vencimiento', { ascending: true, nullsFirst: false })
@@ -87,6 +87,9 @@ export default async function DeudoresPage() {
       vencimiento: f.fecha_vencimiento,
       promesa: f.fecha_pago_prometida,
       ultima_gestion: porFactura.get(f.id) ?? porOrden.get(f.orden_id) ?? null,
+      // A quién se le escribe por la cobranza: a quien se le factura.
+      email_cobranza: (o?.facturar_a === 'agencia' ? ag?.email : cli?.email) ?? cli?.email ?? ag?.email ?? null,
+      campana: o?.campana ?? null,
     }
   })
 

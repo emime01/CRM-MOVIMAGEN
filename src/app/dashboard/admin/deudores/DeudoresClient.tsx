@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarClock, DollarSign, Download, Phone, Plus, Search, X } from 'lucide-react'
+import { CalendarClock, Copy, DollarSign, Download, Mail, Phone, Plus, Search, X } from 'lucide-react'
+import { mailSugerido } from '@/lib/cobranza/mail-sugerido'
 import { formatMoney, formatTotales, type TotalPorMoneda } from '@/lib/money'
 import { diasDeAtraso, tramoDe, TRAMO_LABEL, type Tramo } from '@/lib/ventas/cobranza'
 
@@ -35,6 +36,8 @@ export interface DeudorRow {
   vencimiento: string | null
   promesa: string | null
   ultima_gestion: UltimaGestion | null
+  email_cobranza?: string | null
+  campana?: string | null
 }
 
 type Gestion = {
@@ -94,6 +97,7 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
   const [tramo, setTramo] = useState<'' | Tramo | 'vencidas'>('')
 
   const [modal, setModal] = useState<Modal | null>(null)
+  const [mailDe, setMailDe] = useState<DeudorRow | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
   const [historial, setHistorial] = useState<Gestion[] | null>(null)
   const [saving, setSaving] = useState(false)
@@ -321,6 +325,7 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <span style={{ display: 'inline-flex', gap: 4 }}>
                         <button onClick={() => abrir({ tipo: 'gestion', r })} style={btnSec} title="Registrar gestión"><Plus size={12} /> Gestión</button>
+                        {!nc && <button onClick={() => setMailDe(r)} style={btnSec} title="Mail sugerido para el cliente"><Mail size={12} /></button>}
                         {puedeCobrar && !nc && (
                           <button onClick={() => abrir({ tipo: 'promesa', r })} style={btnSec} title="Promesa de pago"><CalendarClock size={12} /></button>
                         )}
@@ -338,6 +343,8 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
           </table>
         )}
       </div>
+
+      {mailDe && <MailSugeridoModal r={mailDe} onClose={() => setMailDe(null)} />}
 
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }} onClick={() => setModal(null)}>
@@ -452,4 +459,39 @@ const btnSec: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 7,
   border: '1px solid var(--border)', background: '#fff', color: 'var(--text-secondary)',
   fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Montserrat, sans-serif',
+}
+
+/** Mail sugerido para el cliente o la agencia: copiar o abrir en el correo. */
+function MailSugeridoModal({ r, onClose }: { r: DeudorRow; onClose: () => void }) {
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Montevideo' })
+  const { asunto, cuerpo } = mailSugerido({
+    cliente: r.cliente, agencia: r.agencia, numero: r.numero, importe: r.importe, moneda: r.moneda,
+    vencimiento: r.vencimiento, cuota: r.cuota, cuotasTotal: r.cuotas_total, campana: r.campana ?? r.marca,
+  }, hoy)
+  const [texto, setTexto] = useState(cuerpo)
+  const [copiado, setCopiado] = useState(false)
+  const para = r.email_cobranza ?? ''
+  const mailto = `mailto:${encodeURIComponent(para)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(texto)}`
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 560, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><Mail size={16} style={{ color: 'var(--orange)' }} /> Mail sugerido</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Para: {para || <em>sin mail cargado en la cuenta</em>}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{asunto}</div>
+        <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={12}
+          style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5 }} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+          <button onClick={async () => { await navigator.clipboard.writeText(`${asunto}\n\n${texto}`).catch(() => {}); setCopiado(true) }} style={btnSec}>
+            <Copy size={12} /> {copiado ? 'Copiado' : 'Copiar'}
+          </button>
+          <a href={mailto} style={{ ...btnSec, background: 'var(--orange)', color: '#fff', border: 'none', textDecoration: 'none' }}>
+            <Mail size={12} /> Abrir en el correo
+          </a>
+        </div>
+      </div>
+    </div>
+  )
 }
