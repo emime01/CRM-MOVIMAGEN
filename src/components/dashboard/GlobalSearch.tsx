@@ -78,6 +78,8 @@ export default function GlobalSearch() {
       <button
         onClick={() => setOpen(true)}
         title="Buscar (Ctrl/Cmd + K)"
+        aria-label="Buscar"
+        className="busqueda-global"
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)',
@@ -86,8 +88,8 @@ export default function GlobalSearch() {
         }}
       >
         <Search size={14} />
-        <span style={{ flex: 1, textAlign: 'left' }}>Buscar…</span>
-        <kbd style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--bg-app)', border: '1px solid var(--border)', fontFamily: 'monospace' }}>⌘K</kbd>
+        <span className="busqueda-texto" style={{ flex: 1, textAlign: 'left' }}>Buscar…</span>
+        <kbd className="busqueda-texto" style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--bg-app)', border: '1px solid var(--border)', fontFamily: 'monospace' }}>⌘K</kbd>
       </button>
 
       {open && (

@@ -36,7 +36,7 @@ export default async function ComparativoPage({ searchParams }: { searchParams: 
 
   const { data: ventas } = await todos((d, h) => {
     let q = supabase.from('ordenes_venta')
-      .select('id, vendedor_id, monto_neto, monto_total, moneda, created_at, clientes(nombre, empresa), perfiles!vendedor_id(nombre), orden_items(soporte_id, cantidad, semanas, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, soportes(nombre, ubicacion, categoria, cap, tipo_cotizador))')
+      .select('id, vendedor_id, monto_neto, monto_total, moneda, created_at, clientes(nombre, empresa), perfiles!vendedor_id(nombre), orden_items(soporte_id, cantidad, semanas, precio_unitario, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, soportes(nombre, ubicacion, categoria, cap, tipo_cotizador))')
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .gte('created_at', `${anterior}-01-01`).lte('created_at', `${anio}-12-31T23:59:59`)
       .order('created_at')
@@ -68,17 +68,21 @@ export default async function ComparativoPage({ searchParams }: { searchParams: 
   const porCliente = agrupar(v => { const c = first<any>(v.clientes); return c?.empresa ?? c?.nombre ?? '—' }).slice(0, 20)
 
   // Por tipo de soporte: el neto de cada venta se reparte entre sus líneas
-  // según el peso de cada una (cantidad × semanas).
+  // según lo que vale cada una (precio × cantidad × semanas). Si una venta no
+  // tiene precios por línea, se reparte por cantidad × semanas.
   const porTipo = (() => {
     const m = new Map<string, { actual: number; anterior: number }>()
+    const unidades = (i: any) => (Number(i.cantidad) || 1) * (Number(i.semanas) || 1)
     for (const [a, campo] of [[anio, 'actual'], [anterior, 'anterior']] as const) {
       for (const v of delAnio(a)) {
         const its = (v.orden_items ?? []) as any[]
-        const pesoTot = its.reduce((s, i) => s + (Number(i.cantidad) || 1) * (Number(i.semanas) || 1), 0) || 1
+        const conPrecio = its.some(i => Number(i.precio_unitario) > 0)
+        const peso = (i: any) => conPrecio ? unidades(i) * (Number(i.precio_unitario) || 0) : unidades(i)
+        const pesoTot = its.reduce((s, i) => s + peso(i), 0) || 1
         for (const i of its) {
           const cat = first<any>(i.soportes)?.categoria ?? 'Otro'
           const e = m.get(cat) ?? { actual: 0, anterior: 0 }
-          e[campo] += netoSinIva(v) * ((Number(i.cantidad) || 1) * (Number(i.semanas) || 1)) / pesoTot
+          e[campo] += netoSinIva(v) * peso(i) / pesoTot
           m.set(cat, e)
         }
       }

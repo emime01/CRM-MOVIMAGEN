@@ -21,6 +21,10 @@ export default function GerenteLayout({ children }: { children: React.ReactNode 
         borderBottom: '1px solid var(--border)',
         marginBottom: 24,
         gap: 0,
+        // En el celular las pestañas no entran: se desliza en vez de esconder
+        // la última.
+        overflowX: 'auto',
+        scrollbarWidth: 'none',
       }}>
         {TABS.map(tab => {
           const isActive = tab.href === '/dashboard/gerente'
@@ -31,7 +35,8 @@ export default function GerenteLayout({ children }: { children: React.ReactNode 
               key={tab.href}
               href={tab.href}
               style={{
-                padding: '10px 20px',
+                padding: '10px 16px',
+                flexShrink: 0,
                 fontSize: 13,
                 fontWeight: isActive ? 700 : 500,
                 color: isActive ? 'var(--orange)' : 'var(--text-secondary)',

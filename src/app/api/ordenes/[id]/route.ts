@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { pickAllowed } from '@/lib/api/safe-patch'
 import { estaCerrada } from '@/lib/ventas/estados'
+import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
 
@@ -118,4 +119,37 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
+}
+
+// Borrar una venta que nunca se aprobó (borrador o rechazada): para los
+// duplicados o las que se cargaron por error. Rechazarla la dejaba viva con
+// "Volver a enviar". Una venta aprobada no se borra nunca.
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  const supabase = createServerClient()
+
+  const { data: orden } = await supabase
+    .from('ordenes_venta').select('id, numero, estado, vendedor_id').eq('id', params.id).maybeSingle()
+  if (!orden) return NextResponse.json({ error: 'Venta no encontrada' }, { status: 404 })
+  if (!['borrador', 'rechazada'].includes(orden.estado)) {
+    return NextResponse.json({ error: 'Sólo se puede borrar una venta en borrador o rechazada.' }, { status: 409 })
+  }
+  const esDueño = orden.vendedor_id === session.user.id
+  if (!esDueño && !puede(session.user.rol, ['gerente_comercial', 'asistente_ventas', 'administracion'])) {
+    return NextResponse.json({ error: 'Sin permisos para borrar esta venta' }, { status: 403 })
+  }
+  const { count: facturas } = await supabase.from('facturas').select('id', { count: 'exact', head: true }).eq('orden_id', params.id)
+  if (facturas) return NextResponse.json({ error: 'La venta tiene facturas: no se puede borrar.' }, { status: 409 })
+
+  // Lo que cuelga de la venta. Los bloqueos de soportes se desligan (quedan
+  // como estaban), el resto se borra con ella.
+  await supabase.from('reservas').update({ orden_id: null }).eq('orden_id', params.id)
+  for (const t of ['tasks', 'orden_historial', 'orden_documentos', 'comentarios_orden', 'orden_items']) {
+    await supabase.from(t).delete().eq('orden_id', params.id)
+  }
+  await supabase.from('notificaciones').delete().eq('entity_id', params.id)
+  const { error } = await supabase.from('ordenes_venta').delete().eq('id', params.id)
+  if (error) return NextResponse.json({ error: `No se pudo borrar: ${error.message}` }, { status: 500 })
+  return NextResponse.json({ ok: true, numero: orden.numero })
 }

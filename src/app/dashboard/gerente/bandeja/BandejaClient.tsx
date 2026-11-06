@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Check, X, Inbox, FileText, CalendarClock, ChevronRight } from 'lucide-react'
 import { es } from '@/lib/auth/roles'
-import { avisar } from '@/components/ui/dialogos'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 interface OrdenPend {
   id: string
@@ -16,6 +16,8 @@ interface OrdenPend {
   created_at: string
   cliente: string
   vendedor: string
+  sobreventa: string[]
+  comentario: { mensaje: string; autor: string } | null
 }
 
 interface ReservaPend {
@@ -62,6 +64,10 @@ export default function BandejaClient({
   const puedeAprobarOIC = es(rol, 'gerente_comercial')
 
   async function aprobarOrden(id: string) {
+    const o = ordenes.find(x => x.id === id)
+    if (o?.sobreventa.length && !(await confirmar(
+      `Si aprobás esta venta queda sobrevendido:\n\n${o.sobreventa.join('\n')}\n\n¿Aprobar igual?`,
+    ))) return
     setLoadingId(id)
     try {
       const res = await fetch(`/api/ordenes/${id}/estado`, {
@@ -171,6 +177,14 @@ export default function BandejaClient({
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                     {fmtMoney(o.monto_total, o.moneda)} · vendedor {o.vendedor}
                   </div>
+                  {o.comentario && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      “{o.comentario.mensaje}”{o.comentario.autor ? ` — ${o.comentario.autor}` : ''}
+                    </div>
+                  )}
+                  {o.sobreventa.map((t, k) => (
+                    <div key={k} style={{ fontSize: 12, color: '#c82f2f', fontWeight: 600, marginTop: 4 }}>⚠ Sobreventa · {t}</div>
+                  ))}
                 </Link>
                 {puedeAprobarOIC ? (
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
