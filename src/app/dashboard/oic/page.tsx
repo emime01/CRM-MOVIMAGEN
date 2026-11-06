@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import ItemEstadoControl from './ItemEstadoControl'
+import AvisoBuses from '@/components/dashboard/AvisoBuses'
 import { puede } from '@/lib/auth/roles'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
@@ -136,6 +137,7 @@ export default async function OicPage() {
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', color: '#1a1915' }}>
+      <AvisoBuses />
 
       {/* Summary row */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>

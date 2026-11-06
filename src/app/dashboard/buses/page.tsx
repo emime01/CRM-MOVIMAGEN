@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA, altaEfectiva, bajaEfectiva } from '@/lib/ventas/asignar-buses'
 import BusesClient from './BusesClient'
+import BusesPorAsignar from './BusesPorAsignar'
+import { ventasConBuses } from '@/lib/buses/por-asignar'
 import { puede } from '@/lib/auth/roles'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +34,7 @@ export default async function BusesPage() {
       soportes(nombre, tipo, bus_id, lado_bus))
   `
 
-  const [busesRes, soportesRes, clientesRes, ventasRes] = await Promise.all([
+  const [busesRes, soportesRes, clientesRes, ventasRes, porAsignar] = await Promise.all([
     supabase
       .from('buses')
       .select('*, clientes!buses_cliente_actual_id_fkey(nombre, empresa)')
@@ -53,6 +55,7 @@ export default async function BusesPage() {
       .select(SELECT_VENTA)
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .order('fecha_alta_prevista'),
+    ventasConBuses(supabase),
   ])
 
   const soportes = soportesRes.data ?? []
@@ -128,6 +131,13 @@ export default async function BusesPage() {
   }
 
   return (
+    <>
+    <BusesPorAsignar
+      ventas={porAsignar.ventas}
+      tablaLista={porAsignar.tablaLista}
+      buses={(busesRes.data ?? []).map((b: any) => ({ id: b.id, numero: String(b.numero), categoria: b.categoria ?? null }))
+        .sort((a: any, b: any) => Number(a.numero) - Number(b.numero))}
+    />
     <BusesClient
       initialBuses={buses as unknown as Parameters<typeof BusesClient>[0]['initialBuses']}
       initialSoportesSinAsignar={soportesSinAsignar}
@@ -137,5 +147,6 @@ export default async function BusesPage() {
       soporteCampanasMap={soporteCampanasMap}
       userRol={session.user.rol}
     />
+    </>
   )
 }
