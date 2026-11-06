@@ -160,6 +160,7 @@ const TITULOS_DETALLE: [string, string][] = [
   ['/dashboard/leads/', 'Lead'],
   ['/dashboard/cotizaciones/', 'Cotización'],
   ['/dashboard/cuentas/', 'Cuenta'],
+  ['/dashboard/reportes/', 'Reportes comparativos'],
   ['/dashboard/gerente/', 'Mi Equipo'],
 ]
 
