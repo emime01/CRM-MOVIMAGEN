@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { pickAllowed } from '@/lib/api/safe-patch'
 import { puede } from '@/lib/auth/roles'
+import { todos } from '@/lib/supabase-todos'
 
 const CONTACTO_FIELDS = [
   'cuenta_id', 'tipo_cuenta', 'nombres', 'apellidos', 'cargo',
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     // Fetch all active contacts with birthday set, then filter in JS (simpler than SQL month rollover)
-    const { data, error } = await supabase
+    const { data, error } = await todos((d, h) => supabase
       .from('contactos')
       .select('id, nombres, apellidos, mail1, telefono1, cumple_dia, cumple_mes, cuenta_id, tipo_cuenta')
       .eq('activo', true)
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest) {
       .not('cumple_mes', 'is', null)
       .gt('cumple_dia', 0)
       .gt('cumple_mes', 0)
+      .order('id')
+      .range(d, h))
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -72,10 +75,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(upcoming.map(c => ({ ...c, cuentaNombre: c.cuenta_id ? (cuentaMap[c.cuenta_id] ?? null) : null })))
   }
 
-  let query = supabase.from('contactos').select('*').eq('activo', true).order('nombres')
-  if (cuentaId) query = query.eq('cuenta_id', cuentaId) as typeof query
-
-  const { data, error } = await query
+  const { data, error } = await todos((d, h) => {
+    let query = supabase.from('contactos').select('*').eq('activo', true).order('nombres')
+    if (cuentaId) query = query.eq('cuenta_id', cuentaId) as typeof query
+    return query.range(d, h)
+  })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }

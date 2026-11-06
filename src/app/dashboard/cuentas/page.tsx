@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import CuentasClient from './CuentasClient'
 import { puede } from '@/lib/auth/roles'
+import { todos } from '@/lib/supabase-todos'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,19 +18,23 @@ export default async function CuentasPage() {
   const supabase = createServerClient()
 
   const [clientesRes, agenciasRes, contactosRes, vendedoresRes] = await Promise.all([
-    supabase
+    todos((d, h) => supabase
       .from('clientes')
       .select('id, nombre, empresa, email, telefono, rut, activo, tipo_cliente, vendedor_id, agencia_id, logo_url')
-      .order('nombre'),
+      .order('nombre')
+      .range(d, h)),
     supabase
       .from('agencias')
       .select('id, nombre, email, telefono, ejecutivo_cuenta, porcentaje_comision, porcentaje_comision_produccion, condicion_pago_dias, activo')
       .order('nombre'),
-    supabase
+    // Por tandas: la base devuelve hasta 1.000 filas por consulta y la lista
+    // de contactos se cortaba ahí.
+    todos((d, h) => supabase
       .from('contactos')
       .select('id, nombres, apellidos, mail1, mail2, telefono1, telefono2, cumple_dia, cumple_mes, cuenta_id, tipo_cuenta, activo')
       .eq('activo', true)
-      .order('nombres'),
+      .order('nombres')
+      .range(d, h)),
     supabase
       .from('perfiles')
       .select('id, nombre')
