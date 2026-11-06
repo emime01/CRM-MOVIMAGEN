@@ -15,7 +15,7 @@ export default async function OrdenDetallePage({ params }: { params: { id: strin
   const { data: orden } = await supabase
     .from('ordenes_venta')
     .select(`
-      id, numero, estado, moneda, monto_total, monto_neto, created_at, updated_at,
+      id, numero, estado, moneda, monto_total, monto_neto, monto_arrendamiento, monto_produccion, created_at, updated_at,
       comision_agencia_pct, comision_agencia_prod_pct,
       contacto, facturar_a, marca, campana, referencia, validez,
       fecha_alta_prevista, fecha_baja_prevista, fecha_alta_real, fecha_baja_real,

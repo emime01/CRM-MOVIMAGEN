@@ -20,7 +20,7 @@ export default async function LeadDetallePage({ params }: { params: { id: string
     supabase
       .from('leads')
       .select(`
-        id, descripcion, monto_potencial, cuatrimestre, estado, notas, motivo_perdida,
+        id, descripcion, campana, monto_potencial, cuatrimestre, estado, notas, motivo_perdida,
         proxima_gestion, nota_gestion, propuesta_ganadora_id, vendedor_id,
         created_at, updated_at,
         clientes(id, nombre, empresa),

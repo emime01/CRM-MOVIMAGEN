@@ -43,7 +43,13 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .eq('propuesta_id', params.id)
     .order('id')
 
-  return NextResponse.json({ propuesta, items: items ?? [] })
+  // La venta que salió de esta cotización, si ya se generó: la pantalla
+  // muestra un enlace en vez del botón "Crear orden de venta".
+  const { data: orden } = await supabase
+    .from('ordenes_venta').select('id, numero, estado').eq('propuesta_id', params.id)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+
+  return NextResponse.json({ propuesta, items: items ?? [], orden: orden ?? null })
 }
 
 // PATCH /api/propuestas/[id]

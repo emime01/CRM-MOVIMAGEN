@@ -263,6 +263,7 @@ export default async function DashboardPage() {
               No hay ventas registradas aún.
             </div>
           ) : (
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--gray-100)' }}>
@@ -300,6 +301,7 @@ export default async function DashboardPage() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 

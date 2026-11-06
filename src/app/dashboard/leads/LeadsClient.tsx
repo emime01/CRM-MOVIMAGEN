@@ -794,10 +794,14 @@ function LeadCard({
   onClick: () => void
 }) {
   const [hovered, setHovered] = useState(false)
+  const router = useRouter()
 
+  // Clic en la tarjeta: el detalle del lead (gestiones y cotizaciones). El
+  // lápiz, editar. Antes la tarjeta sólo abría la edición y al detalle no se
+  // llegaba desde el tablero.
   return (
     <div
-      onClick={onClick}
+      onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -814,14 +818,14 @@ function LeadCard({
     >
       {/* Edit badge on hover */}
       {hovered && (
-        <div style={{
-          position: 'absolute', top: 8, right: 8,
+        <button title="Editar lead" onClick={e => { e.stopPropagation(); onClick() }} style={{
+          position: 'absolute', top: 8, right: 8, border: 'none', cursor: 'pointer',
           background: '#eb691c', borderRadius: 5,
           width: 22, height: 22,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <Pencil size={11} color="#fff" />
-        </div>
+        </button>
       )}
 
       {/* Company name */}
@@ -835,8 +839,13 @@ function LeadCard({
 
       {/* Description */}
       {lead.descripcion && (
-        <div style={{ fontSize: 12, color: '#4a4845', lineHeight: 1.45, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: '#4a4845', lineHeight: 1.45, marginBottom: 4 }}>
           {truncate(lead.descripcion, 60)}
+        </div>
+      )}
+      {(lead.campana || (Array.isArray(lead.agencias) ? lead.agencias[0] : lead.agencias)?.nombre) && (
+        <div style={{ fontSize: 11, color: '#9a9895', marginBottom: 8 }}>
+          {[lead.campana, (Array.isArray(lead.agencias) ? lead.agencias[0] : lead.agencias)?.nombre].filter(Boolean).join(' · ')}
         </div>
       )}
 

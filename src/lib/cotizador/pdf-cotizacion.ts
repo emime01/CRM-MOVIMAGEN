@@ -66,14 +66,14 @@ async function imagen(src: string): Promise<{ data: string; w: number; h: number
 
 // Mismos colores por categoría que el hub.
 const COLOR_CAT: Record<string, string> = {
-  'Pantallas Gigantes': '#FF5C1A', 'Circuito Shopping': '#FB923C', 'Estáticos Shopping': '#7C3AED',
+  'Pantallas Gigantes': '#FF5C1A', 'Banners Shopping': '#7C3AED', 'Circuito Shopping': '#FB923C', 'Estáticos Shopping': '#7C3AED',
   Exterior: '#059669', 'Grandes Formatos': '#059669', Bus: '#D97706', Ruta: '#0284C7',
   Digital: '#FF5C1A', Shopping: '#7C3AED',
 }
 function categoriaPdf(i: ItemPdf): string {
   const sec = (i.seccion ?? '').toUpperCase()
   if (i.categoria === 'Digital') return sec === 'PANTALLAS GIGANTES' ? 'Pantallas Gigantes' : 'Circuito Shopping'
-  if (i.categoria === 'Shopping') return 'Estáticos Shopping'
+  if (i.categoria === 'Shopping') return sec.includes('BANNER') ? 'Banners Shopping' : 'Estáticos Shopping'
   return i.categoria ?? '—'
 }
 const rgb = (h: string) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)] as const
@@ -123,7 +123,9 @@ export async function generarPdfCotizacion(d: DatosPdf): Promise<void> {
   const invConImp = conImp.reduce((a, i) => a + i.tot, 0)
   const cpm = t.imp > 0 ? invConImp / t.imp * 1000 : 0
   const parcial = t.imp > 0 && conImp.length < d.items.length ? ` (${conImp.length}/${d.items.length})` : ''
-  const kpis: [string, string][] = [['IMPACTOS' + parcial, fmtM(t.imp)], ['CPM PROM.' + parcial, cpm > 0 ? sym + cpm.toFixed(2) : '—'], ['ARRENDAMIENTO', sym + fmt(t.arr)], ['TOTAL', sym + fmt(t.tot)]]
+  // Sin "(1/4)" en el rótulo (no se entendía): si no todos los soportes
+  // miden impactos, va una nota abajo de los indicadores.
+  const kpis: [string, string][] = [['IMPACTOS' + (parcial ? ' *' : ''), fmtM(t.imp)], ['CPM PROM.' + (parcial ? ' *' : ''), cpm > 0 ? sym + cpm.toFixed(2) : '—'], ['ARRENDAMIENTO', sym + fmt(t.arr)], ['TOTAL', sym + fmt(t.tot)]]
   const kW = CW / 4
   kpis.forEach(([lbl, val], i) => {
     const x = M + i * kW, hero = i === 3
@@ -134,7 +136,12 @@ export async function generarPdfCotizacion(d: DatosPdf): Promise<void> {
     doc.setFontSize(12); doc.setFont('helvetica', 'bold')
     doc.setTextColor(hero ? 255 : INK[0], hero ? 255 : INK[1], hero ? 255 : INK[2]); doc.text(val, x + 4, y + 15)
   })
-  y += 28
+  y += 24
+  if (parcial) {
+    doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); setT(MUT)
+    doc.text(`* Impactos y CPM de los ${conImp.length} soportes con medición de audiencia (de ${d.items.length}).`, M, y)
+  }
+  y += 5
 
   // Desglose
   titulo('DESGLOSE DE INVERSIÓN')
@@ -162,7 +169,10 @@ export async function generarPdfCotizacion(d: DatosPdf): Promise<void> {
     doc.setFillColor(cc[0], cc[1], cc[2]); doc.roundedRect(M + 4, y + 4, 3, 14, 1, 1, 'F')
     doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); setT(INK); doc.text(i.nombre, M + 11, y + 8)
     doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(cc[0], cc[1], cc[2]); doc.text(cat.toUpperCase(), M + 11, y + 12.5)
-    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); setT(MUT); doc.text((i.ubicacion ?? '').slice(0, 60), M + 11, y + 17)
+    // La ubicación entra en el ancho disponible, cortada en una palabra.
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); setT(MUT)
+    const ubic = doc.splitTextToSize(i.ubicacion ?? '', CW - 70)
+    doc.text(ubic[0] + (ubic.length > 1 ? '…' : ''), M + 11, y + 17)
     const det = [i.semanas + ' sem', i.imp ? fmt(i.imp) + ' imp' : '', i.cpm ? 'CPM ' + sym + i.cpm.toFixed(2) : ''].filter(Boolean).join('   ·   ')
     doc.setFontSize(7); doc.text(det, M + 11, y + 20.5)
     doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(O[0], O[1], O[2]); doc.text(sym + fmt(i.tot), W - M - 5, y + 10, { align: 'right' })

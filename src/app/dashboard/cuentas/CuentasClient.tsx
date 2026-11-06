@@ -340,7 +340,7 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
             </thead>
             <tbody>
               {filteredClientes.length === 0 ? (
-                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Sin clientes. Creá el primero o importá desde Excel.</td></tr>
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>{search ? `Ningún cliente coincide con "${search}".` : 'Sin clientes. Creá el primero o importá desde Excel.'}</td></tr>
               ) : filteredClientes.slice(0, limite).map((c, i) => (
                 <tr key={c.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                   <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>

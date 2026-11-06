@@ -78,6 +78,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const mes = searchParams.get('mes')
   const fecha = searchParams.get('fecha') ?? new Date().toISOString().split('T')[0]
+  // Rango (?desde=&hasta=): lo que se pisa con el período. Lo usa el
+  // cotizador para avisar si un soporte ya está vendido en esas fechas.
+  const desdeQ = searchParams.get('desde') ?? fecha
+  const hastaQ = searchParams.get('hasta') ?? desdeQ
 
   const supabase = createServerClient()
 
@@ -180,7 +184,7 @@ export async function GET(req: NextRequest) {
       // Fecha efectiva por soporte: real (si se instaló) ?? ventana de la reserva
       const desde = item.fecha_alta_real ?? r.fecha_desde
       const hasta = item.fecha_baja_real ?? r.fecha_hasta
-      if (!desde || !hasta || desde > fecha || hasta < fecha) return
+      if (!desde || !hasta || desde > hastaQ || hasta < desdeQ) return
       reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
     })
@@ -193,7 +197,7 @@ export async function GET(req: NextRequest) {
       if (!item.soporte_id) return
       const alta = efAlta(item, ord)
       const baja = efBaja(item, ord)
-      if (!alta || !baja || alta > fecha || baja < fecha) return
+      if (!alta || !baja || alta > hastaQ || baja < desdeQ) return
       reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
     })

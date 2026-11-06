@@ -277,7 +277,8 @@ function CalendarStrip({
 
 function EstadisticasTab({ soportes }: { soportes: SoporteOcupacion[] }) {
   const total = soportes.length
-  const ocupados = soportes.filter(s => s.estado === 'ocupado').length
+  // Sobrevendido también está ocupado: si no, el total no daba la cantidad de soportes.
+  const ocupados = soportes.filter(s => s.estado === 'ocupado' || s.estado === 'sobrevendido').length
   const parciales = soportes.filter(s => s.estado === 'parcial').length
   const libres = soportes.filter(s => s.estado === 'libre').length
   const avgPct = total > 0 ? Math.round(soportes.reduce((sum, s) => sum + s.pct, 0) / total) : 0
@@ -970,7 +971,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
 
   const libresCount    = soportes.filter(s => s.estado === 'libre').length
   const parcialesCount = soportes.filter(s => s.estado === 'parcial').length
-  const ocupadosCount  = soportes.filter(s => s.estado === 'ocupado').length
+  const ocupadosCount  = soportes.filter(s => s.estado === 'ocupado' || s.estado === 'sobrevendido').length
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 6,
