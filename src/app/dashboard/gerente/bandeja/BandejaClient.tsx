@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Check, X, Inbox, FileText, CalendarClock, ChevronRight } from 'lucide-react'
 import { es } from '@/lib/auth/roles'
+import { avisar } from '@/components/ui/dialogos'
 
 interface OrdenPend {
   id: string
@@ -68,7 +69,7 @@ export default function BandejaClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: 'aprobada', comentario: 'Aprobada desde bandeja' }),
       })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al aprobar'); return }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'Error al aprobar'); return }
       // Aprobar la OIC también aprueba su reserva y genera las tareas: se avisa
       // para que quede claro que no falta hacer nada más.
       const d = await res.json().catch(() => ({}))
@@ -76,7 +77,7 @@ export default function BandejaClient({
       if (d.tasks_creadas) partes.push(`${d.tasks_creadas} tarea(s) generadas para arte y operaciones`)
       if (d.reserva_estado === 'aprobada') partes.push('Reserva de soportes aprobada')
       if (d.warnings?.length) partes.push(`\n⚠ ${d.warnings.join('\n⚠ ')}`)
-      alert(partes.join('\n· '))
+      avisar(partes.join('\n· '))
       router.refresh()
     } finally { setLoadingId(null) }
   }
@@ -89,7 +90,7 @@ export default function BandejaClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: 'aprobada' }),
       })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al aprobar'); return }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'Error al aprobar'); return }
       router.refresh()
     } finally { setLoadingId(null) }
   }
@@ -105,7 +106,7 @@ export default function BandejaClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: 'rechazada', comentario: motivo.trim() || undefined }),
       })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al rechazar'); return }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'Error al rechazar'); return }
       setRejectTarget(null)
       setMotivo('')
       router.refresh()

@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { Mail, CheckCircle, XCircle, AlertCircle, RefreshCw, Bot, Copy, KeyRound } from 'lucide-react'
+import { confirmar } from '@/components/ui/dialogos'
 
 const ROL_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
@@ -45,7 +46,7 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
   }, [])
 
   async function generarToken() {
-    if (hasToken && !confirm('¿Regenerar el token? El conector anterior dejará de funcionar y habrá que actualizar la URL en Claude.')) return
+    if (hasToken && !await confirmar('¿Regenerar el token? El conector anterior dejará de funcionar y habrá que actualizar la URL en Claude.')) return
     setGenerating(true)
     try {
       const res = await fetch('/api/perfil/mcp-token', { method: 'POST' })
@@ -80,7 +81,7 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
   }, [searchParams])
 
   async function handleDisconnect() {
-    if (!confirm('¿Desconectar Gmail? Se eliminarán tus tokens y ya no se verificarán correos.')) return
+    if (!await confirmar('¿Desconectar Gmail? Se eliminarán tus tokens y ya no se verificarán correos.')) return
     setDisconnecting(true)
     try {
       await fetch('/api/auth/google', { method: 'DELETE' })

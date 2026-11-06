@@ -8,6 +8,7 @@ import {
   DollarSign, Loader2, Phone, Plus, RefreshCw, Trash2, Users,
 } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 export type Capa = 'google' | 'gestion' | 'campana' | 'tarea' | 'cobranza'
 
@@ -223,7 +224,7 @@ export default function CalendarioClient({
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, start: new Date(form.start).toISOString(), end: new Date(form.end).toISOString(), crmLeadId: form.crmLeadId || null }),
       })
-      if (!res.ok) { alert('No se pudo crear el evento en Google Calendar'); return }
+      if (!res.ok) { avisar('No se pudo crear el evento en Google Calendar'); return }
       const nuevo: EventoGoogle = await res.json()
       setPropios(prev => [...prev, nuevo])
       setModal(null)
@@ -231,7 +232,7 @@ export default function CalendarioClient({
   }
 
   async function borrar(id: string) {
-    if (!confirm('¿Eliminar este evento de Google Calendar?')) return
+    if (!await confirmar('¿Eliminar este evento de Google Calendar?')) return
     setGuardando(true)
     try {
       await fetch(`/api/calendar/events/${id}`, { method: 'DELETE' })

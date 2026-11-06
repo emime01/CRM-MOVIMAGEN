@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { puede, es, areasDeTarea } from '@/lib/auth/roles'
 import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical, DollarSign } from 'lucide-react'
+import { avisar } from '@/components/ui/dialogos'
 
 interface Task {
   id: string
@@ -139,7 +140,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
     if (!res.ok) {
       setTasks(prev => prev.map(t => (t.id === task.id ? { ...t, estado: previo } : t)))
       const d = await res.json().catch(() => ({}))
-      alert(d.error ?? 'No se pudo mover la tarea')
+      avisar(d.error ?? 'No se pudo mover la tarea')
       return
     }
     // Refrescar para traer completed_at y quién la tomó.

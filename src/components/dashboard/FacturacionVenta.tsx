@@ -5,6 +5,7 @@ import { Receipt, DollarSign, Printer, X, FileMinus, RefreshCw, Pencil } from 'l
 import { formatMoney } from '@/lib/money'
 import type { Factura } from '@/lib/ventas/facturas'
 import { hoyUY } from '@/lib/fechas'
+import { avisar, confirmar as preguntar } from '@/components/ui/dialogos'
 
 /**
  * Facturación de una venta, cuota por cuota.
@@ -109,7 +110,7 @@ export default function FacturacionVenta({
     try {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json().catch(() => null)
-      if (!res.ok) { alert(data?.error ?? 'No se pudo completar la operación'); return false }
+      if (!res.ok) { avisar(data?.error ?? 'No se pudo completar la operación'); return false }
       await cargar()
       return true
     } finally {
@@ -137,7 +138,7 @@ export default function FacturacionVenta({
     if (!modal) return
     let ok = false
     if (modal.tipo === 'emitir') {
-      if (!form.numero.trim()) { alert('Indicá el número de factura'); return }
+      if (!form.numero.trim()) { avisar('Indicá el número de factura'); return }
       ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', {
         accion: 'emitir', numero: form.numero.trim(), fecha_emision: form.fecha,
         ...(Number(form.total) !== Number(modal.f.importe_total) ? { importe_total: Number(form.total) } : {}),
@@ -159,7 +160,7 @@ export default function FacturacionVenta({
       }
       ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', body)
     } else if (modal.tipo === 'nota_credito') {
-      if (!form.numero.trim() || !Number(form.total)) { alert('Indicá el número y el importe'); return }
+      if (!form.numero.trim() || !Number(form.total)) { avisar('Indicá el número y el importe'); return }
       ok = await enviar(`/api/ordenes/${ordenId}/facturas`, 'POST', {
         accion: 'nota_credito', numero: form.numero.trim(), fecha_emision: form.fecha,
         importe_total: Number(form.total),
@@ -174,8 +175,8 @@ export default function FacturacionVenta({
 
   async function replanificar() {
     const n = Number(cuotasPlan)
-    if (!Number.isInteger(n) || n < 1 || n > 60) { alert('Las cuotas tienen que estar entre 1 y 60'); return }
-    if (!confirm(`¿Rearmar el plan en ${n} cuota${n === 1 ? '' : 's'} mensual${n === 1 ? '' : 'es'} iguales? Se reemplazan las cuotas previstas.`)) return
+    if (!Number.isInteger(n) || n < 1 || n > 60) { avisar('Las cuotas tienen que estar entre 1 y 60'); return }
+    if (!await preguntar(`¿Rearmar el plan en ${n} cuota${n === 1 ? '' : 's'} mensual${n === 1 ? '' : 'es'} iguales? Se reemplazan las cuotas previstas.`)) return
     await enviar(`/api/ordenes/${ordenId}/facturas`, 'POST', { accion: 'replanificar', cuotas: n })
   }
 

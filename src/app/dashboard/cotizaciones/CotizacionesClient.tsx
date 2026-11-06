@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, FileText, Clock, CheckCircle, XCircle, Send, Trash2, ChevronRight, Copy } from 'lucide-react'
 import { puede } from '@/lib/auth/roles'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 interface Propuesta {
   id: string
@@ -51,13 +52,13 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
 
   async function deletePropuesta(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm('¿Eliminar esta cotización?')) return
+    if (!await confirmar('¿Eliminar esta cotización?')) return
     // No se miraba la respuesta: la fila desaparecía de la pantalla aunque el
     // borrado fallara, y al recargar seguía ahí.
     const res = await fetch(`/api/propuestas/${id}`, { method: 'DELETE' })
     if (!res.ok) {
       const err = await res.json().catch(() => null)
-      alert(err?.error ?? 'No se pudo eliminar la cotización')
+      avisar(err?.error ?? 'No se pudo eliminar la cotización')
       return
     }
     setPropuestas(ps => ps.filter(p => p.id !== id))
@@ -67,7 +68,7 @@ export default function CotizacionesClient({ rol, userId }: { rol: string; userI
     e.stopPropagation()
     const res = await fetch(`/api/propuestas/${id}/duplicar`, { method: 'POST' })
     const d = await res.json()
-    if (!res.ok) { alert(d.error ?? 'Error al duplicar'); return }
+    if (!res.ok) { avisar(d.error ?? 'Error al duplicar'); return }
     if (d.id) router.push(`/dashboard/cotizaciones/${d.id}`)
   }
 

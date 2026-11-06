@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2 } from 'lucide-react'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 const CATEGORIAS = ['combustible', 'viáticos', 'entretenimiento', 'materiales', 'otros']
 
@@ -58,9 +59,9 @@ export function NuevoGasto({ hoy }: { hoy: string }) {
 export function BorrarGasto({ id }: { id: string }) {
   const router = useRouter()
   async function borrar() {
-    if (!confirm('¿Borrar este gasto?')) return
+    if (!await confirmar('¿Borrar este gasto?')) return
     const res = await fetch(`/api/gastos/${id}`, { method: 'DELETE' })
-    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'No se pudo borrar'); return }
+    if (!res.ok) { avisar((await res.json().catch(() => ({}))).error ?? 'No se pudo borrar'); return }
     router.refresh()
   }
   return (

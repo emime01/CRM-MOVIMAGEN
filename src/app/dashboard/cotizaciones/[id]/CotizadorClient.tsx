@@ -14,6 +14,7 @@ import {
 import { puede } from '@/lib/auth/roles'
 import { esImpuestoMTOP, etiquetaImpuesto } from '@/lib/cotizador/calcular'
 import { generarPdfCotizacion } from '@/lib/cotizador/pdf-cotizacion'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -532,25 +533,25 @@ export default function CotizadorClient({
 
   async function marcarAceptada() {
     if (clienteFijo?.agencia && (comAgPct === '' || comAgProdPct === '')) {
-      alert('Falta la comisión de la agencia.\n\nCargá el porcentaje sobre arrendamiento y sobre producción antes de cerrar la venta. Si esta vez no comisiona, poné 0.')
+      avisar('Falta la comisión de la agencia.\n\nCargá el porcentaje sobre arrendamiento y sobre producción antes de cerrar la venta. Si esta vez no comisiona, poné 0.')
       return
     }
-    if (!confirm('¿El cliente aceptó esta cotización?\n\nSe genera la orden de venta (OIC) para que la apruebe el gerente. Los soportes quedan ocupados cuando se aprueba.')) return
+    if (!await confirmar('¿El cliente aceptó esta cotización?\n\nSe genera la orden de venta (OIC) para que la apruebe el gerente. Los soportes quedan ocupados cuando se aprueba.')) return
     const id = await save()
     if (!id) return
     const res = await fetch(`/api/propuestas/${id}/aprobar`, { method: 'POST' })
     const data = await res.json()
-    if (!res.ok) { alert(data.error ?? 'Error al marcar aceptada'); return }
+    if (!res.ok) { avisar(data.error ?? 'Error al marcar aceptada'); return }
 
     if (data.orden_error) {
       // La cotización quedó aceptada y los soportes reservados, pero la OIC no
       // se pudo crear: se avisa para reintentar con el botón de respaldo.
-      alert(`✓ Cotización aceptada.\n\n⚠ No se pudo generar la OIC: ${data.orden_error}\nUsá "Crear OIC" para reintentar.`)
+      avisar(`✓ Cotización aceptada.\n\n⚠ No se pudo generar la OIC: ${data.orden_error}\nUsá "Crear OIC" para reintentar.`)
       router.refresh()
       return
     }
 
-    alert(`✓ Venta cerrada\n\n· ${data.items_reservados ?? 0} soporte(s) en la campaña\n· OIC #${data.orden_numero ?? '—'} generada y enviada al gerente para aprobar`)
+    avisar(`✓ Venta cerrada\n\n· ${data.items_reservados ?? 0} soporte(s) en la campaña\n· OIC #${data.orden_numero ?? '—'} generada y enviada al gerente para aprobar`)
     if (data.orden_id) router.push(`/dashboard/ventas/${data.orden_id}`)
     else router.refresh()
   }
@@ -558,20 +559,20 @@ export default function CotizadorClient({
   async function duplicar() {
     const pid = savedId ?? propuestaId
     if (!pid) return
-    if (!confirm('¿Duplicar esta cotización? Se crea un borrador nuevo (COT-XXXX) con los mismos items, sobre el mismo lead y cliente.')) return
+    if (!await confirmar('¿Duplicar esta cotización? Se crea un borrador nuevo (COT-XXXX) con los mismos items, sobre el mismo lead y cliente.')) return
     const res = await fetch(`/api/propuestas/${pid}/duplicar`, { method: 'POST' })
     const data = await res.json()
-    if (!res.ok) { alert(data.error ?? 'Error al duplicar'); return }
+    if (!res.ok) { avisar(data.error ?? 'Error al duplicar'); return }
     if (data.id) router.push(`/dashboard/cotizaciones/${data.id}`)
   }
 
   async function crearOrden() {
     const pid = savedId ?? propuestaId
     if (!pid) return
-    if (!confirm('¿Crear la orden de venta a partir de esta cotización? Se va a precargar con todos los datos.')) return
+    if (!await confirmar('¿Crear la orden de venta a partir de esta cotización? Se va a precargar con todos los datos.')) return
     const res = await fetch(`/api/propuestas/${pid}/crear-orden`, { method: 'POST' })
     const data = await res.json()
-    if (!res.ok) { alert(data.error ?? 'Error al crear la orden'); return }
+    if (!res.ok) { avisar(data.error ?? 'Error al crear la orden'); return }
     if (data.orden_id) router.push(`/dashboard/ventas/${data.orden_id}`)
   }
 
@@ -594,7 +595,7 @@ export default function CotizadorClient({
       })
     } catch (e) {
       console.error(e)
-      alert('No se pudo generar el PDF')
+      avisar('No se pudo generar el PDF')
     }
   }
 
@@ -1025,12 +1026,12 @@ export default function CotizadorClient({
           puedeGuardar={planParaPlantilla().length > 0}
           buildItems={planParaPlantilla}
           onClose={() => setShowPlantillas(false)}
-          onLoad={(items) => {
-            if (plan.length > 0 && !confirm('Cargar la plantilla reemplazará el plan actual. ¿Continuar?')) return
+          onLoad={async (items) => {
+            if (plan.length > 0 && !await confirmar('Cargar la plantilla reemplazará el plan actual. ¿Continuar?')) return
             const { cargados, faltantes } = cargarPlantilla(items)
             setShowPlantillas(false)
             if (faltantes > 0) {
-              alert(`Se cargaron ${cargados} soporte(s). ${faltantes} ya no existen en el catálogo y se omitieron.`)
+              avisar(`Se cargaron ${cargados} soporte(s). ${faltantes} ya no existen en el catálogo y se omitieron.`)
             }
           }}
         />
@@ -1088,10 +1089,10 @@ function PlantillasModal({
   }
 
   async function borrar(id: string) {
-    if (!confirm('¿Eliminar esta plantilla?')) return
+    if (!await confirmar('¿Eliminar esta plantilla?')) return
     const res = await fetch(`/api/plantillas/${id}`, { method: 'DELETE' })
     if (res.ok) setPlantillas(prev => prev.filter(p => p.id !== id))
-    else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al eliminar') }
+    else { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'Error al eliminar') }
   }
 
   const inp: React.CSSProperties = { flex: 1, padding: '8px 10px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 13, fontFamily: 'Montserrat, sans-serif', boxSizing: 'border-box', outline: 'none' }

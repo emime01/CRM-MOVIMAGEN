@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Upload, X, Edit2, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { puede } from '@/lib/auth/roles'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 interface Soporte {
   id: string
@@ -314,7 +315,7 @@ function PlanillaTab({ buses, soporteCampanasMap, canManage }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fecha_alta_real: altaReal || null, fecha_baja_real: bajaReal || null }),
       })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Error al guardar'); return }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'Error al guardar'); return }
       setEditar(null)
       router.refresh()
     } finally { setGuardando(false) }
@@ -924,9 +925,9 @@ function BusModal({ data, clientes, soportesSinAsignar, busSoportes, onClose, on
 
   async function remove() {
     if (!data.id) return
-    if (!confirm(`¿Desactivar bus #${form.numero}?`)) return
+    if (!await confirmar(`¿Desactivar bus #${form.numero}?`)) return
     const res = await fetch(`/api/buses/${data.id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al desactivar'); return }
+    if (!res.ok) { avisar('Error al desactivar'); return }
     onDeleted(data.id)
   }
 

@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { puede } from '@/lib/auth/roles'
 import { X, Upload, Trash2, Play, FileText, Film, Loader2 } from 'lucide-react'
 import { esDigital } from '@/lib/soportes/digital'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 interface SoporteInfo { id: string; nombre: string; tipo: string | null; es_digital: boolean | null; tipo_cotizador?: string | null }
 interface VentaItem { id: string; soporte_id: string; soportes: SoporteInfo | null }
@@ -84,12 +85,12 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
       const resDatos = await fetch(`/api/comprobantes/video-data?orden_id=${ventaId}`)
       if (!resDatos.ok) {
         const err = await resDatos.json().catch(() => ({ error: 'Error desconocido' }))
-        alert(err.error ?? 'No se pudieron traer los datos del video')
+        avisar(err.error ?? 'No se pudieron traer los datos del video')
         return
       }
       const datos = await resDatos.json()
       if (!datos.clips?.length) {
-        alert('Esta venta no tiene videos subidos en soportes LED/digitales.\n\nLos buses y estáticos se documentan con fotos y salen en el comprobante PDF.')
+        avisar('Esta venta no tiene videos subidos en soportes LED/digitales.\n\nLos buses y estáticos se documentan con fotos y salen en el comprobante PDF.')
         return
       }
 
@@ -108,7 +109,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
       })
       if (!resUp.ok) {
         const err = await resUp.json().catch(() => ({ error: 'Error desconocido' }))
-        alert(err.error ?? 'No se pudo preparar la subida')
+        avisar(err.error ?? 'No se pudo preparar la subida')
         return
       }
       const { path, token, url } = await resUp.json()
@@ -116,7 +117,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
         contentType: 'video/mp4',
       })
       if (upErr) {
-        alert(`El video se generó pero no se pudo subir: ${upErr.message}`)
+        avisar(`El video se generó pero no se pudo subir: ${upErr.message}`)
         return
       }
 
@@ -126,7 +127,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
       }))
     } catch (err) {
       console.error('Error generando el video comprobante:', err)
-      alert(`No se pudo generar el video: ${err instanceof Error ? err.message : String(err)}`)
+      avisar(`No se pudo generar el video: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setVideoProgreso(prev => {
         const { [ventaId]: _, ...resto } = prev
@@ -145,7 +146,7 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Error desconocido' }))
-        alert(err.error ?? 'Error generando comprobante')
+        avisar(err.error ?? 'Error generando comprobante')
         return
       }
       const data = await res.json()
@@ -201,14 +202,14 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
       const tipo: 'foto' | 'video' = file.type.startsWith('video/') ? 'video' : 'foto'
 
       const { error: storageErr } = await supabase.storage.from('registros').upload(path, file, { upsert: false })
-      if (storageErr) { alert(`Error subiendo ${file.name}: ${storageErr.message}`); continue }
+      if (storageErr) { avisar(`Error subiendo ${file.name}: ${storageErr.message}`); continue }
 
       const res = await fetch('/api/registros', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ soporte_id: soporteId, orden_id: ventaId, tipo, storage_path: path, nombre_archivo: file.name }),
       })
-      if (!res.ok) { alert('Error guardando registro'); continue }
+      if (!res.ok) { avisar('Error guardando registro'); continue }
       const created: Registro = await res.json()
       setRegistrosMap(prev => ({ ...prev, [key]: [created, ...(prev[key] ?? [])] }))
     }
@@ -216,9 +217,9 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
   }
 
   async function handleDelete(reg: Registro, key: string) {
-    if (!confirm('¿Eliminar este registro?')) return
+    if (!await confirmar('¿Eliminar este registro?')) return
     const res = await fetch(`/api/registros/${reg.id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al eliminar'); return }
+    if (!res.ok) { avisar('Error al eliminar'); return }
     setRegistrosMap(prev => ({ ...prev, [key]: (prev[key] ?? []).filter(r => r.id !== reg.id) }))
   }
 

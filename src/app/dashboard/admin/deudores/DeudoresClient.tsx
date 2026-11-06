@@ -7,6 +7,7 @@ import { CalendarClock, Copy, DollarSign, Download, Mail, Phone, Plus, Search, X
 import { mailSugerido } from '@/lib/cobranza/mail-sugerido'
 import { formatMoney, formatTotales, type TotalPorMoneda } from '@/lib/money'
 import { diasDeAtraso, tramoDe, TRAMO_LABEL, type Tramo } from '@/lib/ventas/cobranza'
+import { avisar } from '@/components/ui/dialogos'
 
 export interface UltimaGestion {
   tipo: string
@@ -171,7 +172,7 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
           }),
         })
       } else if (modal.tipo === 'promesa') {
-        if (!quitarPromesa && !form.fecha) { alert('Indicá la fecha que prometió la agencia'); return }
+        if (!quitarPromesa && !form.fecha) { avisar('Indicá la fecha que prometió la agencia'); return }
         res = await fetch(`/api/facturas/${modal.r.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -184,7 +185,7 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
           body: JSON.stringify({ accion: 'cobrar', fecha: form.fecha, metodo: form.metodo }),
         })
       }
-      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'No se pudo guardar'); return }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'No se pudo guardar'); return }
       setModal(null)
       router.refresh()
     } finally { setSaving(false) }

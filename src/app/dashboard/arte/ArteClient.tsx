@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { Upload, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,13 +93,13 @@ function FechaRealModal({ campana, onClose, onSaved }: {
       body: JSON.stringify(body),
     })
     setSaving(false)
-    if (!res.ok) { alert('Error guardando fechas'); return }
+    if (!res.ok) { avisar('Error guardando fechas'); return }
     onSaved(campana.orden_id, altaReal || null, bajaReal || null)
     onClose()
   }
 
   async function handleClear() {
-    if (!confirm('¿Borrar las fechas reales y volver a las previstas?')) return
+    if (!await confirmar('¿Borrar las fechas reales y volver a las previstas?')) return
     setSaving(true)
     await fetch(`/api/ordenes/${campana.orden_id}/fechas-reales`, {
       method: 'PATCH',
@@ -220,7 +221,7 @@ function PlanillaTab({
       const path = `digitales/${soporteId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
 
       const { error: storageErr } = await supabase.storage.from('arte').upload(path, file, { upsert: false })
-      if (storageErr) { alert(`Error subiendo ${file.name}: ${storageErr.message}`); continue }
+      if (storageErr) { avisar(`Error subiendo ${file.name}: ${storageErr.message}`); continue }
 
       const res = await fetch('/api/arte/materiales', {
         method: 'POST',
@@ -233,7 +234,7 @@ function PlanillaTab({
           nombre_archivo: file.name,
         }),
       })
-      if (!res.ok) { alert('Error guardando material'); continue }
+      if (!res.ok) { avisar('Error guardando material'); continue }
       const created: Material = await res.json()
       setMaterialesMap(prev => ({ ...prev, [soporteId]: [created, ...(prev[soporteId] ?? [])] }))
     }
@@ -242,9 +243,9 @@ function PlanillaTab({
   }
 
   async function handleDelete(mat: Material) {
-    if (!confirm('¿Eliminar este material?')) return
+    if (!await confirmar('¿Eliminar este material?')) return
     const res = await fetch(`/api/arte/materiales?id=${mat.id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al eliminar'); return }
+    if (!res.ok) { avisar('Error al eliminar'); return }
     setMaterialesMap(prev => ({
       ...prev,
       [mat.soporte_id]: (prev[mat.soporte_id] ?? []).filter(m => m.id !== mat.id),
