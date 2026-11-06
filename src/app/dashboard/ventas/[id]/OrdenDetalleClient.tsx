@@ -11,6 +11,7 @@ import { facturaHTML, type FacturaData, type Emisor } from '@/lib/factura/html'
 import { estaCerrada } from '@/lib/ventas/estados'
 import { puede, es } from '@/lib/auth/roles'
 import { formatMoney as fmtMoneda } from '@/lib/money'
+import { avisar } from '@/components/ui/dialogos'
 
 function formatMoney(amount: number | null, moneda?: string | null) {
   return amount == null ? '—' : fmtMoneda(amount, moneda)
@@ -249,11 +250,11 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
       // sobreventa llegaban a la pantalla.
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        alert(data?.error ?? 'No se pudo cambiar el estado de la venta')
+        avisar(data?.error ?? 'No se pudo cambiar el estado de la venta')
         return
       }
       if (data?.warnings?.length) {
-        alert(`Atención:\n\n${data.warnings.join('\n')}`)
+        avisar(`Atención:\n\n${data.warnings.join('\n')}`)
       }
       router.refresh()
     } finally {
@@ -314,7 +315,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
       forma_pago: orden.forma_pago_arrend,
     }
     const win = window.open('', '_blank')
-    if (!win) { alert('Permití las ventanas emergentes para generar la factura.'); return }
+    if (!win) { avisar('Permití las ventanas emergentes para generar la factura.'); return }
     win.document.write(facturaHTML(data, emisor ?? undefined))
     win.document.close()
     win.focus()
@@ -336,7 +337,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
         if (!upRes.ok) {
           const { error } = await upRes.json().catch(() => ({ error: '' }))
           if (error === 'drive_scope_missing') {
-            alert('Necesitás reconectar Google desde Mi Perfil para habilitar Drive.')
+            avisar('Necesitás reconectar Google desde Mi Perfil para habilitar Drive.')
           }
           return
         }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Edit2, Plus, Trash2 } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
+import { avisar, confirmar as preguntar, pedir } from '@/components/ui/dialogos'
 
 const IVA = 0.22
 const fmtPct = (n: number) => `${Number(n).toLocaleString('es-UY', { maximumFractionDigits: 2 })}%`
@@ -80,7 +81,7 @@ export default function CanonClient({ paga = true, configura = true }: {
   useEffect(() => { if (tab === 'mes') cargarMes() }, [tab, cargarMes])
 
   async function accion(shoppingId: string, body: Record<string, unknown>, confirmar?: string) {
-    if (confirmar && !confirm(confirmar)) return
+    if (confirmar && !await preguntar(confirmar)) return
     setOcupado(true)
     try {
       const res = await fetch('/api/admin/canon-mensual', {
@@ -88,7 +89,7 @@ export default function CanonClient({ paga = true, configura = true }: {
         body: JSON.stringify({ shopping_id: shoppingId, mes, ...body }),
       })
       const d = await res.json().catch(() => ({}))
-      if (!res.ok) { alert(d.error ?? 'No se pudo guardar'); return }
+      if (!res.ok) { avisar(d.error ?? 'No se pudo guardar'); return }
       await cargarMes()
     } finally { setOcupado(false) }
   }
@@ -186,9 +187,9 @@ export default function CanonClient({ paga = true, configura = true }: {
   }
 
   async function deleteShopping(id: string, nombre: string) {
-    if (!confirm(`¿Eliminar shopping "${nombre}"? Los soportes asignados quedarán sin shopping. Si ya tiene canon liquidado, se desactiva y su historia se conserva.`)) return
+    if (!await preguntar(`¿Eliminar shopping "${nombre}"? Los soportes asignados quedarán sin shopping. Si ya tiene canon liquidado, se desactiva y su historia se conserva.`)) return
     const res = await fetch(`/api/admin/canon-shoppings/${id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al eliminar'); return }
+    if (!res.ok) { avisar('Error al eliminar'); return }
     setShoppings(prev => prev.filter(s => s.id !== id))
     setAsignaciones(prev => prev.filter(a => a.shopping_id !== id))
   }
@@ -198,7 +199,7 @@ export default function CanonClient({ paga = true, configura = true }: {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ soporte_id: soporteId, shopping_id: shoppingId, asignado }),
     })
-    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'No se pudo guardar'); return }
+    if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'No se pudo guardar'); return }
     setAsignaciones(prev => asignado
       ? [...prev, { soporte_id: soporteId, shopping_id: shoppingId, peso: 1 }]
       : prev.filter(a => !(a.soporte_id === soporteId && a.shopping_id === shoppingId)))
@@ -329,12 +330,12 @@ export default function CanonClient({ paga = true, configura = true }: {
                         <div style={{ display: 'flex', gap: 8, padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg-app)', flexWrap: 'wrap', alignItems: 'center' }}>
                           <button onClick={() => informe(f)} style={btn}><Download size={13} /> Informe del shopping</button>
                           {f.estado !== 'pagado' && (
-                            <button disabled={ocupado} style={btn} onClick={() => {
-                              const v = prompt(`¿Cuánto del canon de ${nombreMes(mes)} pasa al mes siguiente? (0 para nada)`, f.diferido ? f.diferido.toLocaleString('es-UY') : '')
+                            <button disabled={ocupado} style={btn} onClick={async () => {
+                              const v = await pedir(`¿Cuánto del canon de ${nombreMes(mes)} pasa al mes siguiente? (0 para nada)`, f.diferido ? f.diferido.toLocaleString('es-UY') : '')
                               if (v === null) return
                               const monto = leerMonto(v)
-                              if (monto === null) { alert('No entendí el monto'); return }
-                              const nota = prompt('Motivo (opcional)', f.notas ?? '') ?? undefined
+                              if (monto === null) { avisar('No entendí el monto'); return }
+                              const nota = await pedir('Motivo (opcional)', f.notas ?? '') ?? undefined
                               accion(f.shopping.id, { accion: 'diferir', diferido: monto, notas: nota })
                             }}>Pasar parte al mes siguiente</button>
                           )}
@@ -345,8 +346,8 @@ export default function CanonClient({ paga = true, configura = true }: {
                             <button disabled={ocupado} style={btn} onClick={() => accion(f.shopping.id, { accion: 'reabrir' })}>Reabrir</button>
                           )}
                           {!paga ? null : f.estado !== 'pagado' ? (
-                            <button disabled={ocupado} style={{ ...btn, background: '#15803d', color: '#fff', border: 'none' }} onClick={() => {
-                              const fecha = prompt('Fecha de pago (AAAA-MM-DD)', hoy())
+                            <button disabled={ocupado} style={{ ...btn, background: '#15803d', color: '#fff', border: 'none' }} onClick={async () => {
+                              const fecha = await pedir('Fecha de pago (AAAA-MM-DD)', hoy())
                               if (fecha) accion(f.shopping.id, { accion: 'pagar', fecha_pago: fecha })
                             }}>Marcar pagado</button>
                           ) : (

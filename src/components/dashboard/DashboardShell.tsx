@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, Fragment } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import GlobalSearch from '@/components/dashboard/GlobalSearch'
+import Dialogos from '@/components/ui/dialogos'
 import {
   Home, FileText, Filter, Calendar, BarChart2,
   Users, Target, Star, Wrench, Truck, Monitor, Factory,
@@ -354,6 +355,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-app)', fontFamily: 'Montserrat, sans-serif' }}>
+      <Dialogos />
 
       {/* Overlay (solo mobile, cuando el sidebar está abierto) */}
       <div

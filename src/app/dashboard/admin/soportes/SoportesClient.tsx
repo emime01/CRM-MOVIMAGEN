@@ -4,6 +4,7 @@ import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Pencil, Upload, Check } from 'lucide-react'
 import type { SoporteRow } from './page'
+import { confirmar } from '@/components/ui/dialogos'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -438,7 +439,7 @@ export default function SoportesClient({ initialSoportes }: Props) {
   }
 
   async function handleDeactivate(id: string) {
-    if (!confirm('¿Desactivar este soporte?')) return
+    if (!await confirmar('¿Desactivar este soporte?')) return
     setDeletingId(id)
     await fetch(`/api/soportes/${id}`, { method: 'DELETE' })
     setDeletingId(null)

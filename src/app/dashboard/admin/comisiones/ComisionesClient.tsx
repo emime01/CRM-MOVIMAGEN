@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Download, Users } from 'lucide-react'
 import { formatMoney, formatTotales, type TotalPorMoneda } from '@/lib/money'
+import { avisar, confirmar as preguntar } from '@/components/ui/dialogos'
 
 export interface ComisionRow {
   id: string
@@ -147,12 +148,12 @@ export default function ComisionesClient({
   }, [agencias])
 
   async function llamar(url: string, init: RequestInit, confirmar?: string) {
-    if (confirmar && !confirm(confirmar)) return
+    if (confirmar && !await preguntar(confirmar)) return
     setOcupado(true)
     try {
       const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json' } })
       const d = await res.json().catch(() => ({}))
-      if (!res.ok) { alert(d.error ?? 'No se pudo guardar'); return }
+      if (!res.ok) { avisar(d.error ?? 'No se pudo guardar'); return }
       router.refresh()
     } finally { setOcupado(false) }
   }

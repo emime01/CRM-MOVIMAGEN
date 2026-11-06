@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { avisar } from '@/components/ui/dialogos'
 
 type Campo = 'estado_grabado' | 'estado_produccion'
 
@@ -44,7 +45,7 @@ export default function ItemEstadoControl({
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        alert(d.error ?? 'Error al actualizar')
+        avisar(d.error ?? 'Error al actualizar')
         setValue(prev)
         return
       }

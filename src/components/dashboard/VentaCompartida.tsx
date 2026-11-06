@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Users } from 'lucide-react'
+import { avisar } from '@/components/ui/dialogos'
 
 /**
  * "Compartida con": el segundo vendedor de la venta. La comisión de cada
@@ -30,7 +31,7 @@ export default function VentaCompartida({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vendedor_compartido_id: valor || null }),
       })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'No se pudo guardar'); return }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); avisar(d.error ?? 'No se pudo guardar'); return }
       setEditando(false)
       router.refresh()
     } finally { setGuardando(false) }

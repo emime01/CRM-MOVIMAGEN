@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, FileText, Plus, Trophy, MessageSquare, Calendar, AlertCircle } from 'lucide-react'
 import { puede, es } from '@/lib/auth/roles'
+import { confirmar } from '@/components/ui/dialogos'
 
 interface Cliente { id: string; nombre: string; empresa: string | null }
 interface Vendedor { id: string; nombre: string }
@@ -105,7 +106,7 @@ export default function LeadDetalleClient({ lead, propuestas, userRol, userId }:
   const sem = semaforoColor(lead.proxima_gestion)
 
   async function marcarGanadora(propuestaId: string) {
-    if (!confirm('¿Marcar esta cotización como ganadora? El lead pasa a "ganado".')) return
+    if (!await confirmar('¿Marcar esta cotización como ganadora? El lead pasa a "ganado".')) return
     setMarcando(propuestaId); setErrorMsg(null)
     const res = await fetch(`/api/leads/${lead.id}/marcar-ganadora`, {
       method: 'POST',

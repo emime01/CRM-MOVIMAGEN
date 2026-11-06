@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { Plus, Search, Upload, X, Edit2, Trash2, History, Image as ImageIcon } from 'lucide-react'
 import { puede } from '@/lib/auth/roles'
+import { avisar, confirmar } from '@/components/ui/dialogos'
 
 interface Cliente {
   id: string
@@ -150,9 +151,9 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
   }
 
   async function deleteCliente(id: string) {
-    if (!confirm('¿Desactivar este cliente?')) return
+    if (!await confirmar('¿Desactivar este cliente?')) return
     const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al desactivar el cliente'); return }
+    if (!res.ok) { avisar('Error al desactivar el cliente'); return }
     setClientes(prev => prev.filter(c => c.id !== id))
   }
 
@@ -175,9 +176,9 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
   }
 
   async function deleteAgencia(id: string) {
-    if (!confirm('¿Desactivar esta agencia?')) return
+    if (!await confirmar('¿Desactivar esta agencia?')) return
     const res = await fetch(`/api/agencias/${id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al desactivar la agencia'); return }
+    if (!res.ok) { avisar('Error al desactivar la agencia'); return }
     setAgencias(prev => prev.filter(a => a.id !== id))
   }
 
@@ -200,9 +201,9 @@ export default function CuentasClient({ initialClientes, initialAgencias, initia
   }
 
   async function deleteContacto(id: string) {
-    if (!confirm('¿Eliminar este contacto?')) return
+    if (!await confirmar('¿Eliminar este contacto?')) return
     const res = await fetch(`/api/contactos/${id}`, { method: 'DELETE' })
-    if (!res.ok) { alert('Error al eliminar el contacto'); return }
+    if (!res.ok) { avisar('Error al eliminar el contacto'); return }
     setContactos(prev => prev.filter(c => c.id !== id))
   }
 
