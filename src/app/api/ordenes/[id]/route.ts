@@ -139,13 +139,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!esDueño && !puede(session.user.rol, ['gerente_comercial', 'asistente_ventas', 'administracion'])) {
     return NextResponse.json({ error: 'Sin permisos para borrar esta venta' }, { status: 403 })
   }
-  const { count: facturas } = await supabase.from('facturas').select('id', { count: 'exact', head: true }).eq('orden_id', params.id)
-  if (facturas) return NextResponse.json({ error: 'La venta tiene facturas: no se puede borrar.' }, { status: 409 })
+  // Las cuotas previstas viven en `facturas` con estado 'prevista' y se van
+  // con la venta; una factura emitida o cobrada no se borra.
+  const { count: emitidas } = await supabase.from('facturas').select('id', { count: 'exact', head: true })
+    .eq('orden_id', params.id).in('estado', ['emitida', 'cobrada'])
+  if (emitidas) return NextResponse.json({ error: 'La venta tiene facturas emitidas: no se puede borrar.' }, { status: 409 })
 
   // Lo que cuelga de la venta. Los bloqueos de soportes se desligan (quedan
   // como estaban), el resto se borra con ella.
   await supabase.from('reservas').update({ orden_id: null }).eq('orden_id', params.id)
-  for (const t of ['tasks', 'orden_historial', 'orden_documentos', 'comentarios_orden', 'orden_items']) {
+  for (const t of ['facturas', 'tasks', 'orden_historial', 'orden_documentos', 'comentarios_orden', 'orden_items']) {
     await supabase.from(t).delete().eq('orden_id', params.id)
   }
   await supabase.from('notificaciones').delete().eq('entity_id', params.id)

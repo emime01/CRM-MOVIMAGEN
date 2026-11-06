@@ -7,6 +7,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { Plus, Search, Upload, X, Edit2, Trash2, History, Image as ImageIcon } from 'lucide-react'
 import { puede } from '@/lib/auth/roles'
 import { avisar, confirmar } from '@/components/ui/dialogos'
+import { subirArchivo } from '@/lib/storage/subir'
 
 interface Cliente {
   id: string
@@ -536,11 +537,9 @@ function ClienteModalForm({ data, vendedores, agencias, supabase, supabaseUrl, o
     setLogoError('')
     setUploadingLogo(true)
     try {
-      const ext = (file.name.split('.').pop() ?? 'png').toLowerCase()
-      const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const path = form.id ? `${form.id}/${fileName}` : `nuevo/${fileName}`
-      const { error: upErr } = await supabase.storage.from('logos').upload(path, file, { upsert: false, contentType: file.type })
-      if (upErr) { setLogoError(upErr.message); return }
+      const subida = await subirArchivo(supabase, 'logos', file, form.id ? String(form.id) : 'nuevo')
+      if ('error' in subida) { setLogoError(subida.error); return }
+      const path = subida.path
       const publicUrl = `${supabaseUrl}/storage/v1/object/public/logos/${path}`
       set('logo_url', publicUrl)
     } finally {

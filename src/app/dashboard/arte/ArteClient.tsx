@@ -4,6 +4,7 @@ import { useState, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { Upload, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { avisar, confirmar } from '@/components/ui/dialogos'
+import { subirArchivo } from '@/lib/storage/subir'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -217,11 +218,9 @@ function PlanillaTab({
     setUploading(prev => ({ ...prev, [soporteId]: true }))
 
     for (const file of Array.from(files)) {
-      const ext = file.name.split('.').pop() ?? 'bin'
-      const path = `digitales/${soporteId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-
-      const { error: storageErr } = await supabase.storage.from('arte').upload(path, file, { upsert: false })
-      if (storageErr) { avisar(`Error subiendo ${file.name}: ${storageErr.message}`); continue }
+      const subida = await subirArchivo(supabase, 'arte', file, `digitales/${soporteId}`)
+      if ('error' in subida) { avisar(`Error subiendo ${file.name}: ${subida.error}`); continue }
+      const path = subida.path
 
       const res = await fetch('/api/arte/materiales', {
         method: 'POST',
@@ -367,7 +366,7 @@ function PlanillaTab({
                   <input
                     ref={el => { fileRefs.current[s.id] = el }}
                     type="file"
-                    accept="image/*,.pdf,.ai,.psd,.eps,.png,.jpg,.jpeg"
+                    accept="image/*,video/*,.mp4,.mov,.pdf,.ai,.psd,.eps,.png,.jpg,.jpeg"
                     multiple
                     style={{ display: 'none' }}
                     onChange={e => handleUpload(s.id, e.target.files)}
