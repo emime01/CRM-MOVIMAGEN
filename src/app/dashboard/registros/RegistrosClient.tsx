@@ -6,6 +6,7 @@ import { puede } from '@/lib/auth/roles'
 import { X, Upload, Trash2, Play, FileText, Film, Loader2 } from 'lucide-react'
 import { esDigital } from '@/lib/soportes/digital'
 import { avisar, confirmar } from '@/components/ui/dialogos'
+import { subirArchivo } from '@/lib/storage/subir'
 
 interface SoporteInfo { id: string; nombre: string; tipo: string | null; es_digital: boolean | null; tipo_cotizador?: string | null }
 interface VentaItem { id: string; soporte_id: string; soportes: SoporteInfo | null }
@@ -197,12 +198,10 @@ export default function RegistrosClient({ ventas, userId, userRol, supabaseUrl, 
     setUploading(prev => ({ ...prev, [key]: true }))
 
     for (const file of Array.from(files)) {
-      const ext = file.name.split('.').pop() ?? 'bin'
-      const path = `${ventaId}/${soporteId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
       const tipo: 'foto' | 'video' = file.type.startsWith('video/') ? 'video' : 'foto'
-
-      const { error: storageErr } = await supabase.storage.from('registros').upload(path, file, { upsert: false })
-      if (storageErr) { avisar(`Error subiendo ${file.name}: ${storageErr.message}`); continue }
+      const subida = await subirArchivo(supabase, 'registros', file, `${ventaId}/${soporteId}`)
+      if ('error' in subida) { avisar(`Error subiendo ${file.name}: ${subida.error}`); continue }
+      const path = subida.path
 
       const res = await fetch('/api/registros', {
         method: 'POST',
