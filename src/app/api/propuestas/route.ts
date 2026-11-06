@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede, es } from '@/lib/auth/roles'
 import { proximoNumeroCotizacion } from '@/lib/cotizaciones/numero'
+import { idEnOrden } from '@/lib/cotizador/orden-items'
 
 // GET /api/propuestas?lead_id=&estado=
 export async function GET(req: NextRequest) {
@@ -118,7 +119,8 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   if (body.items?.length) {
-    const rows = body.items.map((it: any) => ({
+    const rows = body.items.map((it: any, i: number) => ({
+      id:                idEnOrden(i),
       propuesta_id:      data.id,
       soporte_id:        it.soporte_id ?? null,
       nombre_soporte:    it.nombre_soporte,

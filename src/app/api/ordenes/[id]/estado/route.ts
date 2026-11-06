@@ -132,6 +132,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Aviso al vendedor (y al compartido) de lo que decidió el gerente: antes
   // se enteraba sólo si entraba a mirar la venta.
+  // Si el vendedor retira la venta, el aviso al gerente ya no aplica.
+  if (body.estado === 'borrador') {
+    await supabase.from('notificaciones').update({ leida: true })
+      .eq('entity_id', params.id).eq('tipo', 'orden_pendiente')
+  }
   if (body.estado === 'aprobada' || body.estado === 'rechazada') {
     // El "esperando tu aprobación" ya está resuelto: se marca leído para
     // todos los gerentes, si no quedaba pendiente en la campanita.
