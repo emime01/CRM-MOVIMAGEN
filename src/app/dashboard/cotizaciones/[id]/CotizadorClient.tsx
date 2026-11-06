@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { puede } from '@/lib/auth/roles'
 import { esImpuestoMTOP, etiquetaImpuesto } from '@/lib/cotizador/calcular'
+import { generarPdfCotizacion } from '@/lib/cotizador/pdf-cotizacion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -576,71 +577,25 @@ export default function CotizadorClient({
 
   // ── PDF ────────────────────────────────────────────────────────────────────
 
-  function exportPDF() {
-    const numero = propuesta?.numero ?? 'BORRADOR'
-    const sym = moneda === 'USD' ? 'U$S' : '$'
-    const rows = calcs.map(({ item, c }) => `
-      <tr>
-        <td><strong>${item.soporte.nombre}</strong><br><span style="color:#6b7280;font-size:10px">${item.soporte.ubicacion ?? ''}</span></td>
-        <td style="font-size:11px;color:#6b7280">${displayCat(item.soporte)}</td>
-        <td style="text-align:center">${item.cantidadSoportes}</td>
-        <td style="text-align:center">${c.sem}</td>
-        ${item.salidasElegidas ? `<td style="text-align:center">${item.salidasElegidas}</td>` : '<td style="text-align:center;color:#9ca3af">—</td>'}
-        <td style="text-align:right">${sym} ${Math.round(c.arr).toLocaleString('es-UY')}</td>
-        <td style="text-align:right">${c.prod ? `${sym} ${Math.round(c.prod).toLocaleString('es-UY')}` : '—'}</td>
-        <td style="text-align:right">${c.mun ? `${sym} ${Math.round(c.mun).toLocaleString('es-UY')}` : '—'}</td>
-        <td style="text-align:right">${(c.ivaArr + c.ivaProd) ? `${sym} ${Math.round(c.ivaArr + c.ivaProd).toLocaleString('es-UY')}` : '—'}</td>
-        <td style="text-align:right;font-weight:600">${sym} ${Math.round(c.tot).toLocaleString('es-UY')}</td>
-        <td style="text-align:right;color:#6b7280;font-size:11px">${c.imp ? c.imp.toLocaleString('es-UY') : '—'}</td>
-      </tr>`).join('')
-
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cotización ${numero}</title>
-    <style>
-      body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:20px}
-      h1{font-size:20px;margin:0 0 4px} .sub{color:#6b7280;font-size:12px;margin:0 0 20px}
-      .kpi{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-      .kpi-box{flex:1;min-width:140px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px}
-      .kpi-label{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px}
-      .kpi-value{font-size:16px;font-weight:700;color:#111;margin-top:4px}
-      table{width:100%;border-collapse:collapse;font-size:11px}
-      th{background:#f3f4f6;padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;font-size:10px;text-transform:uppercase;color:#6b7280}
-      td{padding:6px 8px;border-bottom:1px solid #f3f4f6;vertical-align:top}
-      .totals{background:#111827;color:#fff;padding:12px 20px;border-radius:8px;display:flex;gap:24px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap}
-      .t-label{font-size:10px;opacity:.6;margin-bottom:2px}
-      .t-value{font-size:14px;font-weight:700}
-      .footer{margin-top:24px;font-size:10px;color:#9ca3af;text-align:center}
-    </style></head><body>
-    <h1>Cotización de Campaña — Movimagen</h1>
-    <p class="sub">${numero} · ${clienteQuery || '—'}${marca ? ' · ' + marca : ''} · ${fmtDate(fechaInicio)} – ${fmtDate(fechaFin)}</p>
-    <div class="kpi">
-      <div class="kpi-box"><div class="kpi-label">Inversión Bruta</div><div class="kpi-value">${sym} ${Math.round(totals.arr + totals.prod).toLocaleString('es-UY')}</div></div>
-      <div class="kpi-box"><div class="kpi-label">Total con Impuestos</div><div class="kpi-value">${sym} ${Math.round(totals.tot).toLocaleString('es-UY')}</div></div>
-      <div class="kpi-box"><div class="kpi-label">Impactos Estimados</div><div class="kpi-value">${totals.imp.toLocaleString('es-UY')}</div></div>
-      ${cpmGlobal != null ? `<div class="kpi-box"><div class="kpi-label">CPM</div><div class="kpi-value">${sym} ${cpmGlobal.toFixed(2)}</div></div>` : ''}
-    </div>
-    <table><thead><tr>
-      <th>Soporte</th><th>Categoría</th><th style="text-align:center">Cant.</th>
-      <th style="text-align:center">Sem.</th><th style="text-align:center">Salidas</th>
-      <th style="text-align:right">Arrendamiento</th><th style="text-align:right">Producción</th>
-      <th style="text-align:right">${totals.mtop ? (totals.mun ? 'Imp. Mun./MTOP' : 'Imp. MTOP') : 'Imp. Mun.'}</th><th style="text-align:right">IVA</th>
-      <th style="text-align:right">Total</th><th style="text-align:right">Impactos</th>
-    </tr></thead><tbody>${rows}</tbody></table>
-    <div class="totals">
-      <div><div class="t-label">Arrendamiento</div><div class="t-value">${sym} ${Math.round(totals.arr).toLocaleString('es-UY')}</div></div>
-      <div><div class="t-label">Producción</div><div class="t-value">${sym} ${Math.round(totals.prod).toLocaleString('es-UY')}</div></div>
-      <div><div class="t-label">IVA</div><div class="t-value">${sym} ${Math.round(totals.iva).toLocaleString('es-UY')}</div></div>
-      ${totals.mun || !totals.mtop ? `<div><div class="t-label">Imp. Municipal</div><div class="t-value">${sym} ${Math.round(totals.mun).toLocaleString('es-UY')}</div></div>` : ''}
-      ${totals.mtop ? `<div><div class="t-label">Imp. MTOP</div><div class="t-value">${sym} ${Math.round(totals.mtop).toLocaleString('es-UY')}</div></div>` : ''}
-      <div><div class="t-label">TOTAL</div><div class="t-value">${sym} ${Math.round(totals.tot).toLocaleString('es-UY')}</div></div>
-    </div>
-    ${observaciones ? `<p style="margin-top:20px;font-size:11px;color:#374151"><strong>Observaciones:</strong> ${observaciones}</p>` : ''}
-    <p class="footer">Generado el ${new Date().toLocaleString('es-UY')} · Movimagen CRM</p>
-    </body></html>`
-
-    const win = window.open('', '_blank')
-    if (!win) return
-    win.document.write(html); win.document.close(); win.focus()
-    setTimeout(() => win.print(), 300)
+  async function exportPDF() {
+    // Formato del cotizador del hub (lib/cotizador/pdf-cotizacion).
+    try {
+      await generarPdfCotizacion({
+        numero: propuesta?.numero ?? 'BORRADOR',
+        campana: nombre, cliente: clienteQuery, marca,
+        desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin),
+        moneda, observaciones,
+        items: calcs.map(({ item, c }) => ({
+          nombre: item.soporte.nombre, ubicacion: item.soporte.ubicacion ?? null,
+          categoria: item.soporte.categoria ?? null, seccion: item.soporte.seccion ?? null,
+          semanas: c.sem, arr: c.arr, ivaArr: c.ivaArr, prod: c.prod, ivaProd: c.ivaProd,
+          mun: c.mun, esMTOP: esImpuestoMTOP(item.soporte.tipo_cotizador), imp: c.imp, cpm: c.cpm, tot: c.tot,
+        })),
+      })
+    } catch (e) {
+      console.error(e)
+      alert('No se pudo generar el PDF')
+    }
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────

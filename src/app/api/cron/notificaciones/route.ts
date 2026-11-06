@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 import { timingSafeEqual } from 'node:crypto'
 import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { avisosCobranza, resumenesDiarios } from '@/lib/avisos/diarios'
 
 export const dynamic = 'force-dynamic'
 
@@ -353,5 +354,15 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  return NextResponse.json({ ok: true, created })
+  // ── 8. Cobranza: recordatorios a la asistente administrativa ────────────
+  const cobranza = await avisosCobranza(supabase, createNotif)
+
+  // ── 9. Resumen diario por mail, según el perfil ─────────────────────────
+  const resumen = await resumenesDiarios(supabase)
+
+  return NextResponse.json({ ok: true, created, cobranza, resumen })
 }
+
+// Vercel Cron llama con GET (con el mismo Authorization: Bearer CRON_SECRET).
+// Sólo había POST, así que el aviso diario nunca se ejecutó.
+export const GET = POST
