@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 
-// La paleta de "Muestras de color" se sacó: no se usaba. Queda la ruta para
+// Las "Muestras de color" y la Planilla digital se sacaron. Queda la ruta para
 // que un enlace guardado no dé 404.
 export default function ColoresPage() {
-  redirect('/dashboard/arte')
+  redirect('/dashboard/tasks')
 }
