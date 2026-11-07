@@ -35,7 +35,7 @@ const COLUMNAS: { estado: Estado; titulo: string; color: string }[] = [
 
 const TIPO_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   arte_muestra_color:             { label: 'Arte final + muestra',    icon: <Palette size={12} />,  color: '#a855f7' },
-  arte_chequear_material_digital: { label: 'Chequear material', icon: <Sparkles size={12} />, color: '#3b82f6' },
+  arte_chequear_material_digital: { label: 'Spot al CMS', icon: <Sparkles size={12} />, color: '#3b82f6' },
   ops_asignar_buses:              { label: 'Asignar buses',     icon: <Truck size={12} />,    color: '#0891b2' },
   ops_producir_impresos:          { label: 'Producir impresos', icon: <Printer size={12} />,  color: '#d97706' },
   ops_crear_comprobante:          { label: 'Crear comprobante', icon: <Camera size={12} />,   color: '#16a34a' },

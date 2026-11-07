@@ -26,7 +26,7 @@ const DIAS_COMPROBANTE_DESPUES = 7
  *       → arte_muestra_color (arte final + muestra por WeTransfer, alta − 10 días)
  *         + ops_producir_impresos (alta − 3 días)
  *   - Item con tipo_cotizador en (led, circuito)
- *       → arte_chequear_material_digital                  (alta − 3 días)
+ *       → arte_chequear_material_digital (spot al CMS)   (alta − 3 días)
  *   - Uno por OIC → ops_crear_comprobante                 (alta + 7 días)
  *   - Si la OIC tiene al menos un soporte tipo bus       → ops_asignar_buses  (alta − 7 días)
  *
@@ -83,7 +83,7 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
       toCreate.push({ tipo: 'arte_muestra_color',        asignado_a_rol: 'arte',        orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Arte final y muestra por WeTransfer — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_ARTE_ANTES) })
       toCreate.push({ tipo: 'ops_producir_impresos',     asignado_a_rol: 'operaciones', orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Producir impreso — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_IMPRESO_ANTES) })
     } else if (tipoCot === 'led' || tipoCot === 'circuito') {
-      toCreate.push({ tipo: 'arte_chequear_material_digital', asignado_a_rol: 'arte',  orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Chequear materiales digitales — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_IMPRESO_ANTES) })
+      toCreate.push({ tipo: 'arte_chequear_material_digital', asignado_a_rol: 'arte',  orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Revisar el spot y cargarlo en el CMS de las pantallas — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_IMPRESO_ANTES) })
     }
 
     if (tipoCot === 'estatico_bus' || tipo?.toLowerCase().includes('bus')) hasBus = true

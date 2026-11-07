@@ -9,7 +9,7 @@ import GlobalSearch from '@/components/dashboard/GlobalSearch'
 import Dialogos from '@/components/ui/dialogos'
 import {
   Home, FileText, Filter, Calendar, BarChart2,
-  Users, Target, Star, Wrench, Truck, Monitor, Factory,
+  Users, Target, Star, Wrench, Truck, Factory,
   Palette, Receipt, AlertCircle, Percent, Building2,
   CreditCard, Settings, MessageCircle, X, Send,
   FlaskConical, Package, BookUser, Camera, Bell,
@@ -115,7 +115,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/oic', label: 'Producción', icon: <Factory size={16} />, roles: ['operaciones'] },
   { href: '/dashboard/buses', label: 'Buses', icon: <Truck size={16} />, roles: ['operaciones', 'administracion'] },
   { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas', 'gerente_comercial'] },
-  { href: '/dashboard/arte', label: 'Planilla digital', icon: <Monitor size={16} />, roles: ['arte'] },
   { href: '/dashboard/admin/facturacion', label: 'Facturación', icon: <Receipt size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/deudores', label: 'Deudores', icon: <AlertCircle size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
   { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
@@ -143,7 +142,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/oic': 'Producción',
   '/dashboard/buses': 'Buses',
   '/dashboard/registros': 'Registros',
-  '/dashboard/arte': 'Arte',
   '/dashboard/admin/facturacion': 'Facturación',
   '/dashboard/admin/deudores': 'Deudores',
   '/dashboard/admin/comisiones': 'Comisiones',
