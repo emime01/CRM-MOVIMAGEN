@@ -112,7 +112,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
   // La pantalla existía pero no estaba en el menú ni enlazada desde ningún
   // lado: operaciones sólo llegaba escribiendo la URL.
-  { href: '/dashboard/oic', label: 'Producción', icon: <Factory size={16} />, roles: ['operaciones'] },
+  { href: '/dashboard/oic', label: 'Producción', icon: <Factory size={16} />, roles: ['operaciones', 'arte'] },
   { href: '/dashboard/buses', label: 'Buses', icon: <Truck size={16} />, roles: ['operaciones', 'administracion'] },
   { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas', 'gerente_comercial'] },
   { href: '/dashboard/admin/facturacion', label: 'Facturación', icon: <Receipt size={16} />, roles: ['administracion', 'asistente_administracion'] },
