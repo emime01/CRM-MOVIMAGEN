@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { puede } from '@/lib/auth/roles'
+import { puede, rolesDe } from '@/lib/auth/roles'
+import { esDigital } from '@/lib/soportes/digital'
 import { hoyUY } from '@/lib/fechas'
 
 const ESTADOS_GRABADO = ['pendiente', 'grabado']
@@ -16,14 +17,18 @@ const ESTADOS_PRODUCCION = ['pendiente', 'en_produccion', 'producido', 'instalad
  *  - estado_grabado / estado_produccion (seguimiento de producción e
  *    instalación / "salió al aire" desde la vista OIC de operaciones)
  *
- * Solo operaciones y administración.
+ * Operaciones y administración; arte, sólo en las líneas digitales (fecha
+ * real de salida al aire y estado de carga en el panel).
  */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const canEdit = puede(session.user.rol, ['operaciones', 'administracion'])
-  if (!canEdit) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  const rol = session.user.rol
+  const esAdmin = puede(rol, ['administracion'])
+  const haceOps = esAdmin || rolesDe(rol).includes('operaciones')
+  const haceArte = esAdmin || rolesDe(rol).includes('arte')
+  if (!haceOps && !haceArte) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   let body: {
     fecha_alta_real?: string | null
@@ -59,6 +64,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const supabase = createServerClient()
 
+  // Lo digital (pantallas y circuitos) lo controla arte: la carga en el panel
+  // y la fecha real en que sale al aire. Lo demás, operaciones.
+  const { data: linea } = await supabase.from('orden_items')
+    .select('requiere_grabado, soportes(tipo_cotizador, tipo, es_digital)').eq('id', params.id).maybeSingle()
+  if (!linea) return NextResponse.json({ error: 'Línea no encontrada' }, { status: 404 })
+  const sop = (Array.isArray(linea.soportes) ? linea.soportes[0] : linea.soportes) as any
+  const digital = esDigital(sop) || !!linea.requiere_grabado
+  const tocaFechas = updates.fecha_alta_real !== undefined || updates.fecha_baja_real !== undefined
+  if (digital && tocaFechas && !haceArte) {
+    return NextResponse.json({ error: 'La fecha real de las pantallas la carga arte' }, { status: 403 })
+  }
+  if (!digital && !haceOps) {
+    return NextResponse.json({ error: 'Arte sólo actualiza las pantallas y circuitos' }, { status: 403 })
+  }
+  if (updates.estado_produccion !== undefined && !haceOps) {
+    return NextResponse.json({ error: 'El estado de producción lo maneja operaciones' }, { status: 403 })
+  }
+
   // Marcar "Instalado" es la instalación: si no vino la fecha real de alta y
   // la línea no la tiene, se toma la de hoy (se puede corregir después).
   if (updates.estado_produccion === 'instalado' && body.fecha_alta_real === undefined) {
@@ -68,6 +91,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const { error } = await supabase.from('orden_items').update(updates).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Cargado en el panel: la tarea "Cargar en el panel" de esta línea se cierra.
+  if (updates.estado_grabado === 'grabado') {
+    await supabase.from('tasks').update({ estado: 'completada', completed_at: new Date().toISOString() })
+      .eq('orden_item_id', params.id).eq('tipo', 'arte_chequear_material_digital').neq('estado', 'completada')
+  }
 
   // Lo impreso ya está: la tarea "Producir impreso" de esta línea se cierra
   // sola (antes había que moverla a mano en Tareas).

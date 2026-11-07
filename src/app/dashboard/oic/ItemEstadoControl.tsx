@@ -9,7 +9,7 @@ type Campo = 'estado_grabado' | 'estado_produccion'
 const OPCIONES: Record<Campo, Array<{ value: string; label: string; bg: string; color: string }>> = {
   estado_grabado: [
     { value: 'pendiente', label: 'Pendiente', bg: '#fef9ec', color: '#b45309' },
-    { value: 'grabado',   label: 'Grabado',   bg: '#f0fdf4', color: '#15803d' },
+    { value: 'grabado',   label: 'Cargado en el panel', bg: '#f0fdf4', color: '#15803d' },
   ],
   estado_produccion: [
     { value: 'pendiente',     label: 'Pendiente',     bg: '#f1f0ec', color: '#6b6965' },

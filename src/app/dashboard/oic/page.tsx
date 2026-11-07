@@ -5,7 +5,8 @@ import { createServerClient } from '@/lib/supabase-server'
 import ItemEstadoControl from './ItemEstadoControl'
 import FechaRealItem from './FechaRealItem'
 import AvisoBuses from '@/components/dashboard/AvisoBuses'
-import { puede } from '@/lib/auth/roles'
+import { puede, rolesDe } from '@/lib/auth/roles'
+import { esDigital } from '@/lib/soportes/digital'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,7 @@ interface Soporte {
   nombre: string | null
   seccion: string | null
   ubicacion: string | null
+  tipo_cotizador?: string | null
 }
 
 interface Cliente {
@@ -107,7 +109,13 @@ function busNumero(item: OrdenItem): string | null {
 export default async function OicPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!puede((session.user as { rol?: string }).rol, ['operaciones'])) redirect('/dashboard')
+  const rol = (session.user as { rol?: string }).rol
+  if (!puede(rol, ['operaciones', 'arte'])) redirect('/dashboard')
+  // Lo digital (pantallas y circuitos) lo controla arte: carga en el panel y
+  // fecha real de salida al aire. Arte ve sólo esas líneas; operaciones las ve
+  // pero la fecha real de lo digital no la toca.
+  const haceOps = rolesDe(rol).includes('operaciones') || puede(rol, ['administracion'])
+  const haceArte = rolesDe(rol).includes('arte') || puede(rol, ['administracion'])
 
   const supabase = createServerClient()
 
@@ -117,7 +125,7 @@ export default async function OicPage() {
       id, cantidad, semanas, requiere_grabado, requiere_produccion,
       estado_grabado, estado_produccion, bus_id,
       fecha_alta_prevista, fecha_alta_real,
-      soportes(nombre, seccion, ubicacion),
+      soportes(nombre, seccion, ubicacion, tipo_cotizador),
       buses!bus_id(numero),
       ordenes_venta!inner(
         id, numero, estado, marca, referencia,
@@ -128,7 +136,12 @@ export default async function OicPage() {
     .in('ordenes_venta.estado', ESTADOS_VENTA_VIVA as unknown as string[])
     .order('created_at', { ascending: true })
 
-  const rows = (items ?? []) as unknown as OrdenItem[]
+  const todas = (items ?? []) as unknown as OrdenItem[]
+  const esDigitalItem = (r: OrdenItem) => {
+    const s = (Array.isArray(r.soportes) ? r.soportes[0] : r.soportes) as { tipo_cotizador?: string | null } | null
+    return esDigital(s) || !!r.requiere_grabado
+  }
+  const rows = haceOps ? todas : todas.filter(esDigitalItem)
 
   // Summaries
   const total = rows.length
@@ -141,12 +154,12 @@ export default async function OicPage() {
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', color: '#1a1915' }}>
-      <AvisoBuses />
+      {haceOps && <AvisoBuses />}
 
       {/* Summary row */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         <SummaryCard label="Items en OIC" value={total} accent />
-        <SummaryCard label="Pendiente grabado" value={pendienteGrabado} />
+        <SummaryCard label="Falta cargar en el panel" value={pendienteGrabado} />
         <SummaryCard label="Producidos / instalados" value={listos} />
       </div>
 
@@ -196,7 +209,7 @@ export default async function OicPage() {
             }}>
               <thead>
                 <tr style={{ background: '#fafaf8', borderBottom: '1px solid #e5e3dc' }}>
-                  {['Orden #', 'Cliente', 'Soporte', 'Alta prevista', 'Alta real', 'Grabado', 'Producción', 'Bus asignado'].map(col => (
+                  {['Orden #', 'Cliente', 'Soporte', 'Alta prevista', 'Alta real', 'Panel', 'Producción', 'Bus asignado'].map(col => (
                     <th key={col} style={{
                       padding: '10px 16px',
                       textAlign: 'left',
@@ -264,7 +277,13 @@ export default async function OicPage() {
 
                       {/* Alta real de la línea (instalación) */}
                       <td style={{ padding: '10px 16px', whiteSpace: 'nowrap' }}>
-                        <FechaRealItem itemId={item.id} valor={item.fecha_alta_real ?? null} />
+                        {(esDigitalItem(item) ? haceArte : haceOps) ? (
+                          <FechaRealItem itemId={item.id} valor={item.fecha_alta_real ?? null} />
+                        ) : (
+                          <span style={{ fontSize: 12, color: item.fecha_alta_real ? '#15803d' : '#9a9895' }} title="La fecha real de lo digital la carga arte">
+                            {item.fecha_alta_real ? formatDate(item.fecha_alta_real) : 'La carga arte'}
+                          </span>
+                        )}
                       </td>
 
                       {/* Grabado */}
