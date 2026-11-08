@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import { timingSafeEqual } from 'node:crypto'
 import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { avisosCobranza, resumenesDiarios } from '@/lib/avisos/diarios'
+import { insertarNotificaciones } from '@/lib/notificaciones'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   async function createNotif(userId: string, tipo: string, titulo: string, mensaje: string, link: string, entityId: string) {
     if (await alreadyNotified(userId, tipo, entityId)) return
-    await supabase.from('notificaciones').insert({ user_id: userId, tipo, titulo, mensaje, link, entity_id: entityId })
+    await insertarNotificaciones(supabase, { user_id: userId, tipo, titulo, mensaje, link, entity_id: entityId })
     created++
   }
 

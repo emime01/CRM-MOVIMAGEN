@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { atiendeTareasDe } from '@/lib/auth/roles'
+import { insertarNotificaciones } from '@/lib/notificaciones'
 
 /** Una fecha "AAAA-MM-DD" corrida n días (negativo = antes). */
 function correr(fecha: string | null, dias: number): string | null {
@@ -137,7 +138,7 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
       entity_id: ordenId,
     }]
   })
-  if (notifs.length) await supabase.from('notificaciones').insert(notifs)
+  if (notifs.length) await insertarNotificaciones(supabase, notifs)
 
   return { created: toCreate.length }
 }
