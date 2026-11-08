@@ -8,13 +8,7 @@ import Link from 'next/link'
 import GlobalSearch from '@/components/dashboard/GlobalSearch'
 import Dialogos from '@/components/ui/dialogos'
 import {
-  Home, FileText, Filter, Calendar, BarChart2,
-  Users, Target, Star, Wrench, Truck, Factory,
-  Palette, Receipt, AlertCircle, Percent, Building2,
-  CreditCard, Settings, MessageCircle, X, Send,
-  FlaskConical, Package, BookUser, Camera, Bell,
-  UserCircle, Mail, Check, ChevronRight, Reply, Copy, Loader2, CalendarDays,
-  AlertTriangle, Clock, Megaphone, ClipboardList, Menu,
+  Home, FileText, Filter, Calendar, BarChart2, Users, Target, Star, Truck, Factory, Receipt, AlertCircle, Percent, Building2, CreditCard, Settings, FlaskConical, Package, BookUser, Camera, Bell, UserCircle, CalendarDays, AlertTriangle, Clock, Megaphone, ClipboardList, Menu,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -189,36 +183,12 @@ interface DashboardShellProps {
 export default function DashboardShell({ user, children }: DashboardShellProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const [chatOpen, setChatOpen] = useState(false)
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
-  const [chatInput, setChatInput] = useState('')
-  const [chatLoading, setChatLoading] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const [testMode, setTestMode] = useState(false)
 
-  // Gmail suggestions state
-  interface EmailSuggestion {
-    id: string
-    from_name: string
-    from_email: string
-    subject: string
-    body_preview: string
-    received_at: string
-    suggestion_type: string
-    suggestion_data: { summary?: string; suggested_action?: string }
-    lead_id: string | null
-    orden_id: string | null
-  }
-  const [suggestions, setSuggestions] = useState<EmailSuggestion[]>([])
   const [bellOpen, setBellOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const bellRef = useRef<HTMLDivElement>(null)
 
-  // Reply modal state
-  const [replyModal, setReplyModal] = useState<{ id: string; from: string; subject: string } | null>(null)
-  const [replyDraft, setReplyDraft] = useState('')
-  const [replyLoading, setReplyLoading] = useState(false)
-  const [replyCopied, setReplyCopied] = useState(false)
 
   // CRM notifications state
   interface Notificacion {
@@ -232,24 +202,17 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   }
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
 
-  // Fetch suggestions on mount + poll every 5 min
+  // Avisos del CRM: al entrar y cada 5 minutos. (Las sugerencias de Gmail
+  // con IA se sacaron: gastaban saldo de la API en cada mail.)
   useEffect(() => {
-    async function pollGmail() {
-      try {
-        await fetch('/api/gmail/poll', { method: 'POST' })
-        const res = await fetch('/api/gmail/suggestions')
-        if (res.ok) setSuggestions(await res.json())
-      } catch { /* silent */ }
-    }
     async function fetchNotifs() {
       try {
         const res = await fetch('/api/notificaciones')
         if (res.ok) setNotificaciones(await res.json())
       } catch { /* silent */ }
     }
-    pollGmail()
     fetchNotifs()
-    const interval = setInterval(() => { pollGmail(); fetchNotifs() }, 5 * 60 * 1000)
+    const interval = setInterval(fetchNotifs, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -261,79 +224,6 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
-
-  async function dismissSuggestion(id: string) {
-    await fetch(`/api/gmail/suggestions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'dismissed' }) })
-    setSuggestions(prev => prev.filter(s => s.id !== id))
-  }
-
-  async function applySuggestion(id: string) {
-    const res = await fetch(`/api/gmail/suggestions/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'applied' }),
-    })
-    setSuggestions(prev => prev.filter(s => s.id !== id))
-    if (res.ok) {
-      const data = await res.json()
-      if (data.createdLeadId || data.updatedLeadId) {
-        setBellOpen(false)
-        router.push('/dashboard/leads')
-      }
-    }
-  }
-
-  async function openReply(s: EmailSuggestion) {
-    setReplyModal({ id: s.id, from: s.from_name || s.from_email, subject: s.subject })
-    setReplyDraft('')
-    setReplyCopied(false)
-    setReplyLoading(true)
-    try {
-      const res = await fetch(`/api/gmail/suggestions/${s.id}/reply`, { method: 'POST' })
-      if (res.ok) {
-        const data = await res.json()
-        setReplyDraft(data.draft ?? '')
-      } else {
-        setReplyDraft('No se pudo generar el borrador. Intentá de nuevo.')
-      }
-    } finally {
-      setReplyLoading(false)
-    }
-  }
-
-  async function copyReply() {
-    try {
-      await navigator.clipboard.writeText(replyDraft)
-      setReplyCopied(true)
-      setTimeout(() => setReplyCopied(false), 2000)
-    } catch { /* silent */ }
-  }
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages, chatLoading])
-
-  async function sendMessage() {
-    const text = chatInput.trim()
-    if (!text || chatLoading) return
-    const updated = [...chatMessages, { role: 'user' as const, content: text }]
-    setChatMessages(updated)
-    setChatInput('')
-    setChatLoading(true)
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updated, userName: user.name, userRol: user.rol }),
-      })
-      const data = await res.json()
-      setChatMessages(prev => [...prev, { role: 'assistant', content: data.text ?? 'Lo siento, no pude responder.' }])
-    } catch {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Lo siento, ocurrió un error. Intentá de nuevo.' }])
-    } finally {
-      setChatLoading(false)
-    }
-  }
 
   // Cerrar el sidebar mobile al navegar
   useEffect(() => { setSidebarOpen(false) }, [pathname])
@@ -545,8 +435,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 color: 'var(--text-secondary)',
               }}
             >
-              <Bell size={16} color={(suggestions.length + notificaciones.length) > 0 ? 'var(--orange)' : undefined} />
-              {(suggestions.length + notificaciones.length) > 0 && (
+              <Bell size={16} color={notificaciones.length > 0 ? 'var(--orange)' : undefined} />
+              {notificaciones.length > 0 && (
                 <span style={{
                   position: 'absolute', top: 4, right: 4,
                   minWidth: 16, height: 16, borderRadius: 8,
@@ -556,7 +446,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: '0 3px',
                 }}>
-                  {suggestions.length + notificaciones.length}
+                  {notificaciones.length}
                 </span>
               )}
             </button>
@@ -573,139 +463,6 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 zIndex: 100,
                 overflow: 'hidden',
               }}>
-                <div style={{
-                  padding: '12px 16px',
-                  borderBottom: '1px solid var(--border)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Mail size={14} color="var(--orange)" />
-                    Sugerencias de Gmail
-                    {suggestions.length > 0 && (
-                      <span style={{
-                        background: 'var(--orange)', color: '#fff',
-                        borderRadius: 99, fontSize: 10, fontWeight: 700,
-                        padding: '1px 6px',
-                      }}>
-                        {suggestions.length}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                  {suggestions.length === 0 ? (
-                    <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                      Sin sugerencias pendientes
-                    </div>
-                  ) : (
-                    suggestions.map(s => (
-                      <div key={s.id} style={{
-                        padding: '12px 16px',
-                        borderBottom: '1px solid var(--border)',
-                        background: '#fff',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                          <Mail size={13} color="var(--orange)" style={{ marginTop: 2, flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {s.from_name || s.from_email}
-                            </div>
-                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {s.subject}
-                            </div>
-                            <div style={{ fontSize: 11, color: 'var(--orange)', marginTop: 4, fontWeight: 500 }}>
-                              {s.suggestion_data?.summary || s.suggestion_type}
-                            </div>
-                            {s.suggestion_data?.suggested_action && (
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic' }}>
-                                {s.suggestion_data.suggested_action}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                          {(s.lead_id || s.orden_id) && (
-                            <a
-                              href={s.orden_id ? `/dashboard/ventas/${s.orden_id}` : `/dashboard/leads`}
-                              onClick={() => { applySuggestion(s.id); setBellOpen(false) }}
-                              style={{
-                                flex: 1,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                                padding: '5px 10px',
-                                borderRadius: 6,
-                                background: 'var(--orange)', color: '#fff',
-                                fontSize: 11, fontWeight: 600,
-                                textDecoration: 'none',
-                              }}
-                            >
-                              <ChevronRight size={11} /> Ver
-                            </a>
-                          )}
-                          <button
-                            onClick={() => applySuggestion(s.id)}
-                            title={s.suggestion_type === 'new_lead' ? 'Crear lead automáticamente' : 'Marcar como aplicado'}
-                            style={{
-                              flex: 1,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                              padding: '5px 10px',
-                              borderRadius: 6,
-                              border: '1px solid #bbf7d0',
-                              background: '#f0fdf4', color: '#15803d',
-                              fontSize: 11, fontWeight: 600,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Check size={11} /> {s.suggestion_type === 'new_lead' ? 'Crear lead' : 'Aplicar'}
-                          </button>
-                          <button
-                            onClick={() => openReply(s)}
-                            title="Generar borrador de respuesta"
-                            style={{
-                              width: 28, height: 28,
-                              borderRadius: 6,
-                              border: '1px solid #bfdbfe',
-                              background: '#eff6ff', color: '#1d4ed8',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              flexShrink: 0,
-                            }}
-                          >
-                            <Reply size={12} />
-                          </button>
-                          <button
-                            onClick={() => dismissSuggestion(s.id)}
-                            title="Descartar"
-                            style={{
-                              width: 28, height: 28,
-                              borderRadius: 6,
-                              border: '1px solid var(--border)',
-                              background: 'transparent', color: 'var(--text-muted)',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 11,
-                              flexShrink: 0,
-                            }}
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                  <a
-                    href="/dashboard/perfil"
-                    onClick={() => setBellOpen(false)}
-                    style={{ fontSize: 11, color: 'var(--orange)', textDecoration: 'none', fontWeight: 600 }}
-                  >
-                    Gestionar integración Gmail →
-                  </a>
-                </div>
-
                 {/* CRM Notifications section */}
                 <div style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-app)' }}>
                   <div style={{
@@ -793,313 +550,6 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         </main>
       </div>
 
-      {/* Chat backdrop */}
-      {chatOpen && (
-        <div
-          onClick={() => setChatOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.2)',
-            zIndex: 39,
-          }}
-        />
-      )}
-
-      {/* Chat panel */}
-      <div style={{
-        position: 'fixed',
-        right: 0,
-        top: 0,
-        height: '100vh',
-        width: 380,
-        background: 'var(--bg-card)',
-        borderLeft: '1px solid var(--border)',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 40,
-        transform: chatOpen ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform 220ms ease',
-        boxShadow: '-4px 0 24px rgba(0,0,0,0.08)',
-      }}>
-        {/* Chat header */}
-        <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-              Movi
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              IA de Movimagen
-            </div>
-          </div>
-          <button
-            onClick={() => setChatOpen(false)}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Messages area */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
-          {chatMessages.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginTop: 40 }}>
-              <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--orange-pale)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-                <MessageCircle size={22} color="var(--orange)" />
-              </div>
-              <p style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>¡Hola! Soy Movi.</p>
-              <p style={{ fontSize: 12, lineHeight: 1.6 }}>Tu asistente del CRM de Movimagen.<br />Preguntame lo que necesites.</p>
-            </div>
-          ) : (
-            chatMessages.map((msg, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
-                <div style={{
-                  maxWidth: '88%',
-                  padding: '8px 12px',
-                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                  background: msg.role === 'user' ? 'var(--orange)' : 'var(--bg-app)',
-                  color: msg.role === 'user' ? '#fff' : 'var(--text-primary)',
-                  fontSize: 13,
-                  border: msg.role === 'assistant' ? '1px solid var(--border)' : 'none',
-                  wordBreak: 'break-word',
-                }}>
-                  {msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content}
-                </div>
-              </div>
-            ))
-          )}
-          {chatLoading && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 10 }}>
-              <div style={{ padding: '10px 14px', borderRadius: '12px 12px 12px 2px', background: 'var(--bg-app)', border: '1px solid var(--border)', display: 'flex', gap: 5, alignItems: 'center' }}>
-                {[0, 1, 2].map(j => (
-                  <div key={j} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--orange)', opacity: 0.7, animation: `bounce 1.2s ease-in-out ${j * 0.2}s infinite` }} />
-                ))}
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Chat input */}
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-          <input
-            type="text"
-            value={chatInput}
-            onChange={e => setChatInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-            placeholder="Escribí tu consulta..."
-            disabled={chatLoading}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              fontSize: 13,
-              fontFamily: 'Montserrat, sans-serif',
-              color: 'var(--text-primary)',
-              background: chatLoading ? 'var(--gray-100)' : '#fff',
-              outline: 'none',
-            }}
-          />
-          <button
-            onClick={sendMessage}
-            disabled={chatLoading || !chatInput.trim()}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 8,
-              background: 'var(--orange)',
-              border: 'none',
-              cursor: chatLoading || !chatInput.trim() ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: chatLoading || !chatInput.trim() ? 0.5 : 1,
-              flexShrink: 0,
-            }}
-          >
-            <Send size={15} color="#fff" />
-          </button>
-        </div>
-      </div>
-
-      {/* Reply modal */}
-      {replyModal && (
-        <div
-          onClick={() => setReplyModal(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.4)',
-            zIndex: 60,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff',
-              borderRadius: 12,
-              width: '100%',
-              maxWidth: 600,
-              maxHeight: '85vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 12px 48px rgba(0,0,0,0.2)',
-            }}
-          >
-            <div style={{
-              padding: '16px 20px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Borrador de respuesta
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Para: {replyModal.from} · Re: {replyModal.subject}
-                </div>
-              </div>
-              <button
-                onClick={() => setReplyModal(null)}
-                style={{
-                  width: 30, height: 30,
-                  borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <div style={{ padding: 20, flex: 1, overflowY: 'auto' }}>
-              {replyLoading ? (
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  padding: 60,
-                  color: 'var(--text-muted)',
-                  fontSize: 13,
-                }}>
-                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                  Generando respuesta...
-                </div>
-              ) : (
-                <textarea
-                  value={replyDraft}
-                  onChange={e => setReplyDraft(e.target.value)}
-                  rows={14}
-                  style={{
-                    width: '100%',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 13,
-                    fontFamily: 'Montserrat, sans-serif',
-                    color: 'var(--text-primary)',
-                    lineHeight: 1.5,
-                    resize: 'vertical',
-                    outline: 'none',
-                  }}
-                />
-              )}
-            </div>
-
-            <div style={{
-              padding: '12px 20px',
-              borderTop: '1px solid var(--border)',
-              display: 'flex',
-              gap: 8,
-              justifyContent: 'flex-end',
-            }}>
-              <button
-                onClick={() => setReplyModal(null)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  fontSize: 13, fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontFamily: 'Montserrat, sans-serif',
-                }}
-              >
-                Cerrar
-              </button>
-              <button
-                onClick={copyReply}
-                disabled={replyLoading || !replyDraft}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: replyCopied ? '#16a34a' : 'var(--orange)',
-                  color: '#fff',
-                  fontSize: 13, fontWeight: 600,
-                  cursor: replyLoading || !replyDraft ? 'not-allowed' : 'pointer',
-                  opacity: replyLoading || !replyDraft ? 0.5 : 1,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  fontFamily: 'Montserrat, sans-serif',
-                }}
-              >
-                {replyCopied ? <><Check size={14} /> Copiado</> : <><Copy size={14} /> Copiar texto</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Floating chat button */}
-      <button
-        onClick={() => setChatOpen(v => !v)}
-        title="Movi — IA de Movimagen"
-        style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          width: 52,
-          height: 52,
-          borderRadius: '50%',
-          background: 'var(--orange)',
-          border: 'none',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 50,
-          boxShadow: '0 4px 16px rgba(235,105,28,0.35)',
-          transition: 'background 150ms ease, transform 150ms ease',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'var(--orange-hover)')}
-        onMouseLeave={e => (e.currentTarget.style.background = 'var(--orange)')}
-      >
-        <MessageCircle size={22} color="#fff" />
-      </button>
     </div>
   )
 }

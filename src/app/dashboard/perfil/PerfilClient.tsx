@@ -74,20 +74,20 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
     const status = searchParams.get('gmail')
     if (status === 'connected') {
       setGmailConnected(true)
-      setNotice({ type: 'success', text: 'Gmail conectado correctamente.' })
+      setNotice({ type: 'success', text: 'Google conectado correctamente.' })
     } else if (status === 'error') {
-      setNotice({ type: 'error', text: 'No se pudo conectar Gmail. Intentá de nuevo.' })
+      setNotice({ type: 'error', text: 'No se pudo conectar Google. Intentá de nuevo.' })
     }
   }, [searchParams])
 
   async function handleDisconnect() {
-    if (!await confirmar('¿Desconectar Gmail? Se eliminarán tus tokens y ya no se verificarán correos.')) return
+    if (!await confirmar('¿Desconectar Google? Se eliminarán tus tokens y ya no se verificarán correos.')) return
     setDisconnecting(true)
     try {
       await fetch('/api/auth/google', { method: 'DELETE' })
       setGmailConnected(false)
       setGmailEmail(null)
-      setNotice({ type: 'success', text: 'Gmail desconectado.' })
+      setNotice({ type: 'success', text: 'Google desconectado.' })
     } finally {
       setDisconnecting(false)
     }
@@ -164,7 +164,7 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <Mail size={18} color="#eb691c" />
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#1a1915' }}>Integración con Gmail</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#1a1915' }}>Cuenta de Google</span>
         </div>
 
         {gmailConnected ? (
@@ -186,8 +186,7 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
             </div>
 
             <p style={{ fontSize: 13, color: '#6b6965', lineHeight: 1.6, marginBottom: 16 }}>
-              El asistente Movi revisará tus correos cada 5 minutos para sugerirte acciones sobre tus leads y órdenes.
-              También podés preguntarle directamente sobre información en tus emails.
+              El Calendario del CRM muestra tus reuniones de Google y te deja crear nuevas.
             </p>
 
             <button
@@ -209,7 +208,7 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
               }}
             >
               {disconnecting && <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} />}
-              Desconectar Gmail
+              Desconectar Google
             </button>
           </>
         ) : (
@@ -225,23 +224,12 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
               marginBottom: 16,
             }}>
               <AlertCircle size={16} color="#9a9895" />
-              <span style={{ fontSize: 13, color: '#6b6965' }}>Gmail no conectado</span>
+              <span style={{ fontSize: 13, color: '#6b6965' }}>Google no conectado</span>
             </div>
 
             <p style={{ fontSize: 13, color: '#6b6965', lineHeight: 1.6, marginBottom: 16 }}>
-              Conectá tu cuenta de Google para que Movi pueda revisar tus correos y sugerirte acciones sobre tus leads.
-              Solo se accede a tus emails en modo lectura.
+              Conectá tu cuenta de Google para ver y crear tus reuniones desde el Calendario del CRM.
             </p>
-
-            <div style={{ fontSize: 12, color: '#9a9895', marginBottom: 16, lineHeight: 1.6 }}>
-              <strong style={{ color: '#6b6965' }}>¿Qué puede hacer Movi con tus emails?</strong>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 16 }}>
-                <li>Detectar cuando un cliente confirma fechas o materiales</li>
-                <li>Sugerir actualizar leads cuando llega una respuesta comercial</li>
-                <li>Responder preguntas del chat usando información de tus correos</li>
-                <li>Alertar si un cliente no respondió en varios días</li>
-              </ul>
-            </div>
 
             <a
               href="/api/auth/google"
@@ -259,7 +247,7 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
               }}
             >
               <Mail size={15} />
-              Conectar Gmail
+              Conectar Google
             </a>
           </>
         )}
