@@ -4,6 +4,10 @@ import { createServerClient } from '@/lib/supabase-server'
 import { puede, atiendeTareasDe, areasDeTarea, es } from '@/lib/auth/roles'
 import { espaciosQueOcupa } from '@/lib/disponibilidad/espacios'
 import { esImpuestoMTOP } from '@/lib/cotizador/calcular'
+import { precioDeSemanas, semanasMinimas } from '@/lib/cotizador/temporada'
+import { montosDeLinea, sumarMontos } from '@/lib/ventas/montos-linea'
+import { crearVentaManual } from '@/lib/ventas/crear-venta-manual'
+import { detectarSobreventa, textoSobreventa } from '@/lib/ventas/sobreventa'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -725,7 +729,7 @@ const handler = createMcpHandler(
     // 15. Marcar cotización aceptada (cliente dijo que sí → reserva soportes)
     server.tool(
       'marcar_cotizacion_aceptada',
-      'Marca una cotización como ACEPTADA por el cliente y bloquea los soportes con una reserva pendiente. Es el paso clave del pipeline: usala apenas el cliente confirme. La orden de venta se crea después desde la web.',
+      'Marca una cotización como ACEPTADA por el cliente y bloquea los soportes con una reserva pendiente. Es el paso clave del pipeline: usala apenas el cliente confirme; genera también la OIC, que queda esperando aprobación. Para una venta sin cotización, usar crear_venta.',
       {
         numero: z.string().optional().describe('Número de cotización, ej COT-0007.'),
         cliente_nombre: z.string().optional().describe('Alternativa: cliente con una sola cotización enviada/borrador.'),
@@ -754,6 +758,162 @@ const handler = createMcpHandler(
           return text(`✓ ${r.numero ?? 'Cotización'} marcada como ACEPTADA. ${r.itemsReservados} soporte(s) en la campaña.\n⚠ No se pudo generar la OIC: ${r.ordenError}\nSe puede reintentar desde la web con "Crear OIC".`)
         }
         return text(`✓ ${r.numero ?? 'Cotización'} ACEPTADA — venta cerrada.\n   · ${r.itemsReservados} soporte(s) en la campaña\n   · OIC #${r.ordenNumero ?? '—'} generada, esperando aprobación del gerente`)
+      },
+    )
+
+    // 15b. Crear una venta (OIC) directa, como "Nueva venta" en la web
+    server.tool(
+      'crear_venta',
+      'Carga una venta (OIC) directa, sin cotización, igual que "Nueva venta" en la web: arrendamiento, producción e impuestos se calculan con el catálogo, se arma el plan de cuotas y queda esperando la aprobación del gerente. Sirve para pasar una orden de compra (PDF o mail) al CRM. Primero llamala con confirmar=false: devuelve el resumen con los montos para que la persona lo revise. Recién cuando la persona confirme, llamala de nuevo igual pero con confirmar=true.',
+      {
+        cliente: z.string().describe('Nombre o empresa del cliente (tiene que existir; si no, usar crear_cliente antes).'),
+        agencia: z.string().optional().describe('Agencia, si la venta viene por agencia.'),
+        comision_agencia_pct: z.number().min(0).max(100).optional().describe('Comisión de la agencia sobre arrendamiento (%). Obligatoria si hay agencia; 0 = no comisiona.'),
+        comision_agencia_prod_pct: z.number().min(0).max(100).optional().describe('Comisión de la agencia sobre producción (%). Obligatoria si hay agencia.'),
+        vendedor: z.string().optional().describe('Vendedor de la venta (sólo asistente, gerente o administración pueden cargarla a nombre de otro). Por defecto, quien la carga.'),
+        marca: z.string().optional(),
+        campana: z.string().optional().describe('Nombre de la campaña.'),
+        contacto: z.string().optional(),
+        referencia: z.string().optional().describe('Nº de orden de compra del cliente u otra referencia.'),
+        facturar_a: z.enum(['cliente_final', 'agencia']).optional().describe('A quién se factura. Por defecto, al cliente.'),
+        fecha_alta: z.string().describe('Fecha de alta prevista, AAAA-MM-DD.'),
+        fecha_baja: z.string().optional().describe('Fecha de baja prevista, AAAA-MM-DD. Si no viene, alta + las semanas de la línea más larga.'),
+        cuotas: z.number().int().min(1).max(24).optional().describe('En cuántas cuotas mensuales se factura. Por defecto 1.'),
+        condicion_pago_dias: z.number().int().min(0).max(365).optional().describe('Días de plazo de pago desde la factura.'),
+        moneda: z.enum(['UYU', 'USD']).optional().describe('Por defecto UYU.'),
+        notas: z.string().optional().describe('Detalles o aclaraciones de la venta.'),
+        items: z.array(z.object({
+          soporte: z.string().describe('Nombre del soporte del catálogo (ej "PANTALLA GIGANTE", "Lateral 1 Paño", "R 9 Km 132.400").'),
+          ubicacion: z.string().optional().describe('Parte de la ubicación, para elegir entre soportes con el mismo nombre (ej "Ricaldoni", "Atlántico").'),
+          cantidad: z.number().int().min(1).describe('Cantidad de unidades (ej 4 laterales).'),
+          semanas: z.number().int().min(1),
+          precio_semanal: z.number().min(0).optional().describe('Precio por semana y unidad, sin IVA. Si no viene, el de lista (con temporada alta si corresponde).'),
+          descuento_pct: z.number().min(0).max(100).optional(),
+          produccion_unitario: z.number().min(0).optional().describe('Producción por unidad. 0 si el cliente trae el material. Si no viene, la de lista.'),
+          salidas: z.number().int().optional().describe('Pantallas: salidas por hora.'),
+          segundos: z.number().int().optional().describe('Pantallas: duración del spot.'),
+          nota: z.string().optional(),
+        })).min(1),
+        borrador: z.boolean().optional().describe('true = guardarla como borrador sin mandarla a aprobación.'),
+        confirmar: z.boolean().optional().describe('false (por defecto) = sólo mostrar el resumen; true = crear la venta.'),
+      },
+      async (args, extra) => {
+        const me = ident(extra)
+        if (!puede(me.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'])) {
+          return text('Tu rol no permite cargar ventas.')
+        }
+        if (!me.perfilId) return text('Para cargar ventas usá tu conector personal (Mi Perfil → Conector), así la venta queda a tu nombre.')
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(args.fecha_alta)) return text('fecha_alta tiene que ser AAAA-MM-DD.')
+        if (args.fecha_baja && !/^\d{4}-\d{2}-\d{2}$/.test(args.fecha_baja)) return text('fecha_baja tiene que ser AAAA-MM-DD.')
+        const supabase = createServerClient()
+
+        // Cliente
+        const q = args.cliente.trim()
+        const { data: clis } = await supabase.from('clientes').select('id, nombre, empresa, agencia_id')
+          .eq('activo', true).or(`nombre.ilike.%${q.replace(/[,()]/g, ' ')}%,empresa.ilike.%${q.replace(/[,()]/g, ' ')}%`).limit(10)
+        const exactoCli = (clis ?? []).filter((c: any) => [c.nombre, c.empresa].some(v => (v ?? '').toLowerCase() === q.toLowerCase()))
+        const candCli = exactoCli.length ? exactoCli : (clis ?? [])
+        if (!candCli.length) return text(`No encontré el cliente "${q}". Si es nuevo, crealo con crear_cliente y después cargá la venta.`)
+        if (candCli.length > 1) return text(`Hay varios clientes que coinciden con "${q}":\n${candCli.map((c: any) => `   • ${c.empresa ?? c.nombre}${c.empresa && c.nombre !== c.empresa ? ` (${c.nombre})` : ''}`).join('\n')}\nDecime cuál.`)
+        const cliente: any = candCli[0]
+
+        // Agencia
+        let agencia: any = null
+        if (args.agencia) {
+          const { data: ags } = await supabase.from('agencias').select('id, nombre').ilike('nombre', `%${args.agencia.trim()}%`).limit(8)
+          const ex = (ags ?? []).filter((a: any) => a.nombre.toLowerCase() === args.agencia!.trim().toLowerCase())
+          const cand = ex.length ? ex : (ags ?? [])
+          if (!cand.length) return text(`No encontré la agencia "${args.agencia}".`)
+          if (cand.length > 1) return text(`Hay varias agencias que coinciden:\n${cand.map((a: any) => `   • ${a.nombre}`).join('\n')}\nDecime cuál.`)
+          agencia = cand[0]
+          if (args.comision_agencia_pct == null || args.comision_agencia_prod_pct == null) {
+            return text(`La venta va por ${agencia.nombre}: falta la comisión de la agencia sobre arrendamiento y sobre producción (en %, 0 si no comisiona).`)
+          }
+        }
+
+        // Vendedor
+        let vendedorId = me.perfilId
+        let vendedorNombre = me.nombre
+        if (args.vendedor) {
+          if (!puede(me.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) return text('Sólo asistente, gerente o administración cargan ventas a nombre de otro vendedor.')
+          const { data: vs } = await supabase.from('perfiles').select('id, nombre').ilike('nombre', `%${args.vendedor.trim()}%`).eq('activo', true).limit(5)
+          if (!vs?.length) return text(`No encontré al vendedor "${args.vendedor}".`)
+          if (vs.length > 1) return text(`Hay varios vendedores que coinciden:\n${vs.map((v: any) => `   • ${v.nombre}`).join('\n')}`)
+          vendedorId = vs[0].id; vendedorNombre = vs[0].nombre
+        }
+
+        // Soportes y montos
+        const lineas: { item: any; sop: any; precio: number; aviso?: string }[] = []
+        for (const it of args.items) {
+          const { data: sops } = await supabase.from('soportes')
+            .select('id, nombre, ubicacion, tipo_cotizador, precio_semanal, precio_semanal_alta, semanas_minimas, semanas_minimas_alta, tiene_iva, costo_produccion, impuestos_municipales')
+            .eq('activo', true).ilike('nombre', `%${it.soporte.trim()}%`).limit(40)
+          let cand = (sops ?? []) as any[]
+          const exacto = cand.filter(x => x.nombre.toLowerCase() === it.soporte.trim().toLowerCase())
+          if (exacto.length) cand = exacto
+          if (it.ubicacion) cand = cand.filter(x => (x.ubicacion ?? '').toLowerCase().includes(it.ubicacion!.toLowerCase()))
+          if (!cand.length) return text(`No encontré el soporte "${it.soporte}"${it.ubicacion ? ` en "${it.ubicacion}"` : ''}. Probá con listar_soportes.`)
+          if (cand.length > 1) return text(`"${it.soporte}" coincide con varios soportes:\n${cand.slice(0, 12).map(x => `   • ${x.nombre} — ${x.ubicacion ?? 's/ubicación'}`).join('\n')}\nIndicá la ubicación.`)
+          const sop = cand[0]
+          const lista = precioDeSemanas(sop, it.semanas, args.fecha_alta) / it.semanas
+          const precio = it.precio_semanal ?? Math.round(lista * 100) / 100
+          const min = semanasMinimas(sop, args.fecha_alta)
+          lineas.push({ item: it, sop, precio, aviso: it.semanas < min ? `mínimo ${min} semanas` : undefined })
+        }
+        const montos = lineas.map(l => montosDeLinea({
+          precioUnitario: l.precio, cantidad: l.item.cantidad, semanas: l.item.semanas,
+          descuentoPct: l.item.descuento_pct ?? 0, produccionUnitario: l.item.produccion_unitario ?? null,
+        }, l.sop))
+        const t = sumarMontos(montos)
+        const moneda = args.moneda ?? 'UYU'
+        const baja = args.fecha_baja ?? (() => {
+          const d = new Date(args.fecha_alta + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + Math.max(...args.items.map(i => i.semanas)) * 7 - 1)
+          return d.toISOString().slice(0, 10)
+        })()
+
+        const resumen = [
+          `Cliente: ${cliente.empresa ?? cliente.nombre}${agencia ? ` · Agencia: ${agencia.nombre} (${args.comision_agencia_pct}% arr / ${args.comision_agencia_prod_pct}% prod)` : ''}`,
+          `Vendedor: ${vendedorNombre}${args.marca ? ` · Marca: ${args.marca}` : ''}${args.campana ? ` · Campaña: ${args.campana}` : ''}`,
+          `Del ${fmtDate(args.fecha_alta)} al ${fmtDate(baja)} · ${args.cuotas ?? 1} cuota(s) · ${moneda}`,
+          '',
+          ...lineas.map((l, k) => `   ${k + 1}. ${l.sop.nombre} — ${l.sop.ubicacion ?? ''} · ${l.item.cantidad} × ${l.item.semanas} sem × ${fmtMoney(l.precio)}${l.item.descuento_pct ? ` (−${l.item.descuento_pct}%)` : ''} = ${fmtMoney(montos[k].arr)}` +
+            (montos[k].prod ? ` · prod ${fmtMoney(montos[k].prod)}` : '') + (montos[k].imp ? ` · imp ${fmtMoney(montos[k].imp)}` : '') + (l.aviso ? `  ⚠ ${l.aviso}` : '')),
+          '',
+          `Arrendamiento ${fmtMoney(t.arr)} · Producción ${fmtMoney(t.prod)} · Impuestos ${fmtMoney(t.imp)}`,
+          `Neto sin IVA ${fmtMoney(t.arr + t.prod + t.imp)} · IVA ${fmtMoney(t.ivaArr + t.ivaProd)} · TOTAL ${fmtMoney(t.total)}`,
+        ].join('\n')
+
+        if (!args.confirmar) {
+          return text(`RESUMEN (todavía no se creó nada):\n\n${resumen}\n\nSi está bien, volvé a llamar crear_venta con los mismos datos y confirmar=true.`)
+        }
+
+        const r = await crearVentaManual(supabase, {
+          clienteId: cliente.id,
+          agenciaId: agencia?.id,
+          comisionAgenciaPct: agencia ? args.comision_agencia_pct : undefined,
+          comisionAgenciaProdPct: agencia ? args.comision_agencia_prod_pct : undefined,
+          asignadoAId: vendedorId ?? undefined,
+          contacto: args.contacto, marca: args.marca, campana: args.campana, referencia: args.referencia,
+          facturarA: args.facturar_a ?? 'cliente_final',
+          fechaAltaPrevista: args.fecha_alta, fechaBajaPrevista: baja,
+          cuotas: args.cuotas ?? 1, condicionPagoDias: args.condicion_pago_dias,
+          moneda, detallesTexto: args.notas,
+          estado: args.borrador ? 'borrador' : 'pendiente_aprobacion',
+          items: lineas.map(l => ({
+            soporteId: l.sop.id, cantidad: l.item.cantidad, semanas: l.item.semanas,
+            precioUnitario: l.precio, descuentoPct: l.item.descuento_pct ?? 0,
+            produccionUnitario: l.item.produccion_unitario ?? null,
+            salidas: l.item.salidas, segundos: l.item.segundos, nota: l.item.nota,
+          })),
+        }, { id: me.perfilId, rol: me.rol })
+        if (!r.ok) return text(`No se pudo crear la venta: ${r.error}`)
+
+        const avisos = (await detectarSobreventa(supabase, r.id).catch(() => [])).map(textoSobreventa)
+        return text(
+          `✓ OIC #${r.numero ?? '—'} creada${args.borrador ? ' como borrador' : ', esperando la aprobación del gerente'}.\n\n${resumen}` +
+          (avisos.length ? `\n\n⚠ Sobreventa:\n${avisos.map(a => `   • ${a}`).join('\n')}` : '') +
+          `\n\nVer en el CRM: ${process.env.NEXTAUTH_URL ?? ''}/dashboard/ventas/${r.id}`,
+        )
       },
     )
 
