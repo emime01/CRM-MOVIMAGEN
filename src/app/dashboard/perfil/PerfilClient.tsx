@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { Mail, CheckCircle, XCircle, AlertCircle, RefreshCw, Bot, Copy, KeyRound } from 'lucide-react'
 import { confirmar } from '@/components/ui/dialogos'
+import InstalarApp from '@/components/dashboard/InstalarApp'
 
 const ROL_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
@@ -154,6 +155,9 @@ export default function PerfilClient({ user, gmailConnected: initialConnected, g
           </div>
         </div>
       </div>
+
+      {/* App instalable en el celular */}
+      <InstalarApp />
 
       {/* Gmail integration card */}
       <div style={{
