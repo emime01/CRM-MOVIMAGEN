@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Smartphone, CheckCircle } from 'lucide-react'
+import ActivarAvisos from './ActivarAvisos'
 
 // El evento que Chrome/Android dispara cuando la app se puede instalar.
 interface PromptInstalar extends Event {
@@ -77,6 +78,8 @@ export default function InstalarApp() {
           )}
         </>
       )}
+
+      <ActivarAvisos />
     </div>
   )
 }

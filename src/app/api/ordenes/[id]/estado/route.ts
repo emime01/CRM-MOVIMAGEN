@@ -14,6 +14,7 @@ import {
   ESTADOS_VENTA, PERMISO_POR_ESTADO, MOVIDO_A_SU_ENDPOINT, estaCerrada,
   type EstadoVenta,
 } from '@/lib/ventas/estados'
+import { insertarNotificaciones } from '@/lib/notificaciones'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -119,7 +120,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (orden && gerentes?.length) {
       const cli: any = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
       const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'cliente'
-      await supabase.from('notificaciones').insert(
+      await insertarNotificaciones(supabase, 
         gerentes.map((g: { id: string }) => ({
           user_id:   g.id,
           tipo:      'orden_pendiente',
@@ -153,7 +154,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       const cli: any = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
       const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'cliente'
       const aprobada = body.estado === 'aprobada'
-      await supabase.from('notificaciones').insert(destinatarios.map(id => ({
+      await insertarNotificaciones(supabase, destinatarios.map(id => ({
         user_id:   id,
         tipo:      aprobada ? 'orden_aprobada' : 'orden_rechazada',
         titulo:    aprobada ? 'Venta aprobada' : 'Venta rechazada',
@@ -169,7 +170,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       const admin = (perfiles ?? []).filter((p: any) => haceAdministracion(p.rol) && p.id !== session.user.id)
       if (admin.length) {
         const cli: any = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
-        await supabase.from('notificaciones').insert(admin.map((p: any) => ({
+        await insertarNotificaciones(supabase, admin.map((p: any) => ({
           user_id:   p.id,
           tipo:      'orden_para_facturar',
           titulo:    'Venta aprobada: cuotas para facturar',

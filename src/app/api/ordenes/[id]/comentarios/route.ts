@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { insertarNotificaciones } from '@/lib/notificaciones'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       if (t.asignado_a && t.asignado_a !== session.user.id) destinatariosSet.add(t.asignado_a)
     })
     if (destinatariosSet.size > 0) {
-      await supabase.from('notificaciones').insert(
+      await insertarNotificaciones(supabase, 
         Array.from(destinatariosSet).map(uid => ({
           user_id:   uid,
           tipo:      'orden_comentario',

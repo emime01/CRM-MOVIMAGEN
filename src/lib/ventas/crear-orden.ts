@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { armarPlanDeFacturas, CONDICION_PAGO_POR_DEFECTO } from './facturas'
+import { insertarNotificaciones } from '@/lib/notificaciones'
 
 /**
  * Creación de la OIC a partir de una cotización aceptada.
@@ -231,7 +232,7 @@ export async function notificarOicPendiente(supabase: SupabaseClient, ordenId: s
 
   const cli: any = Array.isArray(orden.clientes) ? orden.clientes[0] : orden.clientes
   const clienteNombre = cli?.empresa ?? cli?.nombre ?? 'cliente'
-  await supabase.from('notificaciones').insert(
+  await insertarNotificaciones(supabase, 
     gerentes.map((g: { id: string }) => ({
       user_id:   g.id,
       tipo:      'orden_pendiente',
