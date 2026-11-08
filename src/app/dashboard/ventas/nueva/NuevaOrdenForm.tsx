@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ChevronLeft, Sparkles, Send, X, Paperclip } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft } from 'lucide-react'
 import { montosDeLinea, sumarMontos } from '@/lib/ventas/montos-linea'
 import BuscadorSelect from '@/components/ui/BuscadorSelect'
 import { esImpuestoMTOP } from '@/lib/cotizador/calcular'
@@ -186,15 +186,6 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  // AI Chat state
-  const [chatOpen, setChatOpen] = useState(false)
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string; fileData?: { base64: string; mediaType: string }; fileName?: string }[]>([])
-  const [chatInput, setChatInput] = useState('')
-  const [chatLoading, setChatLoading] = useState(false)
-  const [chatError, setChatError] = useState('')
-  const [chatFile, setChatFile] = useState<{ base64: string; mediaType: string; name: string } | null>(null)
-  const chatEndRef = useRef<HTMLDivElement>(null)
-  const chatFileInputRef = useRef<HTMLInputElement>(null)
 
   // Totals — mismas reglas que el cotizador (lib/ventas/montos-linea).
   const montosItem = (item: ItemRow) => montosDeLinea(item, soportes.find(s => s.id === item.soporteId))
@@ -339,114 +330,12 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   }
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
-
-  useEffect(() => {
     if (!clienteId) return
     const cliente = clientes.find(c => c.id === clienteId)
     if (cliente?.agencia_id && !agenciaId) {
       elegirAgencia(cliente.agencia_id)
     }
   }, [clienteId])
-
-  async function handleChatFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result as string
-      const base64 = dataUrl.split(',')[1]
-      setChatFile({ base64, mediaType: file.type, name: file.name })
-    }
-    reader.readAsDataURL(file)
-    e.target.value = ''
-  }
-
-  async function sendChat() {
-    const text = chatInput.trim()
-    if (!text && !chatFile || chatLoading) return
-    const file = chatFile
-    setChatInput('')
-    setChatFile(null)
-    setChatError('')
-    const userMsg = { role: 'user' as const, content: text, fileData: file ? { base64: file.base64, mediaType: file.mediaType } : undefined, fileName: file?.name }
-    const newMessages = [...chatMessages, userMsg]
-    setChatMessages(newMessages)
-    setChatLoading(true)
-    try {
-      const res = await fetch('/api/chat-venta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          clientes,
-          agencias,
-          soportes,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Error al contactar la IA')
-
-      if (data.fields) {
-        const f = data.fields as {
-          clienteId?: string
-          agenciaId?: string
-          contacto?: string
-          marca?: string
-          moneda?: 'USD' | 'UYU'
-          fechaAltaPrevista?: string
-          fechaBajaPrevista?: string
-          items?: Array<{
-            soporteId: string
-            cantidad?: number
-            semanas?: number
-            precioUnitario?: number
-            descuentoPct?: number
-            nota?: string
-          }>
-        }
-        if (f.clienteId) setClienteId(f.clienteId)
-        if (f.agenciaId) elegirAgencia(f.agenciaId)
-        if (f.contacto) setContacto(f.contacto)
-        if (f.marca) setMarca(f.marca)
-        if (f.moneda) setMoneda(f.moneda)
-        if (f.fechaAltaPrevista) setFechaAltaPrevista(f.fechaAltaPrevista)
-        if (f.fechaBajaPrevista) setFechaBajaPrevista(f.fechaBajaPrevista)
-        if (f.items && f.items.length > 0) {
-          setItems(f.items.map(item => {
-            const soporte = soportes.find(s => s.id === item.soporteId)
-            const esDigital = soporteDigital(soporte)
-            const precio = item.precioUnitario ?? soporte?.precio_semanal ?? soporte?.precio_base ?? 0
-            return {
-              id: uid(),
-              soporteId: item.soporteId,
-              cantidad: item.cantidad ?? 1,
-              semanas: item.semanas ?? 4,
-              salidas: 0,
-              segundos: 0,
-              precioUnitario: precio,
-              descuentoPct: item.descuentoPct ?? 0,
-              produccionUnitario: Math.round(Number(soporte?.costo_produccion ?? 0) * 100) / 100,
-              nota: item.nota ?? '',
-              requiereGrabado: false,
-              requiereProduccion: !!soporte?.costo_produccion,
-              esDigital,
-            }
-          }))
-        }
-      }
-
-      const assistantText = data.text || (data.fields ? 'Campos completados correctamente.' : 'No pude detectar campos en tu mensaje.')
-      setChatMessages(prev => [...prev, { role: 'assistant', content: assistantText }])
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error desconocido'
-      setChatError(msg)
-      setChatMessages(prev => [...prev, { role: 'assistant', content: `Error: ${msg}` }])
-    } finally {
-      setChatLoading(false)
-    }
-  }
 
   const fmt = (n: number) => new Intl.NumberFormat('es-UY', {
     style: 'currency', currency: moneda,
@@ -456,7 +345,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif', maxWidth: 960, margin: '0 auto' }}>
 
-      {/* Back link + AI button */}
+      {/* Volver */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <button
           onClick={() => router.back()}
@@ -464,104 +353,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
         >
           <ChevronLeft size={16} /> Volver a Ventas
         </button>
-        <button
-          onClick={() => setChatOpen(o => !o)}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 8, border: 'none', background: chatOpen ? 'var(--orange-hover, #c85a10)' : 'var(--orange)', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#fff', fontFamily: 'Montserrat, sans-serif' }}
-        >
-          <Sparkles size={15} /> Completar con IA
-        </button>
       </div>
-
-      {/* AI Chat Panel */}
-      {chatOpen && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 20, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #eb691c, #c85a10)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Sparkles size={16} color="#fff" />
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>Asistente IA — Completar orden</span>
-            </div>
-            <button onClick={() => setChatOpen(false)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}>
-              <X size={15} color="#fff" />
-            </button>
-          </div>
-
-          {/* Messages */}
-          <div style={{ height: 280, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {chatMessages.length === 0 && (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginTop: 60 }}>
-                <Sparkles size={28} color="var(--orange)" style={{ marginBottom: 10 }} />
-                <div style={{ fontWeight: 600, marginBottom: 6 }}>Describí la venta en lenguaje natural</div>
-                <div style={{ fontSize: 12 }}>Ejemplo: "Venta a Coca-Cola, 3 carteles en Punta Carretas por 4 semanas desde el 1 de junio, USD, descuento 10%"</div>
-              </div>
-            )}
-            {chatMessages.map((m, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                  background: m.role === 'user' ? 'var(--orange)' : 'var(--bg-app)',
-                  color: m.role === 'user' ? '#fff' : 'var(--text-primary)',
-                  fontSize: 13, lineHeight: 1.5,
-                  border: m.role === 'assistant' ? '1px solid var(--border)' : 'none',
-                }}>
-                  {m.fileName && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: m.content ? 6 : 0, fontSize: 12, opacity: 0.85 }}>
-                      <Paperclip size={11} />
-                      {m.fileName}
-                    </div>
-                  )}
-                  {m.content}
-                </div>
-              </div>
-            ))}
-            {chatLoading && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ padding: '10px 14px', borderRadius: '12px 12px 12px 4px', background: 'var(--bg-app)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-muted)' }}>
-                  Analizando...
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-
-          {/* Input */}
-          {chatError && (
-            <div style={{ padding: '8px 20px', background: 'var(--red-pale)', color: 'var(--red)', fontSize: 12 }}>{chatError}</div>
-          )}
-          {chatFile && (
-            <div style={{ padding: '6px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-app)' }}>
-              <Paperclip size={13} color="var(--orange)" />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', flex: 1 }}>{chatFile.name}</span>
-              <button onClick={() => setChatFile(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 2, color: 'var(--text-muted)' }}><X size={13} /></button>
-            </div>
-          )}
-          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <input ref={chatFileInputRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={handleChatFileChange} />
-            <button
-              onClick={() => chatFileInputRef.current?.click()}
-              title="Adjuntar imagen o PDF"
-              style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-app)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            >
-              <Paperclip size={15} color="var(--text-muted)" />
-            </button>
-            <textarea
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-              placeholder={chatFile ? 'Mensaje opcional (Enter para enviar)...' : 'Describí la venta o adjuntá un PDF/imagen... (Enter para enviar)'}
-              rows={2}
-              disabled={chatLoading}
-              style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-primary)', outline: 'none', resize: 'none', background: 'var(--bg-app)', boxSizing: 'border-box' }}
-            />
-            <button
-              onClick={sendChat}
-              disabled={chatLoading || (!chatInput.trim() && !chatFile)}
-              style={{ width: 38, height: 60, borderRadius: 8, border: 'none', background: chatLoading || (!chatInput.trim() && !chatFile) ? 'var(--border)' : 'var(--orange)', cursor: chatLoading || (!chatInput.trim() && !chatFile) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            >
-              <Send size={16} color="#fff" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Section 1: Header */}
       <div style={sectionStyle}>
