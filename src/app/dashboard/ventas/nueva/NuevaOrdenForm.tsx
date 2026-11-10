@@ -51,7 +51,7 @@ interface ItemRow {
   segundos: number
   precioUnitario: number
   descuentoPct: number
-  /** Producción por unidad (precargada del catálogo; 0 si el cliente trae el material). */
+  /** Producción por unidad (precargada del catálogo; 0 en una renovación: el material ya está instalado). */
   produccionUnitario: number
   nota: string
   requiereGrabado: boolean
@@ -757,7 +757,7 @@ export default function NuevaOrdenForm({ soportes, clientes, agencias, vendedore
                     {item.soporteId ? fmt(itemLineTotal(item)) : '—'}
                   </td>
                   <td style={{ padding: '8px 10px', minWidth: 110 }}>
-                    <input type="number" min={0} step={0.01} value={item.produccionUnitario} title="Producción por unidad (0 si el cliente trae el material)"
+                    <input type="number" min={0} step={0.01} value={item.produccionUnitario} title="Producción por unidad (0 si es una renovación y el material ya está instalado)"
                       onChange={e => updateItem(item.id, { produccionUnitario: Math.max(0, +e.target.value) })}
                       style={{ ...inputStyle, height: 34, fontSize: 12 }} />
                   </td>

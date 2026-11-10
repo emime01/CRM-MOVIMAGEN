@@ -45,7 +45,7 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
       .single(),
     supabase
       .from('orden_items')
-      .select('id, soporte_id, cantidad, fecha_alta_prevista, fecha_baja_prevista, soportes(nombre, tipo_cotizador, tipo)')
+      .select('id, soporte_id, cantidad, requiere_produccion, fecha_alta_prevista, fecha_baja_prevista, soportes(nombre, tipo_cotizador, tipo)')
       .eq('orden_id', ordenId),
   ])
 
@@ -80,10 +80,13 @@ export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: str
     const base = `OIC #${ordenNumero} · ${clienteNombre} · ${soporteName}${cant > 1 ? ` ×${cant}` : ''}`
     void fechaBaja
 
-    if (tipoCot === 'estatico_bus' || tipoCot === 'estatico_shopping' || tipoCot === 'medianera' || tipoCot === 'rutero' || tipoCot === 'banner_shopping') {
+    // Impresos, salvo una renovación sin producción (el material ya está
+    // instalado): ahí no hay arte nuevo ni nada que imprimir.
+    const impreso = tipoCot === 'estatico_bus' || tipoCot === 'estatico_shopping' || tipoCot === 'medianera' || tipoCot === 'rutero' || tipoCot === 'banner_shopping'
+    if (impreso && it.requiere_produccion !== false) {
       toCreate.push({ tipo: 'arte_muestra_color',        asignado_a_rol: 'arte',        orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Arte final y muestra por WeTransfer — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_ARTE_ANTES) })
       toCreate.push({ tipo: 'ops_producir_impresos',     asignado_a_rol: 'operaciones', orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Producir impreso — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_IMPRESO_ANTES) })
-    } else if (tipoCot === 'led' || tipoCot === 'circuito') {
+    } else if (!impreso && (tipoCot === 'led' || tipoCot === 'circuito')) {
       toCreate.push({ tipo: 'arte_chequear_material_digital', asignado_a_rol: 'arte',  orden_id: ordenId, orden_item_id: it.id, soporte_id: it.soporte_id, descripcion: `Cargar en el panel — ${base}`, fecha_limite: correr(fechaAlta, -DIAS_IMPRESO_ANTES) })
     }
 
