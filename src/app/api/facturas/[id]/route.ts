@@ -6,6 +6,8 @@ import { estaCerrada } from '@/lib/ventas/estados'
 import { registrarCobroDeFactura } from '@/lib/ventas/cobrar'
 import { registrarPromesa, cerrarSeguimiento } from '@/lib/ventas/cobranza'
 import { hoyUY } from '@/lib/fechas'
+import { cotizacionDolarBCU } from '@/lib/bcu'
+import { registrarComisionAgencia, comisionAgenciaDe } from '@/lib/ventas/comision-agencia'
 import {
   calcularVencimiento, primerDiaDelMes, CONDICION_PAGO_POR_DEFECTO,
   puedePlanificar, puedeAdministrarFacturas,
@@ -39,8 +41,9 @@ const importe = (v: unknown) => {
  * PATCH /api/facturas/[id]
  *
  *   { accion: 'editar', mes_pauta?, importe_*?, fecha_vencimiento?, notas? }
- *   { accion: 'emitir', numero, fecha_emision?, importe_*? }
- *   { accion: 'cobrar', fecha?, metodo?, monto? }   (monto < total: cobro parcial)
+ *   { accion: 'emitir', numero, fecha_emision?, importe_*?, cotizacion? }   (cotizacion: sólo USD)
+ *   { accion: 'cobrar', fecha?, metodo?, monto?, descuenta_agencia? }
+ *       monto < total: cobro parcial · descuenta_agencia: pagó el neto de la comisión de la agencia
  *   { accion: 'anular', motivo? }
  *   { accion: 'promesa', fecha_pago_prometida | null, nota? }
  *
@@ -164,8 +167,25 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       const errImp = tocaImportes ? importesInconsistentes(factura, updates) : null
       if (errImp) return NextResponse.json({ error: errImp }, { status: 400 })
 
-      const { data: emitidas, error: uErr } = await supabase
+      // En dólares, la cotización del día de la factura (la que eligió
+      // Administración o, si no vino, la del BCU): el canon se paga en pesos.
+      if (factura.moneda === 'USD') {
+        const c = importe(body.cotizacion)
+        if (c && c > 0) updates.cotizacion = c
+        else {
+          const bcu = await cotizacionDolarBCU(fecha)
+          if (bcu) updates.cotizacion = bcu.valor
+        }
+      }
+
+      let { data: emitidas, error: uErr } = await supabase
         .from('facturas').update(updates).eq('id', params.id).eq('estado', 'prevista').select('id')
+      if (uErr && updates.cotizacion !== undefined && /cotizacion/.test(uErr.message)) {
+        // Sin la migración v49 todavía: se factura igual, sin guardar la cotización.
+        delete updates.cotizacion
+        ;({ data: emitidas, error: uErr } = await supabase
+          .from('facturas').update(updates).eq('id', params.id).eq('estado', 'prevista').select('id'))
+      }
       if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
       if (!emitidas?.length) return NextResponse.json({ error: 'La cuota ya se emitió' }, { status: 409 })
 
@@ -192,11 +212,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         await supabase.from('facturas').update({ cuotas_total: nueva }).eq('orden_id', factura.orden_id).eq('tipo', 'factura')
       }
 
+      // La comisión de la agencia se registra al facturar.
+      await registrarComisionAgencia(supabase, params.id).catch(() => {})
+
       await supabase.from('orden_historial').insert({
         orden_id: factura.orden_id,
         perfil_id: session.user.id,
         estado_nuevo: orden?.estado ?? null,
-        comentario: `Facturada · ${numero}${resto ? ` (parcial; el resto pasa a una cuota nueva)` : ''}`,
+        comentario: `Facturada · ${numero}${resto ? ` (parcial; el resto pasa a una cuota nueva)` : ''}${updates.cotizacion ? ` · cotización ${updates.cotizacion}` : ''}`,
       })
       return NextResponse.json({ ok: true, fecha_vencimiento: updates.fecha_vencimiento, resto })
     }
@@ -208,7 +231,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       // fila (y la comisión sale sobre esa parte); el saldo pasa a una fila
       // nueva con el mismo número, emitida y con el mismo vencimiento.
       const total = Number(factura.importe_total ?? 0)
-      const monto = body.monto !== undefined && body.monto !== null && body.monto !== '' ? importe(body.monto) : null
+
+      // La agencia se descontó su comisión del pago: pagó el neto. La factura
+      // queda cobrada entera (no queda saldo) y la comisión, "descontada"
+      // (no se le debe nada a la agencia).
+      let descuentoAgencia: { id: string; monto: number } | null = null
+      if (body.descuenta_agencia === true) {
+        const com = await comisionAgenciaDe(supabase, params.id)
+        if (!com) return NextResponse.json({ error: 'Esta factura no tiene comisión de agencia registrada' }, { status: 409 })
+        if (com.estado === 'pagada') return NextResponse.json({ error: 'La comisión de esta factura ya se le pagó a la agencia' }, { status: 409 })
+        descuentoAgencia = { id: com.id, monto: com.monto }
+      }
+
+      const monto = !descuentoAgencia && body.monto !== undefined && body.monto !== null && body.monto !== '' ? importe(body.monto) : null
       let saldoId: string | null = null
       if (monto !== null) {
         if (factura.tipo !== 'factura' || factura.estado !== 'emitida') {
@@ -245,10 +280,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         }
       }
 
+      const fechaCobro = fechaValida(body.fecha) ? body.fecha : undefined
       const r = await registrarCobroDeFactura(supabase, params.id, {
-        fecha: fechaValida(body.fecha) ? body.fecha : undefined,
+        fecha: fechaCobro,
         metodo: typeof body.metodo === 'string' && body.metodo.trim() ? body.metodo.trim() : undefined,
         userId: session.user.id,
+        montoPagado: descuentoAgencia ? Math.round((total - descuentoAgencia.monto) * 100) / 100 : undefined,
       })
       if (!r.ok) {
         // Si no se pudo cobrar, se deshace la partición.
@@ -262,11 +299,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         return NextResponse.json({ error: r.error }, { status: 409 })
       }
 
+      if (descuentoAgencia) {
+        await supabase.from('comisiones_agencia')
+          .update({ estado: 'descontada', fecha_pago: fechaCobro ?? hoyUY(), updated_at: ahora })
+          .eq('id', descuentoAgencia.id)
+      }
+
       await supabase.from('orden_historial').insert({
         orden_id: factura.orden_id,
         perfil_id: session.user.id,
         estado_nuevo: orden?.estado ?? null,
-        comentario: `Cobrada${saldoId ? ` en parte (${monto} de ${total})` : ''}${typeof body.metodo === 'string' && body.metodo ? ` · ${body.metodo}` : ''}`,
+        comentario: `Cobrada${saldoId ? ` en parte (${monto} de ${total})` : ''}${descuentoAgencia ? ` · la agencia descontó su comisión (${descuentoAgencia.monto})` : ''}${typeof body.metodo === 'string' && body.metodo ? ` · ${body.metodo}` : ''}`,
       })
       return NextResponse.json({ ok: true, comision_generada: r.comisionGenerada, saldo_id: saldoId })
     }
@@ -288,6 +331,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         estado: 'emitida', fecha_cobro: null, metodo_cobro: null, cobrada_por: null, updated_at: ahora,
       }).eq('id', params.id).eq('estado', 'cobrada')
       if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
+      // Si la agencia se había descontado la comisión en ese cobro, vuelve a pendiente.
+      await supabase.from('comisiones_agencia').update({ estado: 'pendiente', fecha_pago: null, updated_at: ahora })
+        .eq('factura_id', params.id).eq('estado', 'descontada')
       await supabase.from('orden_historial').insert({
         orden_id: factura.orden_id,
         perfil_id: session.user.id,

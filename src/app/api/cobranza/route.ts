@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
-import { TIPOS_GESTION } from '@/lib/ventas/cobranza'
+import { TIPOS_GESTION, tareaDeGestion } from '@/lib/ventas/cobranza'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,5 +82,12 @@ export async function POST(req: NextRequest) {
     .select('id, tipo, nota, proxima_accion, created_at')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Con próxima acción, queda una tarea para Administración ese día.
+  if (data.proxima_accion) {
+    await tareaDeGestion(supabase, {
+      orden_id: ordenId, factura_id: body.factura_id ?? null, tipo: data.tipo,
+      nota: data.nota, proxima_accion: data.proxima_accion,
+    }).catch(() => {})
+  }
   return NextResponse.json(data, { status: 201 })
 }

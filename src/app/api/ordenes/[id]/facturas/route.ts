@@ -7,6 +7,7 @@ import {
   armarPlanDeFacturas, calcularVencimiento, primerDiaDelMes,
   puedeVerFacturas, puedePlanificar, puedeAdministrarFacturas,
 } from '@/lib/ventas/facturas'
+import { registrarComisionAgencia } from '@/lib/ventas/comision-agencia'
 
 export const dynamic = 'force-dynamic'
 
@@ -158,6 +159,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         emitida_por: session.user.id,
       }).select('id').single()
       if (iErr) return NextResponse.json({ error: iErr.message }, { status: 500 })
+      // La nota de crédito también descuenta de la comisión de la agencia.
+      await registrarComisionAgencia(supabase, data.id).catch(() => {})
       return NextResponse.json({ ok: true, id: data.id }, { status: 201 })
     }
 

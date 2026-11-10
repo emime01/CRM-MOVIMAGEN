@@ -48,6 +48,11 @@ export interface AgenciaRow {
   pct_arrendamiento: number
   pct_produccion: number
   comision: number
+  /** Con la comisión registrada al facturar (v49): */
+  comision_id?: string
+  fecha_emision?: string | null
+  estado?: 'pendiente' | 'pagada' | 'descontada'
+  fecha_pago?: string | null
 }
 
 export interface BonoRow {
@@ -98,13 +103,15 @@ const sumar = (rows: { moneda: string }[], campo: (r: any) => number): TotalPorM
 type Tab = 'liquidacion' | 'agencias' | 'bonos'
 
 export default function ComisionesClient({
-  mes, cuatrimestre, cuatrimestres, comisiones, agencias, bonos, administra, paga = administra, asignaBonos = administra,
+  mes, cuatrimestre, cuatrimestres, comisiones, agencias, agenciasConEstado = false, bonos, administra, paga = administra, asignaBonos = administra,
 }: {
   mes: string
   cuatrimestre: string
   cuatrimestres: string[]
   comisiones: ComisionRow[]
   agencias: AgenciaRow[]
+  /** La comisión de agencia se registra al facturar (migración v49 corrida). */
+  agenciasConEstado?: boolean
   bonos: BonoRow[]
   /** Prepara la liquidación: liquida, cambia estados, liquida bonos. */
   administra: boolean
@@ -137,6 +144,8 @@ export default function ComisionesClient({
     return Array.from(m.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [vigentes])
 
+  // Con la comisión registrada al facturar (migración v49) hay estado y pago.
+  const conEstado = agenciasConEstado || agencias.some(a => !!a.comision_id)
   const porAgencia = useMemo(() => {
     const m = new Map<string, { nombre: string; filas: AgenciaRow[] }>()
     for (const a of agencias) {
@@ -361,26 +370,29 @@ export default function ComisionesClient({
       {tab === 'agencias' && (
         <>
           <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
-            <div style={cardHead}>Comisión de agencias · facturas cobradas en {nombreMes(mes)}</div>
+            <div style={cardHead}>Comisión de agencias · facturas {conEstado ? 'emitidas' : 'cobradas'} en {nombreMes(mes)}</div>
             {porAgencia.length === 0 ? (
-              <p style={empty}>No hubo cobros de ventas con agencia en {nombreMes(mes)}.</p>
+              <p style={empty}>No hubo facturas de ventas con agencia en {nombreMes(mes)}.</p>
             ) : (
-              <table style={{ ...tabla, minWidth: 860 }}>
+              <table style={{ ...tabla, minWidth: 960 }}>
                 <thead><tr style={thRow}>
-                  {['Agencia / cliente', 'Nº factura', 'Cobro', 'Arrend. s/IVA', '% arr.', 'Producción', '% prod.', 'Comisión'].map((h, i) => (
-                    <th key={h} style={{ ...th, textAlign: i >= 3 ? 'right' : 'left' }}>{h}</th>
+                  {['Agencia / cliente', 'Nº factura', conEstado ? 'Factura' : 'Cobro', 'Arrend. s/IVA', '% arr.', 'Producción', '% prod.', 'Comisión', ...(conEstado ? ['Estado'] : [])].map((h, i) => (
+                    <th key={h} style={{ ...th, textAlign: i >= 3 && i <= 7 ? 'right' : 'left' }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
                   {porAgencia.map(g => (
-                    <AgenciaGrupo key={g.nombre} nombre={g.nombre} filas={g.filas} />
+                    <AgenciaGrupo key={g.nombre} nombre={g.nombre} filas={g.filas} conEstado={conEstado}
+                      onPagar={paga && conEstado ? (ids, estado) => llamar('/api/comisiones-agencia', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, estado }),
+                      }, estado === 'pagada' ? `¿Marcar pagada la comisión de ${g.nombre}?` : undefined) : undefined} />
                   ))}
                 </tbody>
               </table>
             )}
           </div>
           <p style={nota}>
-            Sólo para consulta: es lo que le corresponde a cada agencia según el porcentaje pactado en cada venta (sobre el arrendamiento y, si se pactó, sobre la producción).
+            La comisión de la agencia se calcula cuando la cuota se marca facturada, con el porcentaje pactado en la venta (sobre el arrendamiento y, si se pactó, sobre la producción). Si la agencia se la descuenta del pago, al cobrar se marca "La agencia se descontó su comisión": la factura queda cobrada entera y la comisión queda <strong>descontada</strong>, sin nada que pagarle.
           </p>
         </>
       )}
@@ -460,24 +472,59 @@ export default function ComisionesClient({
   )
 }
 
-function AgenciaGrupo({ nombre, filas }: { nombre: string; filas: AgenciaRow[] }) {
+const ESTADO_AG: Record<string, { bg: string; fg: string; label: string }> = {
+  pendiente:  { bg: 'rgba(217,119,6,0.12)', fg: '#b26a00', label: 'A pagar' },
+  pagada:     { bg: 'rgba(21,128,61,0.12)', fg: '#15803d', label: 'Pagada' },
+  descontada: { bg: 'rgba(37,99,235,0.1)', fg: '#2563eb', label: 'Descontada del pago' },
+}
+
+function AgenciaGrupo({ nombre, filas, conEstado = false, onPagar }: {
+  nombre: string; filas: AgenciaRow[]; conEstado?: boolean
+  onPagar?: (ids: string[], estado: 'pagada' | 'pendiente') => void
+}) {
   const total = sumar(filas, r => r.comision)
+  const aPagar = filas.filter(f => f.estado === 'pendiente' && f.comision_id)
   return (
     <>
       <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
-        <td colSpan={7} style={{ ...td, fontWeight: 800 }}>{nombre}</td>
+        <td colSpan={7} style={{ ...td, fontWeight: 800 }}>
+          {nombre}
+          {conEstado && aPagar.length > 0 && <span style={{ fontWeight: 600, fontSize: 11.5, color: '#b26a00', marginLeft: 8 }}>a pagar {formatTotales(sumar(aPagar, r => r.comision))}</span>}
+        </td>
         <td style={{ ...num, fontWeight: 800 }}>{formatTotales(total)}</td>
+        {conEstado && (
+          <td style={td}>
+            {onPagar && aPagar.length > 0 && (
+              <button style={btn} onClick={() => onPagar(aPagar.map(f => f.comision_id!), 'pagada')}>Marcar todo pagado</button>
+            )}
+          </td>
+        )}
       </tr>
       {filas.map(f => (
         <tr key={f.factura_id} style={tr}>
           <td style={{ ...td, paddingLeft: 24 }}>{f.cliente}{f.orden_numero ? <span style={{ color: 'var(--text-muted)', fontSize: 11 }}> · OIC #{f.orden_numero}</span> : null}</td>
           <td style={{ ...td, fontFamily: 'monospace' }}>{f.numero ?? '—'}</td>
-          <td style={td}>{fmtFecha(f.fecha_cobro)}</td>
+          <td style={td}>{fmtFecha(conEstado ? (f.fecha_emision ?? null) : f.fecha_cobro)}</td>
           <td style={num}>{formatMoney(f.arrendamiento, f.moneda)}</td>
           <td style={num}>{f.pct_arrendamiento ? `${f.pct_arrendamiento}%` : '—'}</td>
           <td style={num}>{f.produccion ? formatMoney(f.produccion, f.moneda) : '—'}</td>
           <td style={num}>{f.pct_produccion ? `${f.pct_produccion}%` : '—'}</td>
           <td style={{ ...num, fontWeight: 700 }}>{formatMoney(f.comision, f.moneda)}</td>
+          {conEstado && (
+            <td style={td}>
+              {f.estado && (
+                <span style={{ background: ESTADO_AG[f.estado].bg, color: ESTADO_AG[f.estado].fg, borderRadius: 5, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {ESTADO_AG[f.estado].label}{f.fecha_pago ? ` ${fmtFecha(f.fecha_pago)}` : ''}
+                </span>
+              )}
+              {onPagar && f.estado === 'pendiente' && f.comision_id && (
+                <button style={{ ...btn, marginLeft: 6 }} onClick={() => onPagar([f.comision_id!], 'pagada')}>Pagada</button>
+              )}
+              {onPagar && f.estado === 'pagada' && f.comision_id && (
+                <button style={{ ...btn, marginLeft: 6 }} onClick={() => onPagar([f.comision_id!], 'pendiente')}>Deshacer</button>
+              )}
+            </td>
+          )}
         </tr>
       ))}
     </>

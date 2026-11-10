@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
+import { cotizacionDolarBCU } from '@/lib/bcu'
+import { hoyUY } from '@/lib/fechas'
 
 /**
  * Canon de shoppings por mes, como el "Informe mensual de canon".
@@ -16,6 +18,14 @@ import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
  * de crédito restan. Por shopping se paga el mayor entre el canon variable y
  * el mínimo, más lo que vino del mes anterior y menos lo que se pasa al
  * siguiente.
+ *
+ * Todo en pesos: lo facturado en dólares se pasa con la cotización de la
+ * factura (la que se eligió al marcarla facturada); si todavía no se facturó,
+ * con la del BCU de hoy, como provisoria.
+ *
+ * Una venta puede tener su propio plan de canon (canon_planes): el canon de
+ * toda la venta se le paga al shopping en N cuotas iguales desde un mes dado,
+ * en vez de cuota por cuota según la facturación.
  */
 
 export const IVA = 0.22
@@ -32,6 +42,10 @@ export type FacturaCanon = {
   orden_numero: number | null; cliente: string; agencia: string | null; marca: string | null
   /** % de comisión de la agencia pactado en la venta (o el recomendado, si es vieja). */
   pct_agencia: number
+  /** Pesos por dólar (sólo USD). */
+  cotizacion?: number | null
+  /** La cotización no es la de la factura sino la del día (todavía sin facturar). */
+  cotizacion_provisoria?: boolean
 }
 
 export type LineaCanon = {
@@ -46,6 +60,12 @@ export type LineaCanon = {
   canon: number
   /** Si es un circuito, en cuántas partes se repartió. */
   reparto: number | null
+  /** Facturado en dólares: lo original y la cotización usada. */
+  usd?: number | null
+  cotizacion?: number | null
+  cotizacion_provisoria?: boolean
+  /** Viene de un plan de cuotas de canon de la venta ("cuota k de n del canon"). */
+  plan?: { cuota: number; cuotas: number; primer_mes: string } | null
 }
 
 export type ResumenShopping = {
@@ -94,7 +114,9 @@ export function calcularCanon(
       if (!it.soporte_id) continue
       const asig = porSoporte.get(it.soporte_id)
       if (!asig?.length) continue
-      const parteItem = Number(f.importe_arrendamiento ?? 0) * valorItem(it) / total
+      // En pesos: lo facturado en dólares, por su cotización.
+      const enPesos = Number(f.importe_arrendamiento ?? 0) * (f.moneda === 'USD' ? Number(f.cotizacion ?? 0) : 1)
+      const parteItem = enPesos * valorItem(it) / total
       const pesoTotal = asig.reduce((s, a) => s + Number(a.peso || 1), 0)
       for (const a of asig) {
         if (!lineas.has(a.shopping_id)) continue
@@ -113,9 +135,12 @@ export function calcularCanon(
       lineas.get(shoppingId)!.push({
         factura_id: f.id, orden_id: f.orden_id, orden_numero: f.orden_numero, numero: f.numero, tipo: f.tipo,
         cuota: f.cuota, cuotas_total: f.cuotas_total, cliente: f.cliente, agencia: f.agencia, marca: f.marca,
-        soportes: Array.from(x.soportes), moneda: f.moneda,
+        soportes: Array.from(x.soportes), moneda: 'UYU',
         arrendamiento: arr, pct_agencia: f.pct_agencia, neto_agencia: neto, pct_canon: pct,
         canon: r2(neto * pct / 100), reparto: x.reparto,
+        usd: f.moneda === 'USD' && f.cotizacion ? r2(x.arr / Number(f.cotizacion)) : null,
+        cotizacion: f.moneda === 'USD' ? Number(f.cotizacion ?? 0) : null,
+        cotizacion_provisoria: f.moneda === 'USD' ? !!f.cotizacion_provisoria : false,
       })
     }
   }
@@ -125,8 +150,9 @@ export function calcularCanon(
     return {
       shopping: s,
       lineas: ls,
-      variable: r2(ls.filter(l => l.moneda !== 'USD').reduce((t, l) => t + l.canon, 0)),
-      variable_usd: r2(ls.filter(l => l.moneda === 'USD').reduce((t, l) => t + l.canon, 0)),
+      // Todo en pesos (lo de dólares ya viene convertido).
+      variable: r2(ls.reduce((t, l) => t + l.canon, 0)),
+      variable_usd: 0,
     }
   })
 }
@@ -143,34 +169,31 @@ export function mesAnterior(mes: string): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Trae de la base todo lo del mes y lo calcula. `mes` es "AAAA-MM". */
-export async function cargarCanonDelMes(supabase: SupabaseClient, mes: string): Promise<{ resumen: ResumenShopping[]; error?: string }> {
-  const [shRes, asigRes, factRes] = await Promise.all([
-    supabase.from('canon_shoppings').select('id, nombre, porcentaje_canon, canon_minimo').eq('activo', true).order('nombre'),
-    supabase.from('canon_soporte_shoppings').select('soporte_id, shopping_id, peso'),
-    supabase
-      .from('facturas')
-      .select(`
-        id, orden_id, numero, tipo, estado, cuota, cuotas_total, importe_arrendamiento, moneda,
-        ordenes_venta(numero, estado, marca, comision_agencia_pct,
-          clientes(nombre, empresa), agencias(nombre, porcentaje_comision))
-      `)
-      .eq('mes_pauta', `${mes}-01`)
-      .neq('estado', 'anulada'),
-  ])
-  const error = shRes.error?.message ?? asigRes.error?.message ?? factRes.error?.message
-  if (error) return { resumen: [], error }
+const mesesEntre = (desde01: string, hasta01: string) => {
+  const [y1, m1] = desde01.split('-').map(Number), [y2, m2] = hasta01.split('-').map(Number)
+  return (y2 - y1) * 12 + (m2 - m1)
+}
 
-  const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : v ?? null)
+const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : v ?? null)
+
+const SELECT_FACTURAS = `
+  id, orden_id, numero, tipo, estado, cuota, cuotas_total, importe_arrendamiento, moneda, cotizacion,
+  ordenes_venta(numero, estado, marca, comision_agencia_pct,
+    clientes(nombre, empresa), agencias(nombre, porcentaje_comision))
+`
+
+/** Facturas de la base → FacturaCanon (sólo de ventas aprobadas). */
+function aFacturasCanon(filas: any[], cotizHoy: number | null): FacturaCanon[] {
   const vivas = new Set<string>(ESTADOS_VENTA_VIVA)
-  const facturas: FacturaCanon[] = []
-  for (const f of factRes.data ?? []) {
+  const out: FacturaCanon[] = []
+  for (const f of filas) {
     const o = first<any>(f.ordenes_venta)
     // Una venta sin aprobar todavía no salió.
     if (!o || !vivas.has(o.estado)) continue
     const cli = first<any>(o.clientes)
     const ag = first<any>(o.agencias)
-    facturas.push({
+    const usd = (f.moneda ?? 'UYU') === 'USD'
+    out.push({
       id: f.id, orden_id: f.orden_id, numero: f.numero, tipo: f.tipo, estado: f.estado,
       cuota: f.cuota, cuotas_total: f.cuotas_total,
       importe_arrendamiento: Number(f.importe_arrendamiento ?? 0), moneda: f.moneda ?? 'UYU',
@@ -178,11 +201,54 @@ export async function cargarCanonDelMes(supabase: SupabaseClient, mes: string): 
       agencia: ag?.nombre ?? null, marca: o.marca ?? null,
       // Sin agencia (venta directa) no hay nada que descontar.
       pct_agencia: ag ? Number(o.comision_agencia_pct ?? ag.porcentaje_comision ?? 0) : 0,
+      cotizacion: usd ? (f.cotizacion ? Number(f.cotizacion) : cotizHoy) : null,
+      cotizacion_provisoria: usd && !f.cotizacion,
     })
   }
+  return out
+}
+
+/** Trae de la base todo lo del mes y lo calcula. `mes` es "AAAA-MM". */
+export async function cargarCanonDelMes(supabase: SupabaseClient, mes: string): Promise<{ resumen: ResumenShopping[]; error?: string }> {
+  const mes01 = `${mes}-01`
+  // La tabla de planes es de la migración v49: sin ella, ningún plan.
+  const planesRes = await supabase.from('canon_planes').select('orden_id, cuotas, primer_mes')
+  const planes = planesRes.error ? [] : (planesRes.data ?? []) as { orden_id: string; cuotas: number; primer_mes: string }[]
+  const conPlan = new Set(planes.map(p => p.orden_id))
+  const planesDelMes = planes.filter(p => {
+    const k = mesesEntre(p.primer_mes.slice(0, 7) + '-01', mes01)
+    return k >= 0 && k < p.cuotas
+  })
+
+  const conCotizacion = async (q: (sel: string) => any) => {
+    // Sin la columna cotizacion (antes de v49), se lee sin ella.
+    let r = await q(SELECT_FACTURAS)
+    if (r.error && /cotizacion/.test(r.error.message)) r = await q(SELECT_FACTURAS.replace(', cotizacion', ''))
+    return r
+  }
+
+  const [shRes, asigRes, factRes, planFactRes] = await Promise.all([
+    supabase.from('canon_shoppings').select('id, nombre, porcentaje_canon, canon_minimo').eq('activo', true).order('nombre'),
+    supabase.from('canon_soporte_shoppings').select('soporte_id, shopping_id, peso'),
+    conCotizacion(sel => supabase.from('facturas').select(sel).eq('mes_pauta', mes01).neq('estado', 'anulada')),
+    planesDelMes.length
+      ? conCotizacion(sel => supabase.from('facturas').select(sel).in('orden_id', planesDelMes.map(p => p.orden_id)).neq('estado', 'anulada'))
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  const error = shRes.error?.message ?? asigRes.error?.message ?? factRes.error?.message ?? planFactRes.error?.message
+  if (error) return { resumen: [], error }
+
+  // Cotización del día para lo que está en dólares y todavía no se facturó.
+  const todas = [...(factRes.data ?? []), ...(planFactRes.data ?? [])] as any[]
+  const faltaCotiz = todas.some(f => f.moneda === 'USD' && !f.cotizacion)
+  const cotizHoy = faltaCotiz ? (await cotizacionDolarBCU(hoyUY()))?.valor ?? null : null
+
+  // Las ventas con plan no se liquidan cuota por cuota.
+  const facturas = aFacturasCanon((factRes.data ?? []).filter((f: any) => !conPlan.has(f.orden_id)), cotizHoy)
+  const facturasPlan = aFacturasCanon(planFactRes.data ?? [], cotizHoy)
 
   let items: ItemVenta[] = []
-  const ordenes = Array.from(new Set(facturas.map(f => f.orden_id)))
+  const ordenes = Array.from(new Set([...facturas, ...facturasPlan].map(f => f.orden_id)))
   if (ordenes.length) {
     const { data, error: iErr } = await supabase
       .from('orden_items')
@@ -195,5 +261,34 @@ export async function cargarCanonDelMes(supabase: SupabaseClient, mes: string): 
   const shoppings = (shRes.data ?? []).map(s => ({
     id: s.id, nombre: s.nombre, porcentaje_canon: Number(s.porcentaje_canon ?? 0), canon_minimo: Number(s.canon_minimo ?? 0),
   }))
-  return { resumen: calcularCanon(shoppings, (asigRes.data ?? []) as Asignacion[], facturas, items) }
+  const asig = (asigRes.data ?? []) as Asignacion[]
+  const resumen = calcularCanon(shoppings, asig, facturas, items)
+
+  // Planes: el canon de toda la venta, dividido en sus cuotas.
+  if (planesDelMes.length) {
+    const delPlan = calcularCanon(shoppings, asig, facturasPlan, items)
+    for (const r of delPlan) {
+      const destino = resumen.find(x => x.shopping.id === r.shopping.id)!
+      for (const p of planesDelMes) {
+        const ls = r.lineas.filter(l => l.orden_id === p.orden_id)
+        if (!ls.length) continue
+        const n = p.cuotas
+        const k = mesesEntre(p.primer_mes.slice(0, 7) + '-01', mes01) + 1
+        const suma = (fn: (l: LineaCanon) => number) => r2(ls.reduce((t, l) => t + fn(l), 0) / n)
+        destino.lineas.push({
+          ...ls[0],
+          factura_id: `plan-${p.orden_id}`, numero: ls.map(l => l.numero).filter(Boolean).join(', ') || null, tipo: 'factura',
+          cuota: k, cuotas_total: n,
+          soportes: Array.from(new Set(ls.flatMap(l => l.soportes))),
+          arrendamiento: suma(l => l.arrendamiento), neto_agencia: suma(l => l.neto_agencia), canon: suma(l => l.canon),
+          usd: null, cotizacion_provisoria: ls.some(l => l.cotizacion_provisoria),
+          plan: { cuota: k, cuotas: n, primer_mes: p.primer_mes },
+        })
+      }
+      destino.lineas.sort((a, b) => a.cliente.localeCompare(b.cliente))
+      destino.variable = r2(destino.lineas.reduce((t, l) => t + l.canon, 0))
+    }
+  }
+  return { resumen }
 }
+

@@ -771,6 +771,7 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
           <div style={{ marginBottom: 16 }}>
             <FacturacionVenta
               ordenId={orden.id}
+              conAgencia={!!joinedNombre(orden.agencias) && joinedNombre(orden.agencias) !== '—'}
               moneda={orden.moneda ?? 'UYU'}
               montoTotal={orden.monto_total}
               aprobada={estaAprobada}
