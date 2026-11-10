@@ -21,7 +21,7 @@ export interface OrdenItemManual {
   nota?: string
   requiereGrabado?: boolean
   requiereProduccion?: boolean
-  /** Producción por unidad; si no viene, la del catálogo. 0 = el cliente trae el material. */
+  /** Producción por unidad; si no viene, la del catálogo. 0 = renovación: el material ya está instalado y no se vuelve a producir. */
   produccionUnitario?: number | null
 }
 
@@ -169,8 +169,13 @@ export async function crearVentaManual(
           nota: item.nota || null,
           // Como en la venta desde cotización: lo decide el tipo de soporte
           // (impreso → producción, digital → grabado), no lo que mande el form.
+          // Una renovación sin producción (el material ya está instalado) no
+          // requiere producción: así no se generan tareas de arte ni impresión.
           ...(soporteDe.get(item.soporteId)?.tipo_cotizador
-            ? flagsPorTipo(soporteDe.get(item.soporteId).tipo_cotizador)
+            ? (() => {
+                const f = flagsPorTipo(soporteDe.get(item.soporteId).tipo_cotizador)
+                return { ...f, requiere_produccion: f.requiere_produccion && montos[idx].prod > 0 }
+              })()
             : { requiere_grabado: item.requiereGrabado ?? false, requiere_produccion: (item.requiereProduccion ?? false) || montos[idx].prod > 0 }),
         }))
       )

@@ -789,7 +789,7 @@ const handler = createMcpHandler(
           semanas: z.number().int().min(1),
           precio_semanal: z.number().min(0).optional().describe('Precio por semana y unidad, sin IVA. Si no viene, el de lista (con temporada alta si corresponde).'),
           descuento_pct: z.number().min(0).max(100).optional(),
-          produccion_unitario: z.number().min(0).optional().describe('Producción por unidad. 0 si el cliente trae el material. Si no viene, la de lista.'),
+          produccion_unitario: z.number().min(0).optional().describe('Producción por unidad. 0 si es una renovación y el material ya está instalado (no se vuelve a producir). Si no viene, la de lista.'),
           salidas: z.number().int().optional().describe('Pantallas: salidas por hora.'),
           segundos: z.number().int().optional().describe('Pantallas: duración del spot.'),
           nota: z.string().optional(),
