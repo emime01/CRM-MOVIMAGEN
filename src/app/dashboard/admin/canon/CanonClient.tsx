@@ -30,6 +30,8 @@ interface Linea {
   cuota: number; cuotas_total: number; cliente: string; agencia: string | null; marca: string | null
   soportes: string[]; moneda: string; arrendamiento: number; pct_agencia: number; neto_agencia: number
   pct_canon: number; canon: number; reparto: number | null
+  usd?: number | null; cotizacion?: number | null; cotizacion_provisoria?: boolean
+  plan?: { cuota: number; cuotas: number; primer_mes: string } | null
 }
 interface FilaMes {
   shopping: { id: string; nombre: string; porcentaje_canon: number; canon_minimo: number }
@@ -94,51 +96,41 @@ export default function CanonClient({ paga = true, configura = true }: {
     } finally { setOcupado(false) }
   }
 
-  /** El informe de un shopping, con el formato del que se manda hoy. */
+  /** El informe de un shopping, para mandarle (logo, fecha, fórmulas, en pesos). */
   async function informe(f: FilaMes) {
-    const xlsx = await import('xlsx')
-    const filasXls: (string | number)[][] = [
-      [`Informe de canon · ${f.shopping.nombre} · ${nombreMes(mes)}`],
-      [],
-      ['Cliente', 'Agencia', 'Marca', 'Soportes', 'Cuota', 'Nº factura', 'Moneda', 'Arrend. s/IVA', '% Ag.', '$ Neto de Ag.', '% Canon', 'Canon'],
-      ...f.lineas.map(l => [
-        l.cliente + (l.tipo === 'nota_credito' ? ' (nota de crédito)' : ''),
-        l.agencia ?? 'Directo', l.marca ?? '',
-        l.soportes.join(', ') + (l.reparto ? ` (1/${l.reparto})` : ''),
-        l.cuotas_total > 1 ? `${l.cuota} de ${l.cuotas_total}` : '',
-        l.numero ?? '', l.moneda, l.arrendamiento, l.pct_agencia, l.neto_agencia, l.pct_canon, l.canon,
-      ]),
-      [],
-      ['Canon variable', '', '', '', '', '', 'UYU', '', '', '', '', f.variable],
-      ...(f.variable_usd ? [['Canon variable (dólares)', '', '', '', '', '', 'USD', '', '', '', '', f.variable_usd]] : []),
-      ['Canon mínimo', '', '', '', '', '', 'UYU', '', '', '', '', f.minimo],
-      ...(f.arrastre ? [['Del mes anterior', '', '', '', '', '', 'UYU', '', '', '', '', f.arrastre]] : []),
-      ...(f.diferido ? [['Pasa al mes siguiente', '', '', '', '', '', 'UYU', '', '', '', '', -f.diferido]] : []),
-      ['Canon a pagar', '', '', '', '', '', 'UYU', '', '', '', '', f.a_pagar],
-      ['IVA 22%', '', '', '', '', '', 'UYU', '', '', '', '', Math.round(f.a_pagar * IVA * 100) / 100],
-      ['Total con IVA', '', '', '', '', '', 'UYU', '', '', '', '', Math.round(f.a_pagar * (1 + IVA) * 100) / 100],
-    ]
-    const ws = xlsx.utils.aoa_to_sheet(filasXls)
-    ws['!cols'] = [26, 18, 16, 28, 8, 11, 8, 14, 7, 14, 8, 12].map(wch => ({ wch }))
-    const wb = xlsx.utils.book_new()
-    xlsx.utils.book_append_sheet(wb, ws, 'Canon')
-    xlsx.writeFile(wb, `Canon ${f.shopping.nombre} ${nombreMes(mes)}.xlsx`.replace(/[\\/:*?"<>|]/g, ''))
+    const { informeShoppingExcel } = await import('@/lib/canon/excel')
+    await informeShoppingExcel({ shopping: f.shopping, lineas: f.lineas, minimo: f.minimo, arrastre: f.arrastre, diferido: f.diferido }, mes)
   }
 
   async function resumenExcel() {
     if (!filas) return
-    const xlsx = await import('xlsx')
-    const datos = filas.map(f => ({
-      'Shopping': f.shopping.nombre, '% Canon': f.shopping.porcentaje_canon,
-      'Canon variable': f.variable, 'Canon mínimo': f.minimo, 'Del mes anterior': f.arrastre,
-      'Pasa al siguiente': f.diferido, 'A pagar': f.a_pagar, 'IVA': Math.round(f.a_pagar * IVA * 100) / 100,
-      'Total con IVA': Math.round(f.a_pagar * (1 + IVA) * 100) / 100, 'Variable USD': f.variable_usd || '',
-      'Estado': ESTADO[f.estado].label, 'Fecha de pago': f.fecha_pago ?? '',
-    }))
-    const ws = xlsx.utils.json_to_sheet(datos)
-    const wb = xlsx.utils.book_new()
-    xlsx.utils.book_append_sheet(wb, ws, 'Canon')
-    xlsx.writeFile(wb, `Canon ${nombreMes(mes)}.xlsx`)
+    const { resumenMesExcel } = await import('@/lib/canon/excel')
+    await resumenMesExcel(filas.map(f => ({
+      shopping: f.shopping.nombre, pct: f.shopping.porcentaje_canon, variable: f.variable, minimo: f.minimo,
+      arrastre: f.arrastre, diferido: f.diferido, estado: ESTADO[f.estado].label, fecha_pago: f.fecha_pago,
+    })), mes)
+  }
+
+  /** En cuántas cuotas se le paga al shopping el canon de una venta, y desde qué mes. */
+  async function planCanon(l: Linea) {
+    const actual = l.plan
+    const n = await pedir(`OIC #${l.orden_numero ?? '—'} · ${l.cliente}\n\n¿En cuántas cuotas se paga el canon de esta venta? (vacío o 0: cuota por cuota, según la facturación)`, actual ? String(actual.cuotas) : '')
+    if (n === null) return
+    const cuotas = Number(n.trim() || 0)
+    setOcupado(true)
+    try {
+      if (!cuotas) {
+        const r = await fetch('/api/admin/canon-planes', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orden_id: l.orden_id }) })
+        if (!r.ok) { const d = await r.json().catch(() => ({})); avisar(d.error ?? 'No se pudo guardar'); return }
+      } else {
+        if (!Number.isInteger(cuotas) || cuotas < 1 || cuotas > 36) { avisar('Poné un número de cuotas entre 1 y 36'); return }
+        const primer = await pedir('Mes de la primera cuota (AAAA-MM)', actual ? actual.primer_mes.slice(0, 7) : mes)
+        if (!primer) return
+        const r = await fetch('/api/admin/canon-planes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orden_id: l.orden_id, cuotas, primer_mes: primer.trim() }) })
+        if (!r.ok) { const d = await r.json().catch(() => ({})); avisar(d.error ?? 'No se pudo guardar'); return }
+      }
+      await cargarMes()
+    } finally { setOcupado(false) }
   }
 
   // ── Configuración ──
@@ -218,7 +210,6 @@ export default function CanonClient({ paga = true, configura = true }: {
   const nombreShopping = (id: string) => shoppings.find(x => x.id === id)?.nombre ?? '?'
 
   const totalAPagar = (filas ?? []).reduce((s, f) => s + f.a_pagar, 0)
-  const totalUsd = (filas ?? []).reduce((s, f) => s + f.variable_usd, 0)
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
@@ -242,7 +233,6 @@ export default function CanonClient({ paga = true, configura = true }: {
               {[
                 { label: `A pagar en ${nombreMes(mes)}`, value: formatMoney(totalAPagar, 'UYU'), color: 'var(--orange)' },
                 { label: 'Con IVA', value: formatMoney(totalAPagar * (1 + IVA), 'UYU'), color: 'var(--text-primary)' },
-                ...(totalUsd ? [{ label: 'Canon de ventas en dólares', value: formatMoney(totalUsd, 'USD'), color: 'var(--text-primary)' }] : []),
                 { label: 'Shoppings pagados', value: `${filas.filter(f => f.estado === 'pagado').length} de ${filas.length}`, color: '#15803d' },
               ].map(k => (
                 <div key={k.label} style={card}>
@@ -284,7 +274,6 @@ export default function CanonClient({ paga = true, configura = true }: {
                         {f.diferido !== 0 && <Dato label="Pasa al siguiente" valor={`− ${formatMoney(f.diferido, 'UYU')}`} />}
                         <Dato label="A pagar" valor={formatMoney(f.a_pagar, 'UYU')} grande />
                         <Dato label="Con IVA" valor={formatMoney(f.a_pagar * (1 + IVA), 'UYU')} />
-                        {f.variable_usd !== 0 && <Dato label="Variable USD" valor={formatMoney(f.variable_usd, 'USD')} />}
                       </div>
                     </div>
 
@@ -304,8 +293,8 @@ export default function CanonClient({ paga = true, configura = true }: {
                           <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 860 }}>
                               <thead><tr style={{ background: 'var(--bg-app)' }}>
-                                {['Cliente', 'Soportes', 'Factura', 'Arrend. s/IVA', '% Ag.', 'Neto de Ag.', 'Canon'].map((h, i) => (
-                                  <th key={h} style={{ ...th, textAlign: i >= 3 ? 'right' : 'left' }}>{h}</th>
+                                {['Cliente', 'Soportes', 'Factura', 'Arrend. s/IVA', '% Ag.', 'Neto de Ag.', 'Canon', 'Cuotas de canon'].map((h, i) => (
+                                  <th key={h} style={{ ...th, textAlign: i >= 3 && i <= 6 ? 'right' : 'left' }}>{h}</th>
                                 ))}
                               </tr></thead>
                               <tbody>
@@ -313,14 +302,29 @@ export default function CanonClient({ paga = true, configura = true }: {
                                   <tr key={l.factura_id + i} style={{ borderTop: '1px solid var(--border)', color: l.tipo === 'nota_credito' ? '#7c3aed' : undefined }}>
                                     <td style={td}>
                                       <Link href={`/dashboard/ventas/${l.orden_id}`} style={{ color: 'inherit', fontWeight: 600, textDecoration: 'none' }}>{l.cliente}</Link>
-                                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{[l.agencia ?? 'Directo', l.marca, l.cuotas_total > 1 ? `cuota ${l.cuota} de ${l.cuotas_total}` : null].filter(Boolean).join(' · ')}</div>
+                                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{[l.agencia ?? 'Directo', l.marca, !l.plan && l.cuotas_total > 1 ? `cuota ${l.cuota} de ${l.cuotas_total}` : null].filter(Boolean).join(' · ')}</div>
                                     </td>
                                     <td style={{ ...td, fontSize: 11.5 }}>{l.soportes.join(', ') || '—'}{l.reparto && <span style={{ color: 'var(--text-muted)' }}> · circuito, 1/{l.reparto}</span>}</td>
                                     <td style={{ ...td, fontFamily: 'monospace' }}>{l.numero ?? <span style={{ color: 'var(--text-muted)', fontFamily: 'Montserrat' }}>sin emitir</span>}{l.tipo === 'nota_credito' && <div style={{ fontSize: 10, fontFamily: 'Montserrat', fontWeight: 700 }}>Nota de crédito</div>}</td>
-                                    <td style={num}>{formatMoney(l.arrendamiento, l.moneda)}</td>
+                                    <td style={num}>
+                                      {formatMoney(l.arrendamiento, 'UYU')}
+                                      {l.usd != null && (
+                                        <div style={{ fontSize: 10, color: l.cotizacion_provisoria ? '#b26a00' : 'var(--text-muted)' }}>
+                                          {formatMoney(l.usd, 'USD')} × {l.cotizacion}{l.cotizacion_provisoria ? ' (BCU de hoy, provisoria)' : ''}
+                                        </div>
+                                      )}
+                                    </td>
                                     <td style={num}>{l.pct_agencia ? fmtPct(l.pct_agencia) : '—'}</td>
-                                    <td style={num}>{formatMoney(l.neto_agencia, l.moneda)}</td>
-                                    <td style={{ ...num, fontWeight: 700 }}>{formatMoney(l.canon, l.moneda)}</td>
+                                    <td style={num}>{formatMoney(l.neto_agencia, 'UYU')}</td>
+                                    <td style={{ ...num, fontWeight: 700 }}>{formatMoney(l.canon, 'UYU')}</td>
+                                    <td style={td}>
+                                      {l.plan
+                                        ? <span style={{ fontSize: 11.5 }}>Cuota {l.plan.cuota} de {l.plan.cuotas}</span>
+                                        : <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Según facturación</span>}
+                                      {f.estado === 'abierto' && l.tipo !== 'nota_credito' && (
+                                        <button disabled={ocupado} onClick={() => planCanon(l)} style={{ ...btn, padding: '3px 8px', marginLeft: 6, fontSize: 11 }}>Cambiar</button>
+                                      )}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -363,7 +367,7 @@ export default function CanonClient({ paga = true, configura = true }: {
             </div>
           )}
           <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 12 }}>
-            Se liquida en el mes en que sale la pauta: cada cuota en su mes. Por línea: arrendamiento sin IVA de los soportes del shopping × (1 − % de la agencia) × % de canon. La producción no entra; las notas de crédito restan; un circuito se reparte entre sus shoppings. Se paga el mayor entre el variable y el mínimo, más lo que se pasó del mes anterior.
+            Todo en pesos: lo facturado en dólares se pasa con la cotización de la factura (si todavía no se facturó, con la del BCU de hoy). Se liquida en el mes en que sale la pauta: cada cuota en su mes, salvo que la venta tenga sus propias cuotas de canon ("Cambiar" en cada línea). Por línea: arrendamiento sin IVA de los soportes del shopping × (1 − % de la agencia) × % de canon. La producción no entra; las notas de crédito restan; un circuito se reparte entre sus shoppings. Se paga el mayor entre el variable y el mínimo, más lo que se pasó del mes anterior.
           </p>
         </>
       )}

@@ -40,6 +40,7 @@ const TIPO_META: Record<string, { label: string; icon: React.ReactNode; color: s
   ops_producir_impresos:          { label: 'Producir impresos', icon: <Printer size={12} />,  color: '#d97706' },
   ops_crear_comprobante:          { label: 'Crear comprobante', icon: <Camera size={12} />,   color: '#16a34a' },
   admin_verificar_pago:           { label: 'Verificar pago',    icon: <DollarSign size={12} />, color: '#b45309' },
+  admin_seguimiento_cobranza:     { label: 'Cobranza',          icon: <DollarSign size={12} />, color: '#b45309' },
 }
 
 /** Cuántas completadas se muestran antes de cortar: la columna crece para siempre. */
@@ -191,7 +192,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
           <p style={{ fontSize: 14, fontWeight: 700, color: '#4a4845', margin: '0 0 6px' }}>No hay tareas para mostrar</p>
           <p style={{ fontSize: 13, margin: 0 }}>
             {rolFilter === 'administracion'
-              ? 'Aparecen al cargar una promesa de pago en Deudores.'
+              ? 'Aparecen al cargar en Deudores una promesa de pago o una gestión con próxima acción.'
               : 'Las tareas aparecen automáticamente al aprobar órdenes de venta.'}
           </p>
         </div>

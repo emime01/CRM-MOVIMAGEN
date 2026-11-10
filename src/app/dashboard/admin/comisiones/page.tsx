@@ -101,9 +101,34 @@ export default async function ComisionesPage({ searchParams }: { searchParams: {
     }
   })
 
-  // Por agencia: lo que le toca a cada una según lo pactado en cada venta.
+  // Por agencia: la comisión se registra al facturar (comisiones_agencia,
+  // migración v49), con su estado: pendiente, pagada o descontada (la agencia
+  // pagó el neto). Sin esa tabla, como antes: lo cobrado en el mes.
   const agencias: AgenciaRow[] = []
-  for (const f of cobradasRes.data ?? []) {
+  const { data: comAg, error: comAgErr } = await supabase
+    .from('comisiones_agencia')
+    .select(`
+      id, factura_id, agencia_id, base_arr, base_prod, pct_arr, pct_prod, monto, moneda, estado, fecha_pago,
+      facturas!inner(numero, fecha_emision, fecha_cobro),
+      ordenes_venta(numero, clientes(nombre, empresa)),
+      agencias(nombre)
+    `)
+    .gte('facturas.fecha_emision', `${mes}-01`)
+    .lte('facturas.fecha_emision', finDeMes(mes))
+  if (!comAgErr) {
+    for (const c of comAg ?? []) {
+      const f = first<any>(c.facturas), o = first<any>(c.ordenes_venta), cli = first<any>(o?.clientes), ag = first<any>(c.agencias)
+      agencias.push({
+        factura_id: c.factura_id, comision_id: c.id, agencia_id: c.agencia_id, agencia: ag?.nombre ?? '—',
+        cliente: cli?.empresa ?? cli?.nombre ?? '—', orden_numero: o?.numero ?? null, numero: f?.numero ?? null,
+        fecha_cobro: f?.fecha_cobro ?? null, fecha_emision: f?.fecha_emision ?? null, moneda: c.moneda ?? 'UYU',
+        arrendamiento: Number(c.base_arr), produccion: Number(c.base_prod),
+        pct_arrendamiento: Number(c.pct_arr), pct_produccion: Number(c.pct_prod),
+        comision: Number(c.monto), estado: c.estado, fecha_pago: c.fecha_pago,
+      })
+    }
+  }
+  for (const f of comAgErr ? (cobradasRes.data ?? []) : []) {
     const o = first<any>(f.ordenes_venta)
     const ag = first<any>(o?.agencias)
     if (!ag) continue
@@ -152,6 +177,7 @@ export default async function ComisionesPage({ searchParams }: { searchParams: {
       cuatrimestres={cuatrimestresCercanos()}
       comisiones={comisiones}
       agencias={agencias}
+      agenciasConEstado={!comAgErr}
       bonos={bonosRows}
       administra={haceAdministracion(session.user.rol)}
       paga={pagaAdministracion(session.user.rol)}

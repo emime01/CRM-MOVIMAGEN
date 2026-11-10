@@ -154,7 +154,7 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
       if (res.ok) setHistorial((await res.json()).gestiones ?? [])
     }
     if (m.tipo === 'promesa') setForm({ fecha: m.r.promesa ?? '', nota: '' })
-    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '', monto: String(m.r.importe) })
+    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '', monto: String(m.r.importe), descuenta: '' })
   }
 
   async function guardar(quitarPromesa = false) {
@@ -185,8 +185,10 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
           body: JSON.stringify({
             accion: 'cobrar', fecha: form.fecha, metodo: form.metodo,
             // Pagó una parte: el saldo queda pendiente con el mismo número.
-            ...(modal.r.tipo !== 'nota_credito' && form.monto !== '' && Number(form.monto) < Number(modal.r.importe) - 0.005
+            ...(form.descuenta !== '1' && modal.r.tipo !== 'nota_credito' && form.monto !== '' && Number(form.monto) < Number(modal.r.importe) - 0.005
               ? { monto: Number(form.monto) } : {}),
+            // La agencia pagó el neto de su comisión.
+            ...(form.descuenta === '1' ? { descuenta_agencia: true } : {}),
           }),
         })
       }
@@ -379,11 +381,11 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
                     <textarea value={form.nota} onChange={e => setForm(f => ({ ...f, nota: e.target.value }))} rows={3}
                       placeholder="Ej: Envié mail con el detalle a contaduría." style={{ ...inp, resize: 'vertical' }} />
                   </label>
-                  <label style={lbl}>Volver a mirar el (opcional)
+                  <label style={lbl}>Próxima acción el (opcional: crea una tarea para ese día)
                     <input type="date" value={form.proxima} onChange={e => setForm(f => ({ ...f, proxima: e.target.value }))} style={inp} />
                   </label>
                   <p style={{ fontSize: 11.5, color: 'var(--text-muted)', margin: 0 }}>
-                    Si la agencia confirmó qué día paga, cargalo como promesa de pago: crea la tarea de seguimiento.
+                    Con fecha de próxima acción, te queda una tarea en Tareas para ese día (se cierra sola al cobrar). Si la agencia confirmó qué día paga, cargalo como promesa de pago.
                   </p>
                 </>
               )}
@@ -407,7 +409,13 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
                   <label style={lbl}>{modal.r.tipo === 'nota_credito' ? 'Fecha en que se aplicó' : 'Fecha en que entró el pago'}
                     <input type="date" value={form.fecha} max={hoy()} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} style={inp} />
                   </label>
-                  {modal.r.tipo !== 'nota_credito' && (
+                  {modal.r.tipo !== 'nota_credito' && modal.r.agencia && (
+                    <label style={{ ...lbl, display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, fontWeight: 500 }}>
+                      <input type="checkbox" checked={form.descuenta === '1'} onChange={e => setForm(f => ({ ...f, descuenta: e.target.checked ? '1' : '' }))} style={{ marginTop: 2, accentColor: 'var(--orange)' }} />
+                      <span>{modal.r.agencia} se descontó su comisión y pagó el neto. La factura queda cobrada entera y la comisión de la agencia queda saldada.</span>
+                    </label>
+                  )}
+                  {modal.r.tipo !== 'nota_credito' && form.descuenta !== '1' && (
                     <label style={lbl}>Importe cobrado
                       <input type="number" step="0.01" min="0" max={modal.r.importe} value={form.monto ?? ''} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={inp} />
                       <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>Si pagó una parte, el saldo queda pendiente con el mismo número de factura.</span>

@@ -27,7 +27,7 @@ export const PORCENTAJE_COMISION_VENDEDOR = 6.75
 export async function registrarCobroDeFactura(
   supabase: SupabaseClient,
   facturaId: string,
-  opts: { fecha?: string; metodo?: string; userId: string },
+  opts: { fecha?: string; metodo?: string; userId: string; montoPagado?: number },
 ): Promise<{ ok: boolean; error?: string; comisionGenerada: boolean }> {
   const hoy = hoyUY()
   const fechaCobro = opts.fecha || hoy
@@ -66,7 +66,8 @@ export async function registrarCobroDeFactura(
     .from('pagos')
     .insert({
       orden_id: factura.orden_id,
-      monto: Number(factura.importe_total),
+      // Lo que entró de verdad: si la agencia se descontó su comisión, el neto.
+      monto: opts.montoPagado ?? Number(factura.importe_total),
       fecha_pago: fechaCobro,
       numero_factura: factura.numero ?? null,
       metodo: opts.metodo ?? null,

@@ -10,6 +10,44 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  */
 
 export const TIPO_TAREA_PAGO = 'admin_verificar_pago'
+/** Tarea que deja una gestión de cobranza con próxima acción (llamar de nuevo, reenviar…). */
+export const TIPO_TAREA_GESTION = 'admin_seguimiento_cobranza'
+
+const ETIQUETA_GESTION: Record<string, string> = {
+  llamada: 'Volver a llamar', email: 'Volver a escribir', whatsapp: 'Volver a escribir por WhatsApp',
+  visita: 'Visitar', promesa_pago: 'Verificar pago', otro: 'Seguimiento de cobranza',
+}
+
+/**
+ * Una gestión con "próxima acción" deja una tarea de Administración para ese
+ * día (una por factura: si se registra otra gestión, la tarea se mueve). Se
+ * cierra sola cuando la factura se cobra.
+ */
+export async function tareaDeGestion(
+  supabase: SupabaseClient,
+  g: { orden_id: string; factura_id: string | null; tipo: string; nota: string | null; proxima_accion: string },
+): Promise<void> {
+  let cliente = 'cliente', numero: string | null = null
+  const { data: o } = await supabase.from('ordenes_venta').select('numero, clientes(nombre, empresa)').eq('id', g.orden_id).maybeSingle()
+  const cli: any = o ? (Array.isArray(o.clientes) ? o.clientes[0] : o.clientes) : null
+  cliente = cli?.empresa ?? cli?.nombre ?? cliente
+  if (g.factura_id) {
+    const { data: f } = await supabase.from('facturas').select('numero').eq('id', g.factura_id).maybeSingle()
+    numero = f?.numero ?? null
+  }
+  const descripcion = `${ETIQUETA_GESTION[g.tipo] ?? 'Seguimiento de cobranza'} — ${cliente}${numero ? `, factura ${numero}` : ''}${g.nota ? `: ${g.nota}` : ''}`
+  let q = supabase.from('tasks').select('id').eq('tipo', TIPO_TAREA_GESTION).neq('estado', 'completada').limit(1)
+  q = g.factura_id ? q.eq('factura_id', g.factura_id) : q.eq('orden_id', g.orden_id).is('factura_id', null)
+  const { data: abierta } = await q
+  if (abierta?.length) {
+    await supabase.from('tasks').update({ fecha_limite: g.proxima_accion, descripcion }).eq('id', abierta[0].id)
+  } else {
+    await supabase.from('tasks').insert({
+      tipo: TIPO_TAREA_GESTION, asignado_a_rol: 'administracion',
+      orden_id: g.orden_id, factura_id: g.factura_id, descripcion, fecha_limite: g.proxima_accion,
+    })
+  }
+}
 
 export const TIPOS_GESTION = ['llamada', 'email', 'whatsapp', 'visita', 'promesa_pago', 'otro'] as const
 
@@ -121,6 +159,6 @@ export async function cerrarSeguimiento(supabase: SupabaseClient, facturaId: str
     .from('tasks')
     .update({ estado: 'completada', completed_at: new Date().toISOString() })
     .eq('factura_id', facturaId)
-    .eq('tipo', TIPO_TAREA_PAGO)
+    .in('tipo', [TIPO_TAREA_PAGO, TIPO_TAREA_GESTION])
     .neq('estado', 'completada')
 }

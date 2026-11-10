@@ -61,9 +61,11 @@ const btn = (bg: string, color = '#fff'): React.CSSProperties => ({
 })
 
 export default function FacturacionVenta({
-  ordenId, moneda, montoTotal, aprobada, onImprimir,
+  ordenId, moneda, montoTotal, aprobada, onImprimir, conAgencia = false,
 }: {
   ordenId: string
+  /** La venta viene por agencia: al cobrar se puede indicar que se descontó su comisión. */
+  conAgencia?: boolean
   moneda: string
   montoTotal: number | null
   /** Antes de la aprobación del gerente no se factura. */
@@ -118,11 +120,27 @@ export default function FacturacionVenta({
     }
   }
 
+  // La cotización del BCU para la fecha de la factura (sólo en dólares).
+  const [cotizInfo, setCotizInfo] = useState('')
+  async function sugerirCotizacion(fecha: string) {
+    setCotizInfo('Consultando el BCU…')
+    try {
+      const r = await fetch(`/api/cotizacion?fecha=${fecha}`)
+      const d = await r.json()
+      if (!r.ok) { setCotizInfo('No se pudo consultar el BCU: escribila a mano.'); return }
+      setForm(prev => ({ ...prev, cotizacion: String(d.valor) }))
+      setCotizInfo(`BCU, dólar billete del ${d.fecha.split('-').reverse().join('/')}`)
+    } catch { setCotizInfo('No se pudo consultar el BCU: escribila a mano.') }
+  }
+
   function abrir(m: Modal) {
     setModal(m)
     if (!m) return
-    if (m.tipo === 'emitir') setForm({ numero: '', fecha: hoy(), total: String(m.f.importe_total) })
-    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '', monto: String(m.f.importe_total) })
+    if (m.tipo === 'emitir') {
+      setForm({ numero: '', fecha: hoy(), total: String(m.f.importe_total), cotizacion: '' })
+      if ((m.f.moneda || moneda) === 'USD') sugerirCotizacion(hoy())
+    }
+    if (m.tipo === 'cobrar') setForm({ fecha: hoy(), metodo: '', monto: String(m.f.importe_total), descuenta: '' })
     if (m.tipo === 'anular') setForm({ motivo: '' })
     if (m.tipo === 'editar') setForm({
       mes: m.f.mes_pauta.slice(0, 7),
@@ -141,12 +159,16 @@ export default function FacturacionVenta({
       if (!form.numero.trim()) { avisar('Indicá el número de factura'); return }
       ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', {
         accion: 'emitir', numero: form.numero.trim(), fecha_emision: form.fecha,
+        ...(form.cotizacion ? { cotizacion: Number(form.cotizacion) } : {}),
         ...(Number(form.total) !== Number(modal.f.importe_total) ? { importe_total: Number(form.total) } : {}),
       })
     } else if (modal.tipo === 'cobrar') {
-      const parcial = modal.f.tipo !== 'nota_credito' && form.monto !== '' && Number(form.monto) < Number(modal.f.importe_total) - 0.005
+      const descuenta = form.descuenta === '1'
+      const parcial = !descuenta && modal.f.tipo !== 'nota_credito' && form.monto !== '' && Number(form.monto) < Number(modal.f.importe_total) - 0.005
       ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', {
-        accion: 'cobrar', fecha: form.fecha, metodo: form.metodo, ...(parcial ? { monto: Number(form.monto) } : {}),
+        accion: 'cobrar', fecha: form.fecha, metodo: form.metodo,
+        ...(parcial ? { monto: Number(form.monto) } : {}),
+        ...(descuenta ? { descuenta_agencia: true } : {}),
       })
     } else if (modal.tipo === 'anular') {
       ok = await enviar(`/api/facturas/${modal.f.id}`, 'PATCH', { accion: 'anular', motivo: form.motivo })
@@ -288,7 +310,7 @@ export default function FacturacionVenta({
                           <button onClick={() => abrir({ tipo: 'editar', f })} disabled={ocupado} style={btn('#fff', 'var(--text-secondary)')} title="Ajustar mes e importes"><Pencil size={12} /></button>
                         )}
                         {f.estado === 'prevista' && puedeAdministrar && aprobada && (
-                          <button onClick={() => abrir({ tipo: 'emitir', f })} disabled={ocupado} style={btn('#2563eb')}><Receipt size={12} /> Facturar</button>
+                          <button onClick={() => abrir({ tipo: 'emitir', f })} disabled={ocupado} style={btn('#2563eb')}><Receipt size={12} /> Facturado</button>
                         )}
                         {f.estado === 'emitida' && puedeAdministrar && (
                           <>
@@ -336,11 +358,17 @@ export default function FacturacionVenta({
           <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420, maxWidth: 'calc(100vw - 32px)' }} onClick={e => e.stopPropagation()}>
             {modal.tipo === 'emitir' && (
               <>
-                <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 6px' }}>Facturar cuota {modal.f.cuota} de {modal.f.cuotas_total}</h3>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 6px' }}>Marcar facturada la cuota {modal.f.cuota} de {modal.f.cuotas_total}</h3>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>Vence a {condicion} días de la fecha de factura. Queda pendiente de cobro.</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <label style={lblSt}>Nº de factura<input id="fv-numero" value={form.numero ?? ''} onChange={e => setForm({ ...form, numero: e.target.value })} placeholder="Ej. 10272" style={inputSt} autoFocus /></label>
-                  <label style={lblSt}>Fecha de factura<input id="fv-fecha" type="date" value={form.fecha ?? ''} onChange={e => setForm({ ...form, fecha: e.target.value })} style={inputSt} /></label>
+                  <label style={lblSt}>Fecha de factura<input id="fv-fecha" type="date" value={form.fecha ?? ''} onChange={e => { setForm({ ...form, fecha: e.target.value }); if ((modal.f.moneda || moneda) === 'USD' && e.target.value) sugerirCotizacion(e.target.value) }} style={inputSt} /></label>
+                  {(modal.f.moneda || moneda) === 'USD' && (
+                    <label style={lblSt}>Cotización del dólar (pesos por US$)
+                      <input id="fv-cotiz" type="number" step="0.001" value={form.cotizacion ?? ''} onChange={e => setForm({ ...form, cotizacion: e.target.value })} style={inputSt} />
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>{cotizInfo || 'Se usa para pasar a pesos (canon).'}</span>
+                    </label>
+                  )}
                   <label style={lblSt}>Importe total<input id="fv-total" type="number" step="0.01" value={form.total ?? ''} onChange={e => setForm({ ...form, total: e.target.value })} style={inputSt} /></label>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Si se factura una parte, ajustá el importe y el resto queda para otra cuota.</span>
                 </div>
@@ -352,7 +380,13 @@ export default function FacturacionVenta({
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>Se genera la comisión del vendedor sobre el arrendamiento de esta factura.</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <label style={lblSt}>Fecha de cobro<input id="fv-cobro" type="date" value={form.fecha ?? ''} onChange={e => setForm({ ...form, fecha: e.target.value })} style={inputSt} /></label>
-                  {modal.f.tipo !== 'nota_credito' && (
+                  {modal.f.tipo !== 'nota_credito' && conAgencia && (
+                    <label style={{ ...lblSt, display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, fontWeight: 500 }}>
+                      <input type="checkbox" checked={form.descuenta === '1'} onChange={e => setForm({ ...form, descuenta: e.target.checked ? '1' : '' })} style={{ marginTop: 2, accentColor: 'var(--orange)' }} />
+                      <span>La agencia se descontó su comisión y pagó el neto. La factura queda cobrada entera y la comisión de la agencia queda saldada.</span>
+                    </label>
+                  )}
+                  {modal.f.tipo !== 'nota_credito' && form.descuenta !== '1' && (
                     <label style={lblSt}>Importe cobrado (si pagó una parte, el saldo queda pendiente con el mismo número)
                       <input id="fv-monto" type="number" step="0.01" min="0" max={modal.f.importe_total} value={form.monto ?? ''} onChange={e => setForm({ ...form, monto: e.target.value })} style={inputSt} />
                     </label>
