@@ -6,7 +6,7 @@ import { estaCerrada } from '@/lib/ventas/estados'
 import { registrarCobroDeFactura } from '@/lib/ventas/cobrar'
 import { registrarPromesa, cerrarSeguimiento } from '@/lib/ventas/cobranza'
 import { hoyUY } from '@/lib/fechas'
-import { cotizacionDolarBCU } from '@/lib/bcu'
+import { cotizacionDolar } from '@/lib/bcu'
 import { registrarComisionAgencia, comisionAgenciaDe } from '@/lib/ventas/comision-agencia'
 import {
   calcularVencimiento, primerDiaDelMes, CONDICION_PAGO_POR_DEFECTO,
@@ -173,7 +173,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         const c = importe(body.cotizacion)
         if (c && c > 0) updates.cotizacion = c
         else {
-          const bcu = await cotizacionDolarBCU(fecha)
+          const bcu = await cotizacionDolar(fecha)
           if (bcu) updates.cotizacion = bcu.valor
         }
       }

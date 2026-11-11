@@ -29,3 +29,32 @@ export async function cotizacionDolarBCU(fecha: string): Promise<{ fecha: string
     return null
   }
 }
+
+/**
+ * Respaldo si el BCU no responde: dólar BROU de datosUruguay (promedio entre
+ * compra y venta). Sólo da la cotización de ahora, no la de fechas pasadas.
+ * Fuente: Datos de datosUruguay.com (CC-BY-4.0).
+ */
+export async function cotizacionDolarBROU(): Promise<{ fecha: string; valor: number } | null> {
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 8000)
+    const res = await fetch('https://datosuruguay.com/api/v1/exchange-rates/usd/quote', { signal: ctrl.signal, cache: 'no-store' })
+    clearTimeout(t)
+    if (!res.ok) return null
+    const d = (await res.json())?.data
+    const valor = Number(d?.average ?? ((Number(d?.buy) + Number(d?.sell)) / 2))
+    if (!Number.isFinite(valor) || valor <= 0) return null
+    return { fecha: String(d?.as_of ?? '').slice(0, 10), valor: Math.round(valor * 1000) / 1000 }
+  } catch {
+    return null
+  }
+}
+
+/** La del BCU para la fecha; si el BCU no contesta, la del BROU de hoy. */
+export async function cotizacionDolar(fecha: string): Promise<{ fecha: string; valor: number; fuente: 'BCU' | 'BROU' } | null> {
+  const bcu = await cotizacionDolarBCU(fecha)
+  if (bcu) return { ...bcu, fuente: 'BCU' }
+  const brou = await cotizacionDolarBROU()
+  return brou ? { ...brou, fuente: 'BROU' } : null
+}

@@ -123,14 +123,16 @@ export default function FacturacionVenta({
   // La cotización del BCU para la fecha de la factura (sólo en dólares).
   const [cotizInfo, setCotizInfo] = useState('')
   async function sugerirCotizacion(fecha: string) {
-    setCotizInfo('Consultando el BCU…')
+    setCotizInfo('Consultando la cotización…')
     try {
       const r = await fetch(`/api/cotizacion?fecha=${fecha}`)
       const d = await r.json()
-      if (!r.ok) { setCotizInfo('No se pudo consultar el BCU: escribila a mano.'); return }
+      if (!r.ok) { setCotizInfo('No se pudo consultar la cotización: escribila a mano.'); return }
       setForm(prev => ({ ...prev, cotizacion: String(d.valor) }))
-      setCotizInfo(`BCU, dólar billete del ${d.fecha.split('-').reverse().join('/')}`)
-    } catch { setCotizInfo('No se pudo consultar el BCU: escribila a mano.') }
+      setCotizInfo(d.fuente === 'BROU'
+        ? `BROU (promedio compra/venta) de hoy: el BCU no respondió. Datos de datosUruguay.com`
+        : `BCU, dólar billete del ${d.fecha.split('-').reverse().join('/')}`)
+    } catch { setCotizInfo('No se pudo consultar la cotización: escribila a mano.') }
   }
 
   function abrir(m: Modal) {

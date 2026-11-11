@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
-import { cotizacionDolarBCU } from '@/lib/bcu'
+import { cotizacionDolar } from '@/lib/bcu'
 import { hoyUY } from '@/lib/fechas'
 
 /**
@@ -241,7 +241,7 @@ export async function cargarCanonDelMes(supabase: SupabaseClient, mes: string): 
   // Cotización del día para lo que está en dólares y todavía no se facturó.
   const todas = [...(factRes.data ?? []), ...(planFactRes.data ?? [])] as any[]
   const faltaCotiz = todas.some(f => f.moneda === 'USD' && !f.cotizacion)
-  const cotizHoy = faltaCotiz ? (await cotizacionDolarBCU(hoyUY()))?.valor ?? null : null
+  const cotizHoy = faltaCotiz ? (await cotizacionDolar(hoyUY()))?.valor ?? null : null
 
   // Las ventas con plan no se liquidan cuota por cuota.
   const facturas = aFacturasCanon((factRes.data ?? []).filter((f: any) => !conPlan.has(f.orden_id)), cotizHoy)
