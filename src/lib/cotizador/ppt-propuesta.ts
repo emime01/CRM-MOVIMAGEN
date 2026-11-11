@@ -37,6 +37,8 @@ export interface DatosPpt {
   moneda: string
   observaciones: string
   incluirPrecios: boolean
+  /** "Opción B" si la oportunidad tiene varias versiones. */
+  version?: string | null
   vendedor?: { nombre?: string | null; email?: string | null } | null
   items: ItemPpt[]
 }
@@ -98,6 +100,10 @@ function datosRutero(i: ItemPpt) {
     tamano: i.medidas || (i.ubicacion ?? '').match(/(\d+\s*x\s*\d+\s*m)/)?.[1] || null,
   }
 }
+
+/** Ubicación corta: "Av Italia y Caldas - visual publico hacia el Este" → "Av Italia y Caldas". */
+export const ubicacionCorta = (u?: string | null) =>
+  (u ?? '').split(/\s+[·\-–/]\s+|\s*\(/)[0].trim() || null
 
 /** "8 x 12 m" → "96 m² (8 x 12)", como en el brochure. */
 function superficie(medidas?: string | null) {
@@ -201,7 +207,8 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
     const titulo = i.nombre
     type Linea = { k: string; v: string }
     const lineas: Linea[] = []
-    if (i.ubicacion) lineas.push({ k: '', v: i.ubicacion })
+    const ubic = ubicacionCorta(i.ubicacion)
+    if (ubic && ubic !== i.nombre) lineas.push({ k: '', v: ubic })
     if (i.categoria === 'Exterior') {
       const sup = superficie(i.medidas ?? (i.ubicacion ?? '').match(/(\d+\s*x\s*\d+)/)?.[1])
       if (sup) lineas.push({ k: 'Superficie: ', v: sup })
@@ -239,11 +246,11 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       circuloMv(s)
       raya(s, 0.6, 0.72, 0.45)
       s.addText('INVERSIÓN', { x: 1.15, y: 0.55, w: 6, h: 0.34, fontFace: F, fontSize: 12, bold: true, color: NARANJA, margin: 0 })
-      s.addText(`Propuesta para ${d.cliente || 'vos'}${hojas > 1 ? ` (${h + 1}/${hojas})` : ''}`, { x: 0.6, y: 0.95, w: 11, h: 0.7, fontFace: F, fontSize: 26, bold: true, color: TINTA, fit: 'shrink', margin: 0 })
+      s.addText(`Propuesta para ${d.cliente || 'vos'}${d.version ? ` · ${d.version}` : ''}${hojas > 1 ? ` (${h + 1}/${hojas})` : ''}`, { x: 0.6, y: 0.95, w: 11, h: 0.7, fontFace: F, fontSize: 26, bold: true, color: TINTA, fit: 'shrink', margin: 0 })
       const filas: any[] = [cab.map((t, k) => celda(t.toUpperCase(), { bold: true, fontSize: 9, color: NARANJA, align: k ? 'right' : 'left', border: borde(NARANJA, 1.5) }))]
       for (const i of d.items.slice(h * POR_HOJA, (h + 1) * POR_HOJA)) {
         filas.push([
-          celda(i.nombre + (i.ubicacion ? `\n${i.ubicacion}` : ''), { bold: true }),
+          celda(i.nombre + (ubicacionCorta(i.ubicacion) ? `\n${ubicacionCorta(i.ubicacion)}` : ''), { bold: true }),
           celda(String(i.cantidad), { align: 'right' }), celda(String(i.semanas), { align: 'right' }),
           celda(money(i.arr), { align: 'right' }),
           ...(conProd ? [celda(i.prod ? money(i.prod) : '—', { align: 'right' })] : []),
@@ -327,7 +334,7 @@ export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
   const fotos = resto.slice(shoppings.length)
   const pptx = await armarPresentacion(PptxGenJS, d, { portada, logo, mv, sombraAbajo, sombraArriba, fotos, logosShopping, medir })
 
-  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}.pptx`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\\/:*?"<>|]/g, '')
+  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}${d.version && !(d.campana ?? '').includes(d.version) ? ` - ${d.version}` : ''}.pptx`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\\/:*?"<>|]/g, '')
   // Descarga propia: con writeFile algunos navegadores lo bajaban como
   // "download", sin nombre ni extensión.
   const blob = await pptx.write({ outputType: 'blob' }) as Blob

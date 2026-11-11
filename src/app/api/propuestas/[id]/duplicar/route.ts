@@ -9,13 +9,10 @@ import { idEnOrden } from '@/lib/cotizador/orden-items'
 /**
  * POST /api/propuestas/[id]/duplicar
  *
- * Clona una cotización con todos sus items. La nueva nace en estado
- * 'borrador' con número COT-XXXX nuevo, sin lead asignado (para que el
- * vendedor decida si es alternativa del mismo lead o uno nuevo) y con
- * vendedor_id del usuario que duplica.
- *
- * Útil para: armar opciones A/B del mismo cliente, renovar campañas
- * viejas con leves ajustes, ofrecer la misma propuesta a otro cliente.
+ * Clona una cotización con todos sus items: es una versión más (opción B,
+ * C…) de la misma oportunidad. Nace en 'borrador', con número COT-XXXX
+ * nuevo, el mismo lead y cliente, el vendedor que la crea y el nombre
+ * "… · Opción X".
  */
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -40,6 +37,14 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const numero = await proximoNumeroCotizacion(supabase)
 
+  // Cada copia es una versión más de la misma oportunidad: "… · Opción B".
+  const { count } = src.lead_id
+    ? await supabase.from('propuestas').select('id', { count: 'exact', head: true }).eq('lead_id', src.lead_id)
+    : { count: 1 }
+  const letra = String.fromCharCode(65 + Math.min(25, Math.max(1, count ?? 1)))
+  const base = String(src.nombre ?? '').replace(/\s*\(copia\)$/i, '').replace(/\s*·\s*Opción [A-Z]$/i, '').trim()
+  const nombreNuevo = base ? `${base} · Opción ${letra}` : `Opción ${letra}`
+
   const { data: nueva, error } = await supabase
     .from('propuestas')
     .insert({
@@ -50,7 +55,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       agencia_id:     src.agencia_id ?? null,
       vendedor_id:    session.user.id,
       numero,
-      nombre:         src.nombre ? `${src.nombre} (copia)` : null,
+      nombre:         nombreNuevo,
       marca:          src.marca,
       observaciones:  src.observaciones,
       estado:         'borrador',

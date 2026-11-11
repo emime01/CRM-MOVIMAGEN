@@ -245,6 +245,8 @@ export default function CotizadorClient({
   const [clienteSuggs, setClienteSuggs] = useState<Cliente[]>([])
   const [savedId, setSavedId] = useState<string | null>(propuestaId)
   const [leadInfo, setLeadInfo] = useState<{ id: string; descripcion: string | null } | null>(null)
+  // Las versiones (opciones A, B, C…) de la misma oportunidad.
+  const [versiones, setVersiones] = useState<{ id: string; numero: string | null; nombre: string | null; estado: string; moneda: string | null; monto_total: number | null }[]>([])
   const [showLeadModal, setShowLeadModal] = useState(false)
   const [showClienteModal, setShowClienteModal] = useState(false)
   const [showPlantillas, setShowPlantillas] = useState(false)
@@ -269,6 +271,7 @@ export default function CotizadorClient({
         setPropuesta(p)
         setOrdenGenerada(pData.orden ?? null)
         setLeadInfo(p.leads ?? null)
+        setVersiones(pData.versiones ?? [])
         setNombre(p.nombre ?? '')
         setMarca(p.marca ?? '')
         setObservaciones(p.observaciones ?? p.notas ?? '')
@@ -583,7 +586,7 @@ export default function CotizadorClient({
   async function duplicar() {
     const pid = savedId ?? propuestaId
     if (!pid) return
-    if (!await confirmar('¿Duplicar esta cotización? Se crea un borrador nuevo (COT-XXXX) con los mismos items, sobre el mismo lead y cliente.')) return
+    if (!await confirmar('¿Crear una nueva versión de esta propuesta? Se crea otra cotización (opción B, C…) para el mismo cliente, con los mismos soportes, para que la ajustes.')) return
     const res = await fetch(`/api/propuestas/${pid}/duplicar`, { method: 'POST' })
     const data = await res.json()
     if (!res.ok) { avisar(data.error ?? 'Error al duplicar'); return }
@@ -613,6 +616,7 @@ export default function CotizadorClient({
         cliente: clienteQuery, campana: nombre, marca,
         desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin),
         moneda, observaciones, incluirPrecios: conPrecios,
+        version: versiones.length > 1 ? `Opción ${String.fromCharCode(65 + Math.max(0, versiones.findIndex(v => v.id === (savedId ?? propuestaId))))}` : null,
         vendedor: { nombre: sesion?.user?.name ?? null, email: sesion?.user?.email ?? null },
         items: calcs.map(({ item, c }) => ({
           nombre: item.soporte.nombre, ubicacion: item.soporte.ubicacion ?? null,
@@ -732,7 +736,7 @@ export default function CotizadorClient({
         {!isNew && (
           <button onClick={duplicar}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer' }}>
-            <Copy size={14} /> Duplicar
+            <Copy size={14} /> Nueva versión
           </button>
         )}
 
@@ -769,6 +773,35 @@ export default function CotizadorClient({
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
       </div>
+
+      {/* ── Versiones de la propuesta para el mismo cliente ── */}
+      {!isNew && versiones.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px', borderBottom: '1px solid #f3f4f6', background: '#fff', flexShrink: 0, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4 }}>Versiones</span>
+          {versiones.map((v, i) => {
+            const actual = v.id === (savedId ?? propuestaId)
+            const letra = String.fromCharCode(65 + Math.min(25, i))
+            return (
+              <a key={v.id} href={`/dashboard/cotizaciones/${v.id}`} title={v.nombre ?? undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, fontSize: 12, textDecoration: 'none',
+                  border: `1px solid ${actual ? 'var(--orange, #eb691c)' : '#e5e7eb'}`,
+                  background: actual ? 'rgba(235,105,28,0.08)' : '#fff', color: actual ? 'var(--orange, #eb691c)' : '#374151',
+                  fontWeight: actual ? 700 : 500, pointerEvents: actual ? 'none' : 'auto',
+                }}>
+                <b>Opción {letra}</b>
+                <span style={{ color: '#9ca3af' }}>{v.numero}</span>
+                {v.monto_total ? <span>{fmt(Number(v.monto_total), v.moneda ?? "UYU")}</span> : null}
+                {v.estado === 'aceptada' && <CheckCircle size={12} color="#16a34a" />}
+              </a>
+            )
+          })}
+          <button onClick={duplicar}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 999, border: '1px dashed #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer' }}>
+            <Plus size={12} /> Nueva versión
+          </button>
+        </div>
+      )}
 
       {/* ── Header form ── */}
       <div style={{ display: 'flex', gap: 12, padding: '12px 20px', borderBottom: '1px solid #f3f4f6', background: '#fafafa', flexShrink: 0, flexWrap: 'wrap' }}>
