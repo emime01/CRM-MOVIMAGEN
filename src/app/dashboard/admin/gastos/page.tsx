@@ -8,6 +8,8 @@ import { NuevoGasto, BorrarGasto } from './GastosAcciones'
 
 export const dynamic = 'force-dynamic'
 
+const GASTOS_DESACTIVADO = true
+
 const fmt = (n: number) => '$' + n.toLocaleString('es-UY', { maximumFractionDigits: 0 })
 
 const CATEGORIAS: Record<string, { color: string }> = {
@@ -34,6 +36,9 @@ export default async function GastosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
   if (!haceAdministracion(session.user.rol)) redirect('/dashboard')
+  // Gastos queda fuera por ahora (no se usa): el código se conserva para
+  // retomarlo. Se vuelve a habilitar sacando esta línea y el ítem del menú.
+  if (GASTOS_DESACTIVADO) redirect('/dashboard')
   const supabase = createServerClient()
 
   // Los totales y los desgloses salían de los últimos 50 gastos nada más, pero

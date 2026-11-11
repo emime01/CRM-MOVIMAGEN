@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { es, haceAdministracion, pagaAdministracion } from '@/lib/auth/roles'
+import { haceAdministracion } from '@/lib/auth/roles'
 import { aPagar, cargarCanonDelMes, mesAnterior } from '@/lib/canon/calcular'
 
 export const dynamic = 'force-dynamic'
@@ -120,10 +120,7 @@ export async function POST(req: NextRequest) {
   let notas: string | null = actual?.notas ?? null
   if (typeof body.notas === 'string') notas = body.notas.trim() || null
 
-  // Pagar es de Administración: la asistente prepara la liquidación.
-  if ((body.accion === 'pagar' || body.accion === 'desmarcar_pago') && !pagaAdministracion(session.user.rol)) {
-    return NextResponse.json({ error: 'El pago del canon lo registra Administración' }, { status: 403 })
-  }
+  // Marcar pagado el canon lo hacen Administración y la asistente (Belén).
 
   switch (body.accion) {
     case 'diferir': {

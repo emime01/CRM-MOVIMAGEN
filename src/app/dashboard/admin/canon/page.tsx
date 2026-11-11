@@ -16,7 +16,7 @@ export default async function CanonPage() {
   // canon es el de los shoppings, con el mismo porcentaje para todos.
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
-      <CanonClient paga={pagaAdministracion(session.user.rol)} configura={pagaAdministracion(session.user.rol)} />
+      <CanonClient paga={haceAdministracion(session.user.rol)} configura={pagaAdministracion(session.user.rol)} />
     </div>
   )
 }
