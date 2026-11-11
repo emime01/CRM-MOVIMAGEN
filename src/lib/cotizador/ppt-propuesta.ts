@@ -213,7 +213,7 @@ export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
     if (logoBlanco) { const h = 0.6; s.addImage({ data: logoBlanco.data, x: 0.8, y: H - 1.3, w: h * logoBlanco.w / logoBlanco.h, h }) }
   }
 
-  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}.pptx`.replace(/[\\/:*?"<>|]/g, '')
+  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}.pptx`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/:*?"<>|]/g, '')
   // Descarga propia: con writeFile algunos navegadores lo bajaban como
   // "download", sin nombre ni extensión.
   const blob = await pptx.write({ outputType: 'blob' }) as Blob
