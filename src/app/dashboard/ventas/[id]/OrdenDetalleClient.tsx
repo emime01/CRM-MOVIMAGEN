@@ -296,6 +296,24 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
     vendedorDeLaOrden === userId ||
     puede(userRol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
   )
+  // Renovación: nueva cotización con lo mismo, desde el día después del fin.
+  const compartidoId = (Array.isArray(orden.compartido) ? orden.compartido[0] : orden.compartido)?.id
+  const canRenovar = estaAprobada && (
+    vendedorDeLaOrden === userId || compartidoId === userId ||
+    puede(userRol, ['asistente_ventas', 'gerente_comercial'])
+  )
+  async function handleRenovar() {
+    if (!(await confirmar(`Se arma una cotización en borrador con los mismos soportes, desde el día siguiente al fin de esta campaña y con la misma duración, a precios vigentes. ¿Armar la renovación?`))) return
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/ordenes/${orden.id}/renovar`, { method: 'POST' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { avisar(d.error ?? 'No se pudo armar la renovación'); return }
+      if (d.aviso) avisar(d.aviso)
+      router.push(`/dashboard/cotizaciones/${d.id}`)
+    } finally { setActionLoading(false) }
+  }
+
   async function handleBorrar() {
     if (!(await confirmar(`¿Borrar la venta ${numero}? Se borra con sus líneas, comentarios y documentos. No se puede deshacer.`))) return
     setActionLoading(true)
@@ -440,6 +458,15 @@ export default function OrdenDetalleClient({ orden, leads, userRol, userId, driv
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {canRenovar && (
+            <button
+              onClick={handleRenovar}
+              disabled={actionLoading}
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Armar renovación
+            </button>
+          )}
           {canBorrar && (
             <button
               onClick={handleBorrar}

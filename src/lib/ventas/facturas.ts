@@ -54,7 +54,9 @@ export function calcularVencimiento(fechaEmision: string, dias: number): string 
 
 /** Reparte un importe en `n` partes de a centésimos; la última absorbe el redondeo. */
 function repartir(total: number, n: number): number[] {
-  const base = Math.floor((total / n) * 100) / 100
+  // En centavos enteros: 2,30 / 2 da 115 centavos, sin el error de coma
+  // flotante que antes dejaba 1,14 + 1,16.
+  const base = Math.floor(Math.round(total * 100) / n) / 100
   const partes = Array(n).fill(base) as number[]
   partes[n - 1] = Math.round((total - base * (n - 1)) * 100) / 100
   return partes

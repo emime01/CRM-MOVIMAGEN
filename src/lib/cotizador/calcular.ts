@@ -1,8 +1,7 @@
 /**
- * Motor de cálculo del planificador 2026 — versión server-side.
- * Réplica exacta de calcItem() en CotizadorClient.tsx: si cambia una fórmula
- * hay que actualizar ambos lados (la web calcula client-side para el preview
- * interactivo; el MCP y cualquier API usan esta).
+ * Motor de cálculo del planificador 2026. Es la única fórmula: la usan el
+ * cotizador (vía calcItem en lib/cotizador/plan), la presentación comercial,
+ * el MCP y cualquier API.
  */
 import { precioDeSemanas, semanasMinimas } from './temporada'
 

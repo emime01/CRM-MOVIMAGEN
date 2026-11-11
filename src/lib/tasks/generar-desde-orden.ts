@@ -34,7 +34,8 @@ const DIAS_COMPROBANTE_DESPUES = 7
  * Es idempotente: si ya hay tasks para esta orden, no genera nada.
  */
 export async function generarTasksDeOrden(supabase: SupabaseClient, ordenId: string) {
-  const { data: existing } = await supabase.from('tasks').select('id').eq('orden_id', ordenId).limit(1)
+  // Las tareas del vendedor (renovación) no cuentan: no son de producción.
+  const { data: existing } = await supabase.from('tasks').select('id').eq('orden_id', ordenId).neq('asignado_a_rol', 'ventas').limit(1)
   if (existing && existing.length > 0) return { created: 0, skipped: true }
 
   const [{ data: orden }, { data: items }] = await Promise.all([

@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { avisosCobranza, resumenesDiarios } from '@/lib/avisos/diarios'
 import { insertarNotificaciones } from '@/lib/notificaciones'
+import { avisosRenovacion, avisosSeguimientoPropuesta } from '@/lib/ventas/renovaciones'
 
 export const dynamic = 'force-dynamic'
 
@@ -355,13 +356,20 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // ── 10. Vendedores: renovaciones (30 días) y seguimiento de propuestas ──
+  // Cada uno deja una tarea y una notificación, una sola vez. Si la migración
+  // v50 todavía no corrió, el error se informa en la respuesta y el resto del
+  // cron sigue.
+  const renovaciones = await avisosRenovacion(supabase, today, ESTADOS_VENTA_VIVA, async n => { await insertarNotificaciones(supabase, n); created++ })
+  const seguimientoPropuestas = await avisosSeguimientoPropuesta(supabase, today, async n => { await insertarNotificaciones(supabase, n); created++ })
+
   // ── 8. Cobranza: recordatorios a la asistente administrativa ────────────
   const cobranza = await avisosCobranza(supabase, createNotif)
 
   // ── 9. Resumen diario por mail, según el perfil ─────────────────────────
   const resumen = await resumenesDiarios(supabase)
 
-  return NextResponse.json({ ok: true, created, cobranza, resumen })
+  return NextResponse.json({ ok: true, created, cobranza, resumen, renovaciones, seguimientoPropuestas })
 }
 
 // Vercel Cron llama con GET (con el mismo Authorization: Bearer CRON_SECRET).

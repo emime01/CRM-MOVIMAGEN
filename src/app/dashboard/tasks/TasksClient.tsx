@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { puede, es, areasDeTarea } from '@/lib/auth/roles'
-import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical, DollarSign } from 'lucide-react'
+import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical, DollarSign, RefreshCw, PhoneCall } from 'lucide-react'
 import { avisar } from '@/components/ui/dialogos'
 import Link from 'next/link'
 
@@ -17,14 +17,15 @@ interface Task {
   completed_at: string | null
   ordenes_venta: { id: string; numero: number; clientes: any } | { id: string; numero: number; clientes: any }[] | null
   soportes: { nombre: string } | { nombre: string }[] | null
+  propuestas?: { id: string; numero: string | null; clientes: any } | { id: string; numero: string | null; clientes: any }[] | null
   perfiles?: { nombre: string | null } | { nombre: string | null }[] | null
 }
 
 type Estado = 'pendiente' | 'en_progreso' | 'completada'
-type Area = 'arte' | 'operaciones' | 'administracion'
+type Area = 'arte' | 'operaciones' | 'administracion' | 'ventas'
 
 const AREA_LABEL: Record<Area | 'todas', string> = {
-  todas: 'Todas', arte: 'Arte', operaciones: 'Operaciones', administracion: 'Administración',
+  todas: 'Todas', arte: 'Arte', operaciones: 'Operaciones', administracion: 'Administración', ventas: 'Ventas',
 }
 
 const COLUMNAS: { estado: Estado; titulo: string; color: string }[] = [
@@ -41,6 +42,8 @@ const TIPO_META: Record<string, { label: string; icon: React.ReactNode; color: s
   ops_crear_comprobante:          { label: 'Crear comprobante', icon: <Camera size={12} />,   color: '#16a34a' },
   admin_verificar_pago:           { label: 'Verificar pago',    icon: <DollarSign size={12} />, color: '#b45309' },
   admin_seguimiento_cobranza:     { label: 'Cobranza',          icon: <DollarSign size={12} />, color: '#b45309' },
+  vendedor_renovacion:            { label: 'Renovación',        icon: <RefreshCw size={12} />, color: '#0d9488' },
+  vendedor_seguimiento_propuesta: { label: 'Seguimiento de propuesta', icon: <PhoneCall size={12} />, color: '#7c3aed' },
 }
 
 /** Cuántas completadas se muestran antes de cortar: la columna crece para siempre. */
@@ -100,7 +103,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
 
   const canSwitchRol = puede(userRol, ['administracion', 'gerente_comercial']) && areasDeTarea(userRol).length === 0
   // El rol mixto trabaja las tareas de operaciones, así que también puede moverlas.
-  const canAct = puede(userRol, ['arte', 'operaciones', 'administracion', 'asistente_administracion'])
+  const canAct = puede(userRol, ['arte', 'operaciones', 'administracion', 'asistente_administracion', 'vendedor', 'asistente_ventas', 'gerente_comercial'])
 
   const fetchTasks = useCallback(async () => {
     setLoading(true)
@@ -178,7 +181,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
         }}>{verHistorial ? '← Volver al tablero' : 'Historial'}</button>
         {canSwitchRol && (
           <div style={{ display: 'flex', gap: 4, background: '#f4f3f0', borderRadius: 8, padding: 3 }}>
-            {(['todas', 'arte', 'operaciones', 'administracion'] as const).map(r => (
+            {(['todas', 'arte', 'operaciones', 'administracion', 'ventas'] as const).map(r => (
               <button key={r} onClick={() => setRolFilter(r)} style={{
                 padding: '6px 12px', border: 'none', borderRadius: 6, cursor: 'pointer',
                 fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif',
@@ -205,6 +208,8 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
           <p style={{ fontSize: 13, margin: 0 }}>
             {rolFilter === 'administracion'
               ? 'Aparecen al cargar en Deudores una promesa de pago o una gestión con próxima acción.'
+              : rolFilter === 'ventas' || puede(userRol, ['vendedor', 'asistente_ventas'])
+              ? 'Acá aparecen los avisos de renovación (30 días antes de que termine una campaña) y el seguimiento de propuestas enviadas sin respuesta.'
               : 'Las tareas aparecen automáticamente al aprobar órdenes de venta.'}
           </p>
         </div>
@@ -254,7 +259,8 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
                   {visibles.map(t => {
                     const meta = TIPO_META[t.tipo] ?? { label: t.tipo, icon: <ClipboardList size={12} />, color: '#6e6a62' }
                     const ord = first<any>(t.ordenes_venta)
-                    const cli = first<any>(ord?.clientes)
+                    const prop = first<any>(t.propuestas)
+                    const cli = first<any>(ord?.clientes) ?? first<any>(prop?.clientes)
                     const sop = first<any>(t.soportes)
                     const quien = first<any>(t.perfiles)?.nombre as string | undefined
                     const dv = diasHasta(t.fecha_limite)
@@ -297,7 +303,9 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
                         <div style={{ fontSize: 11.5, color: '#6e6a62' }}>
                           {/* La tarjeta lleva a la venta: ahí están las líneas, fechas,
                               documentos y comentarios. */}
-                          {ord?.id
+                          {prop?.id
+                            ? <Link href={`/dashboard/cotizaciones/${prop.id}`} style={{ color: 'var(--orange, #eb691c)', fontWeight: 700, textDecoration: 'none' }}>{prop.numero ?? 'Cotización'} →</Link>
+                            : ord?.id
                             ? <Link href={`/dashboard/ventas/${ord.id}`} style={{ color: 'var(--orange, #eb691c)', fontWeight: 700, textDecoration: 'none' }}>OIC #{ord.numero ?? '—'} →</Link>
                             : <>OIC #—</>}
                           {sop?.nombre ? ` · ${sop.nombre}` : ''}
@@ -413,14 +421,15 @@ function HistorialTareas({ rol }: { rol: string | null }) {
             <tbody>
               {visibles.map(t => {
                 const meta = TIPO_META[t.tipo] ?? { label: t.tipo, color: '#6e6a62' }
-                const ord = first<any>(t.ordenes_venta), cli = first<any>(ord?.clientes), sop = first<any>(t.soportes)
+                const ord = first<any>(t.ordenes_venta), prop = first<any>(t.propuestas), cli = first<any>(ord?.clientes) ?? first<any>(prop?.clientes), sop = first<any>(t.soportes)
                 const quien = first<any>(t.perfiles)?.nombre
                 return (
                   <tr key={t.id} style={{ borderTop: '1px solid #f0eee8' }}>
                     <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(t.completed_at)}</td>
                     <td style={{ padding: '8px 12px' }}><span style={{ color: meta.color, fontWeight: 700 }}>{meta.label}</span></td>
                     <td style={{ padding: '8px 12px' }}>
-                      {ord?.id ? <Link href={`/dashboard/ventas/${ord.id}`} style={{ color: 'var(--orange, #eb691c)', fontWeight: 700, textDecoration: 'none' }}>OIC #{ord.numero ?? '—'}</Link> : '—'}
+                      {prop?.id ? <Link href={`/dashboard/cotizaciones/${prop.id}`} style={{ color: 'var(--orange, #eb691c)', fontWeight: 700, textDecoration: 'none' }}>{prop.numero ?? 'Cotización'}</Link>
+                        : ord?.id ? <Link href={`/dashboard/ventas/${ord.id}`} style={{ color: 'var(--orange, #eb691c)', fontWeight: 700, textDecoration: 'none' }}>OIC #{ord.numero ?? '—'}</Link> : '—'}
                       {cli ? ` · ${cli.empresa ?? cli.nombre}` : ''}
                     </td>
                     <td style={{ padding: '8px 12px' }}>{sop?.nombre ?? '—'}</td>

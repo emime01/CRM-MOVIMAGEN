@@ -102,7 +102,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion'] },
   { href: '/dashboard/gerente', label: 'Mi Equipo', icon: <Users size={16} />, roles: ['gerente_comercial', 'administracion'] },
   { href: '/dashboard/gerente/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['asistente_ventas'] },
-  { href: '/dashboard/tasks', label: 'Tareas', icon: <ClipboardList size={16} />, roles: ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion'] },
+  { href: '/dashboard/tasks', label: 'Tareas', icon: <ClipboardList size={16} />, roles: ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion', 'vendedor', 'asistente_ventas'] },
   { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
   // La pantalla existía pero no estaba en el menú ni enlazada desde ningún
   // lado: operaciones sólo llegaba escribiendo la URL.

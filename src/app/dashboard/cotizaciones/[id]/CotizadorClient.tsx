@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Search, Plus, Minus, Trash2, Download, Send, CheckCircle,
   ChevronRight, Save, ArrowLeft, Loader2, Info, BarChart3,
-  Target, AlertCircle, X, Copy, LayoutTemplate, Presentation,
+  Target, AlertCircle, AlertTriangle, X, Copy, LayoutTemplate, Presentation,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -16,44 +16,11 @@ import { esImpuestoMTOP, etiquetaImpuesto } from '@/lib/cotizador/calcular'
 import { generarPdfCotizacion } from '@/lib/cotizador/pdf-cotizacion'
 import { useSession } from 'next-auth/react'
 import { precioDeSemanas, semanasMinimas } from '@/lib/cotizador/temporada'
-import { avisar, confirmar } from '@/components/ui/dialogos'
+import { avisar, confirmar, elegir } from '@/components/ui/dialogos'
+import type { OpcionPpt } from '@/lib/cotizador/ppt-propuesta'
+import { calcItem, planDesdeGuardados, type Soporte, type PlanItem, type SavedItem, type Calc } from '@/lib/cotizador/plan'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Soporte {
-  id: string
-  cotizador_id: number | null
-  nombre: string
-  categoria: string                                     // Digital | Shopping | Exterior | Bus | Otro
-  seccion: string | null                                // full grouping label, e.g. "PANTALLAS GIGANTES"
-  tipo_cotizador: string | null                         // led | circuito | estatico_bus | banner_shopping | estatico_shopping | medianera
-  ubicacion: string | null
-  precio_semanal: number | null
-  tiene_iva: boolean                                    // iva_arrendamiento
-  salidas_por_hora: number | null
-  horas_encendido: number | null
-  impactos_mensuales: number | null
-  costo_produccion: number | null
-  impuestos_municipales: number | null                  // flat $ per week per unit
-  cantidad_default: number | null
-  semanas_minimas: number | null
-  precio_semanal_alta?: number | null
-  semanas_minimas_alta?: number | null
-  temporada_alta: boolean
-  temporada_baja: boolean
-  comentario: string | null
-  url_imagen: string | null
-  medidas?: string | null
-  activo: boolean
-}
-
-interface PlanItem {
-  uid: number
-  soporte: Soporte
-  semanas: number
-  salidasElegidas: number | null
-  cantidadSoportes: number
-}
 
 interface PropuestaHeader {
   id: string
@@ -77,26 +44,7 @@ interface PropuestaHeader {
   condicion_pago_dias?: number | null
 }
 
-interface SavedItem {
-  id: string
-  soporte_id: string | null
-  nombre_soporte: string
-  ubicacion: string | null
-  categoria_soporte: string | null
-  tipo_cotizador: string | null
-  cantidad: number
-  cantidad_soportes: number | null
-  salidas_elegidas: number | null
-  semanas: number
-  precio_unitario: number
-  subtotal: number | null
-  impactos_calc: number | null
-}
-
 interface Cliente { id: string; nombre: string; empresa: string | null }
-
-const IVA_RATE = 0.22
-const HORAS_MES = 4.33  // weeks per month for impact pro-rating
 
 const CAT_COLORS: Record<string, string> = {
   Digital:  '#FF5C1A',
@@ -116,41 +64,6 @@ function getSemanasFromDates(inicio: string | null, fin: string | null): number 
   if (!inicio || !fin) return 1
   const dias = Math.round((new Date(fin).getTime() - new Date(inicio).getTime()) / 86400000)
   return dias > 0 ? Math.max(1, Math.round(dias / 7)) : 1
-}
-
-interface Calc {
-  arr: number      // arrendamiento (rental)
-  ivaArr: number   // IVA on arrendamiento (only if tiene_iva)
-  prod: number     // production cost
-  ivaProd: number  // IVA on production (always 22%)
-  mun: number      // municipal tax (per week × cant)
-  imp: number      // total impactos
-  tot: number      // total con impuestos
-  mul: number      // salidas multiplier
-  cpm: number      // cost per mille
-  sem: number      // effective semanas (clamped to semanas_minimas)
-}
-
-function calcItem(item: PlanItem, inicio?: string | null): Calc {
-  const s = item.soporte
-  const sem = Math.max(item.semanas, semanasMinimas(s, inicio))
-  const sal = item.salidasElegidas
-  const cant = item.cantidadSoportes
-  let mul = 1
-  if (isCircuito(s) && sal) mul = sal / 10
-  if (isLed(s)      && sal) mul = sal / 30
-  // Cada semana a su precio: en Punta del Este dic-feb es temporada alta.
-  const arr     = precioDeSemanas(s, sem, inicio) * mul * cant
-  const ivaArr  = s.tiene_iva ? arr * IVA_RATE : 0
-  const prod    = (s.costo_produccion ?? 0) * cant
-  const ivaProd = prod * IVA_RATE
-  const mun     = (s.impuestos_municipales ?? 0) * sem * cant
-  const imp     = s.impactos_mensuales
-    ? Math.round(s.impactos_mensuales * sem / HORAS_MES * cant * mul)
-    : 0
-  const tot = arr + ivaArr + prod + ivaProd + mun
-  const cpm = imp > 0 ? (tot / imp) * 1000 : 0
-  return { arr, ivaArr, prod, ivaProd, mun, imp, tot, mul, cpm, sem }
 }
 
 function fmt(n: number, moneda = 'UYU'): string {
@@ -176,6 +89,22 @@ function fmtDate(d: string | null): string {
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
+
+type OcupacionSoporte = {
+  estado: string
+  cap: number
+  disponible: number
+  clientes: string[]
+  ocupantes: { tipo: 'venta' | 'bloqueo'; numero: number | null; cliente: string | null }[]
+}
+
+function badgeDisponibilidad(o: OcupacionSoporte | undefined) {
+  if (!o) return null
+  const quien = o.ocupantes.map(x => x.tipo === 'venta' ? `OIC #${x.numero ?? 's/n'}${x.cliente ? ` · ${x.cliente}` : ''}` : `Bloqueo${x.cliente ? ` · ${x.cliente}` : ''}`).join('\n')
+  if (o.estado === 'libre') return { texto: 'Disponible', bg: '#dcfce7', color: '#15803d', title: 'Libre en esas fechas' }
+  if (o.estado === 'parcial') return { texto: `Quedan ${o.disponible} de ${o.cap}`, bg: '#fef3c7', color: '#92400e', title: quien }
+  return { texto: 'Ocupado', bg: '#fee2e2', color: '#b91c1c', title: quien }
+}
 
 export default function CotizadorClient({
   propuestaId,
@@ -291,40 +220,7 @@ export default function CotizadorClient({
 
         // Rebuild plan from saved items
         const saved: SavedItem[] = pData.items ?? []
-        const items: PlanItem[] = saved.map((it, i) => {
-          const matched = soportes.find(s => s.id === it.soporte_id) ??
-            soportes.find(s => s.nombre === it.nombre_soporte && (s.ubicacion ?? '') === (it.ubicacion ?? ''))
-          const fallback: Soporte = matched ?? {
-            id: it.soporte_id ?? `legacy-${i}`,
-            cotizador_id: null,
-            nombre: it.nombre_soporte,
-            categoria: it.categoria_soporte ?? 'Otro',
-            seccion: null,
-            tipo_cotizador: it.tipo_cotizador ?? null,
-            ubicacion: it.ubicacion,
-            precio_semanal: it.precio_unitario,
-            tiene_iva: false,
-            salidas_por_hora: null,
-            horas_encendido: null,
-            impactos_mensuales: null,
-            costo_produccion: null,
-            impuestos_municipales: null,
-            cantidad_default: 1,
-            semanas_minimas: 1,
-            temporada_alta: false,
-            temporada_baja: false,
-            comentario: null,
-            url_imagen: null,
-            activo: true,
-          }
-          return {
-            uid: ++uidRef.n,
-            soporte: fallback,
-            semanas: it.semanas || 1,
-            salidasElegidas: it.salidas_elegidas ?? (isLed(fallback) ? 30 : isCircuito(fallback) ? 10 : null),
-            cantidadSoportes: it.cantidad_soportes ?? it.cantidad ?? 1,
-          }
-        })
+        const items = planDesdeGuardados(saved, soportes, () => ++uidRef.n)
         setPlan(items)
       } else if (isNew) {
         const today = new Date()
@@ -365,20 +261,24 @@ export default function CotizadorClient({
 
   const semanasGlobal = getSemanasFromDates(fechaInicio, fechaFin)
 
-  // Disponibilidad de los soportes del plan en las fechas de la campaña.
-  const [ocupacion, setOcupacion] = useState<Record<string, { estado: string; disponible: number; clientes: string[] }>>({})
-  const idsPlan = plan.map(it => it.soporte.id).filter(id => !id.startsWith('legacy-')).sort().join(',')
+  // Disponibilidad de TODO el catálogo en las fechas de la campaña. Es solo
+  // informativa y de uso interno: nunca bloquea nada y no va al PDF ni al PPT.
+  const [ocupacion, setOcupacion] = useState<Record<string, OcupacionSoporte>>({})
+  const [soloDisponibles, setSoloDisponibles] = useState(false)
   useEffect(() => {
-    if (!idsPlan || !fechaInicio || !fechaFin) { setOcupacion({}); return }
+    if (!fechaInicio || !fechaFin || fechaFin < fechaInicio) { setOcupacion({}); return }
     let vivo = true
-    fetch(`/api/disponibilidad?desde=${fechaInicio}&hasta=${fechaFin}`).then(r => r.ok ? r.json() : null).then(d => {
-      if (!vivo || !d?.soportes) return
-      const m: Record<string, { estado: string; disponible: number; clientes: string[] }> = {}
-      for (const x of d.soportes) if (idsPlan.includes(x.id)) m[x.id] = { estado: x.estado, disponible: x.disponible, clientes: x.clientes ?? [] }
-      setOcupacion(m)
-    }).catch(() => {})
-    return () => { vivo = false }
-  }, [idsPlan, fechaInicio, fechaFin])
+    // Debounce: al tipear/cambiar fechas no se dispara un fetch por cada cambio.
+    const t = setTimeout(() => {
+      fetch(`/api/disponibilidad?desde=${fechaInicio}&hasta=${fechaFin}`).then(r => r.ok ? r.json() : null).then(d => {
+        if (!vivo || !d?.soportes) return
+        const m: Record<string, OcupacionSoporte> = {}
+        for (const x of d.soportes) m[x.id] = { estado: x.estado, cap: x.cap ?? 1, disponible: x.disponible ?? 0, clientes: x.clientes ?? [], ocupantes: x.ocupantes ?? [] }
+        setOcupacion(m)
+      }).catch(() => { /* sin badges si falla */ })
+    }, 400)
+    return () => { vivo = false; clearTimeout(t) }
+  }, [fechaInicio, fechaFin])
 
   const calcs = useMemo(() => plan.map(it => ({ item: it, c: calcItem(it, fechaInicio) })), [plan, fechaInicio])
 
@@ -417,9 +317,12 @@ export default function CotizadorClient({
         s.nombre.toLowerCase().includes(q) ||
         (s.ubicacion ?? '').toLowerCase().includes(q)
       const matchCat = !catFilter || displayCat(s) === catFilter
-      return matchSearch && matchCat && s.activo !== false
+      // Ocupado = sin lugar libre (incluye sobrevendido). Parcial y libre se muestran.
+      const o = ocupacion[s.id]
+      const matchDisp = !soloDisponibles || !o || (o.estado !== 'ocupado' && o.estado !== 'sobrevendido')
+      return matchSearch && matchCat && matchDisp && s.activo !== false
     })
-  }, [catalog, search, catFilter])
+  }, [catalog, search, catFilter, soloDisponibles, ocupacion])
 
   // ── Plan actions ───────────────────────────────────────────────────────────
 
@@ -607,25 +510,60 @@ export default function CotizadorClient({
   const { data: sesion } = useSession()
   const [armandoPpt, setArmandoPpt] = useState(false)
   async function exportPPT() {
+    // Con varias versiones (opciones A, B, C…) se puede armar la comparación.
+    let todas = false
+    if (versiones.length > 1) {
+      const eleccion = await elegir(
+        `Esta propuesta tiene ${versiones.length} opciones.\n\n¿Qué presentación querés armar?`,
+        [{ valor: 'una', texto: 'Solo esta opción' }, { valor: 'todas', texto: 'Todas, para comparar' }],
+      )
+      if (!eleccion) return
+      todas = eleccion === 'todas'
+    }
     const conPrecios = await confirmar('¿Incluir precios e inversión en la presentación?\n\nAceptar: con precios · Cancelar: sólo los soportes, sin precios')
     setArmandoPpt(true)
     try {
       const { generarPptPropuesta } = await import('@/lib/cotizador/ppt-propuesta')
+      const aItems = (cs: { item: PlanItem; c: Calc }[]) => cs.map(({ item, c }) => ({
+        soporteId: item.soporte.id.startsWith('legacy-') ? null : item.soporte.id,
+        nombre: item.soporte.nombre, ubicacion: item.soporte.ubicacion ?? null,
+        categoria: item.soporte.categoria ?? null, seccion: item.soporte.seccion ?? null,
+        medidas: item.soporte.medidas ?? null, foto: item.soporte.url_imagen ?? null,
+        cantidad: item.cantidadSoportes, semanas: c.sem, salidas: item.salidasElegidas,
+        impactosMensuales: item.soporte.impactos_mensuales ?? null,
+        impactos: c.imp, arr: c.arr, prod: c.prod, imp: c.mun, ivaArr: c.ivaArr, ivaProd: c.ivaProd, tot: c.tot,
+      }))
+      const idActual = savedId ?? propuestaId
+      const letra = (i: number) => `Opción ${String.fromCharCode(65 + i)}`
+      let opciones: OpcionPpt[] | undefined
+      if (todas) {
+        // La opción abierta sale de la pantalla (con lo que se esté editando);
+        // las otras, de lo guardado, calculadas con la misma fórmula.
+        opciones = await Promise.all(versiones.map(async (v, i) => {
+          if (v.id === idActual) {
+            return { etiqueta: letra(i), nombre: nombre || v.nombre || '', items: aItems(calcs), moneda, desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin) }
+          }
+          const res = await fetch(`/api/propuestas/${v.id}`)
+          if (!res.ok) throw new Error(`No se pudo leer ${letra(i)}`)
+          const pd = await res.json()
+          const p: PropuestaHeader = pd.propuesta
+          const planV = planDesdeGuardados(pd.items ?? [], catalog, () => ++uidRef.n)
+          return {
+            etiqueta: letra(i), nombre: p.nombre ?? v.nombre ?? '',
+            items: aItems(planV.map(it => ({ item: it, c: calcItem(it, p.fecha_inicio) }))),
+            moneda: p.moneda ?? moneda, desde: fmtDate(p.fecha_inicio), hasta: fmtDate(p.fecha_fin),
+          }
+        }))
+      }
       await generarPptPropuesta({
         numero: propuesta?.numero ?? '',
         cliente: clienteQuery, campana: nombre, marca,
         desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin),
         moneda, observaciones, incluirPrecios: conPrecios,
-        version: versiones.length > 1 ? `Opción ${String.fromCharCode(65 + Math.max(0, versiones.findIndex(v => v.id === (savedId ?? propuestaId))))}` : null,
+        version: versiones.length > 1 ? letra(Math.max(0, versiones.findIndex(v => v.id === idActual))) : null,
         vendedor: { nombre: sesion?.user?.name ?? null, email: sesion?.user?.email ?? null },
-        items: calcs.map(({ item, c }) => ({
-          nombre: item.soporte.nombre, ubicacion: item.soporte.ubicacion ?? null,
-          categoria: item.soporte.categoria ?? null, seccion: item.soporte.seccion ?? null,
-          medidas: item.soporte.medidas ?? null, foto: item.soporte.url_imagen ?? null,
-          cantidad: item.cantidadSoportes, semanas: c.sem, salidas: item.salidasElegidas,
-          impactosMensuales: item.soporte.impactos_mensuales ?? null,
-          impactos: c.imp, arr: c.arr, prod: c.prod, imp: c.mun, ivaArr: c.ivaArr, ivaProd: c.ivaProd, tot: c.tot,
-        })),
+        items: aItems(calcs),
+        opciones,
       })
     } catch (e) {
       console.error(e)
@@ -929,6 +867,12 @@ export default function CotizadorClient({
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar soporte…"
                 style={{ width: '100%', paddingLeft: 28, paddingRight: 10, height: 32, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, background: '#fff', boxSizing: 'border-box' }} />
             </div>
+            {Object.keys(ocupacion).length > 0 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#374151', marginBottom: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={soloDisponibles} onChange={e => setSoloDisponibles(e.target.checked)} />
+                Solo disponibles
+              </label>
+            )}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               <button onClick={() => setCatFilter('')} style={{ ...catBtnSt, background: !catFilter ? '#111827' : '#fff', color: !catFilter ? '#fff' : '#374151', borderColor: !catFilter ? '#111827' : '#d1d5db' }}>Todas</button>
               {categories.map(c => (
@@ -961,6 +905,11 @@ export default function CotizadorClient({
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 3, flexShrink: 0, flexDirection: 'column', alignItems: 'flex-end' }}>
+                    {(() => {
+                      const b = badgeDisponibilidad(ocupacion[s.id])
+                      if (!b) return null
+                      return <span title={b.title} style={{ fontSize: 9, padding: '1px 5px', background: b.bg, color: b.color, borderRadius: 3, fontWeight: 700, whiteSpace: 'nowrap' }}>{b.texto}</span>
+                    })()}
                     {s.tiene_iva && <span style={{ fontSize: 9, padding: '1px 4px', background: '#fef9c3', color: '#a16207', borderRadius: 3, fontWeight: 600 }}>IVA</span>}
                     {s.temporada_alta && <span style={{ fontSize: 9, padding: '1px 4px', background: '#fee2e2', color: '#b91c1c', borderRadius: 3, fontWeight: 600 }}>T.A.</span>}
                     {s.temporada_baja && <span style={{ fontSize: 9, padding: '1px 4px', background: '#dbeafe', color: '#1e40af', borderRadius: 3, fontWeight: 600 }}>T.B.</span>}
@@ -1005,24 +954,18 @@ export default function CotizadorClient({
                             <div style={{ width: 4, height: 16, borderRadius: 2, background: CAT_COLORS[s.categoria] ?? '#94a3b8' }} />
                             <span style={{ fontSize: 9, fontWeight: 700, color: CAT_COLORS[s.categoria] ?? '#94a3b8', letterSpacing: '.04em', textTransform: 'uppercase' }}>{s.categoria}</span>
                             <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{s.nombre}</span>
+                            {(() => {
+                              // Aviso interno y no bloqueante: ya está vendido/bloqueado en esas fechas.
+                              const o = ocupacion[s.id]
+                              if (!o || o.estado === 'libre') return null
+                              const necesita = isLed(s) ? Math.max(1, Math.round((item.salidasElegidas ?? 30) / 30)) : isCircuito(s) ? Math.max(1, Math.round((item.salidasElegidas ?? 10) / 10)) : item.cantidadSoportes
+                              if (o.disponible >= necesita) return null
+                              const quienes = o.ocupantes.map(x => x.tipo === 'venta' ? `OIC #${x.numero ?? 's/n'}${x.cliente ? ` (${x.cliente})` : ''}` : `Bloqueo${x.cliente ? ` (${x.cliente})` : ''}`)
+                              const tip = `Ocupado en esas fechas por ${quienes.length ? quienes.join(', ') : 'otra venta'}${o.disponible > 0 ? ` · quedan ${o.disponible} de ${o.cap}` : ''}`
+                              return <span title={tip} style={{ display: 'inline-flex', color: '#d97706', cursor: 'help' }}><AlertTriangle size={14} /></span>
+                            })()}
                           </div>
                           <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>{s.ubicacion}</div>
-                          {(() => {
-                            // Aviso si en estas fechas el soporte ya está vendido o bloqueado.
-                            const o = ocupacion[s.id]
-                            if (!o || o.estado === 'libre') return null
-                            const necesita = isLed(s) ? Math.max(1, Math.round((item.salidasElegidas ?? 30) / 30)) : isCircuito(s) ? Math.max(1, Math.round((item.salidasElegidas ?? 10) / 10)) : item.cantidadSoportes
-                            const falta = o.disponible < necesita
-                            return (
-                              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, padding: '4px 8px', borderRadius: 6,
-                                background: falta ? '#fee2e2' : '#fef3c7', color: falta ? '#b91c1c' : '#92400e' }}>
-                                {falta
-                                  ? `⚠ Ocupado en esas fechas${o.disponible > 0 ? ` (quedan ${o.disponible})` : ''}`
-                                  : `Parcialmente ocupado: quedan ${o.disponible}`}
-                                {o.clientes.length ? ` · ${o.clientes.slice(0, 3).join(', ')}` : ''}
-                              </div>
-                            )
-                          })()}
 
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

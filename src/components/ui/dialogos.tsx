@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react'
  *   avisar('Venta cerrada')                     → Promise<void>
  *   if (!(await confirmar('¿Borrar?'))) return  → Promise<boolean>
  *   const v = await pedir('Monto', '0')         → Promise<string | null>
+ *   const o = await elegir('¿Cuál?', [{ valor: 'a', texto: 'Una' }, …]) → Promise<string | null> (null si cancela)
  *
  * <Dialogos /> va una sola vez en el layout del dashboard.
  */
@@ -16,6 +17,7 @@ type Pedido =
   | { tipo: 'avisar'; mensaje: string; resolver: (v: void) => void }
   | { tipo: 'confirmar'; mensaje: string; resolver: (v: boolean) => void }
   | { tipo: 'pedir'; mensaje: string; valor: string; resolver: (v: string | null) => void }
+  | { tipo: 'elegir'; mensaje: string; opciones: { valor: string; texto: string }[]; resolver: (v: string | null) => void }
 
 let encolar: ((p: Pedido) => void) | null = null
 const pendientes: Pedido[] = []
@@ -24,6 +26,8 @@ const mandar = (p: Pedido) => (encolar ? encolar(p) : pendientes.push(p))
 export const avisar = (mensaje: string) => new Promise<void>(resolver => mandar({ tipo: 'avisar', mensaje: String(mensaje), resolver }))
 export const confirmar = (mensaje: string) => new Promise<boolean>(resolver => mandar({ tipo: 'confirmar', mensaje: String(mensaje), resolver }))
 export const pedir = (mensaje: string, valor = '') => new Promise<string | null>(resolver => mandar({ tipo: 'pedir', mensaje: String(mensaje), valor: valor ?? '', resolver }))
+
+export const elegir = (mensaje: string, opciones: { valor: string; texto: string }[]) => new Promise<string | null>(resolver => mandar({ tipo: 'elegir', mensaje: String(mensaje), opciones, resolver }))
 
 export default function Dialogos() {
   const [cola, setCola] = useState<Pedido[]>([])
@@ -45,8 +49,9 @@ export default function Dialogos() {
   }, [actual])
 
   if (!actual) return null
-  const cerrar = (ok: boolean) => {
+  const cerrar = (ok: boolean, valor?: string) => {
     if (actual.tipo === 'avisar') actual.resolver()
+    else if (actual.tipo === 'elegir') actual.resolver(ok ? valor ?? null : null)
     else if (actual.tipo === 'confirmar') actual.resolver(ok)
     else actual.resolver(ok ? texto : null)
     setCola(c => c.slice(1))
@@ -64,13 +69,19 @@ export default function Dialogos() {
               style={{ width: '100%', height: 38, padding: '0 10px', border: '1px solid #e5e3dc', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, padding: '16px 20px' }}>
           {actual.tipo !== 'avisar' && (
             <button onClick={() => cerrar(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e3dc', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cancelar</button>
           )}
-          <button ref={aceptar} onClick={() => cerrar(true)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#ec691a', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+          {actual.tipo === 'elegir' && actual.opciones.map((o, k) => (
+            <button key={o.valor} ref={k === 0 ? aceptar : undefined} onClick={() => cerrar(true, o.valor)}
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#ec691a', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+              {o.texto}
+            </button>
+          ))}
+          {actual.tipo !== 'elegir' && <button ref={aceptar} onClick={() => cerrar(true)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#ec691a', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
             {actual.tipo === 'avisar' ? 'Entendido' : 'Aceptar'}
-          </button>
+          </button>}
         </div>
       </div>
     </div>

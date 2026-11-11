@@ -17,7 +17,19 @@ function getCurrentQuarter() {
 }
 
 
-export default async function ReportesPage() {
+type FilaCierre = { clave: string; enviadas: number; aceptadas: number }
+
+/** Suma una cotización a la fila de su clave. */
+function sumarCierre(mapa: Map<string, FilaCierre>, clave: string, aceptada: boolean) {
+  const f = mapa.get(clave) ?? { clave, enviadas: 0, aceptadas: 0 }
+  f.enviadas++
+  if (aceptada) f.aceptadas++
+  mapa.set(clave, f)
+}
+
+const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/
+
+export default async function ReportesPage({ searchParams }: { searchParams?: { desde?: string; hasta?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
   // Como en el menú: el área comercial y Administración.
@@ -53,6 +65,34 @@ export default async function ReportesPage() {
       : supabase.from('objetivos').select('objetivo_monto').eq('vendedor_id', session.user.id).eq('cuatrimestre', q.label),
     factQuery,
   ])
+
+  // ── Cierre de propuestas (gerencia) ─────────────────────────────────────
+  // Enviadas = cotizaciones que salieron de borrador (enviada, aceptada o
+  // rechazada), creadas en el período; aceptadas, las que el cliente aceptó.
+  // No se guarda cuándo se envió, así que el período es el de creación.
+  const desdeC = searchParams?.desde && FECHA_ISO.test(searchParams.desde) ? searchParams.desde : q.start
+  const hastaC = searchParams?.hasta && FECHA_ISO.test(searchParams.hasta) ? searchParams.hasta : q.end
+  const porVendedor = new Map<string, FilaCierre>()
+  const porFormato = new Map<string, FilaCierre>()
+  if (isGerente) {
+    const { data: cotizaciones } = await supabase
+      .from('propuestas')
+      .select('id, estado, vendedor_id, perfiles(nombre), propuesta_items(categoria_soporte)')
+      .in('estado', ['enviada', 'aceptada', 'rechazada'])
+      .gte('created_at', `${desdeC}T00:00:00`)
+      .lte('created_at', `${hastaC}T23:59:59`)
+      .limit(5000)
+    for (const c of (cotizaciones ?? []) as any[]) {
+      const aceptada = c.estado === 'aceptada'
+      const perfil = Array.isArray(c.perfiles) ? c.perfiles[0] : c.perfiles
+      sumarCierre(porVendedor, perfil?.nombre ?? 'Sin vendedor', aceptada)
+      // Una cotización cuenta una vez por formato aunque tenga varias líneas del mismo.
+      const formatos = new Set<string>((c.propuesta_items ?? []).map((it: any) => it.categoria_soporte || 'Sin categoría'))
+      formatos.forEach(f => sumarCierre(porFormato, f, aceptada))
+    }
+  }
+  const ordenarCierre = (m: Map<string, FilaCierre>) => Array.from(m.values()).sort((a, b) => b.enviadas - a.enviadas || a.clave.localeCompare(b.clave))
+  const pctCierre = (f: FilaCierre) => (f.enviadas > 0 ? Math.round((f.aceptadas / f.enviadas) * 100) : 0)
 
   // Monthly revenue — dynamic based on current quarter
   const MONTH_NAMES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -191,6 +231,57 @@ export default async function ReportesPage() {
           </div>
         )}
       </div>
+
+      {isGerente && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, marginTop: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+              Cierre de propuestas <span style={{ fontWeight: 500, color: 'var(--text-muted)', fontSize: 11 }}>· cotizaciones creadas en el período</span>
+            </div>
+            <form method="get" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+              <label>Desde <input type="date" name="desde" defaultValue={desdeC} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'Montserrat, sans-serif' }} /></label>
+              <label>Hasta <input type="date" name="hasta" defaultValue={hastaC} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'Montserrat, sans-serif' }} /></label>
+              <button type="submit" style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--orange)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' }}>Ver</button>
+            </form>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+            {([['Por vendedor', 'Vendedor', porVendedor], ['Por formato', 'Formato', porFormato]] as const).map(([titulo, col, mapa]) => {
+              const filas = ordenarCierre(mapa)
+              return (
+                <div key={titulo}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>{titulo}</div>
+                  {filas.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Sin propuestas en el período.</p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                      <thead>
+                        <tr>
+                          {[col, 'Enviadas', 'Aceptadas', '% cierre'].map((h, i) => (
+                            <th key={h} style={{ padding: '6px 8px', textAlign: i === 0 ? 'left' : 'right', fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filas.map(f => (
+                          <tr key={f.clave} style={{ borderTop: '1px solid var(--border)' }}>
+                            <td style={{ padding: '7px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>{f.clave}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right' }}>{f.enviadas}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right' }}>{f.aceptadas}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>{pctCierre(f)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '12px 0 0' }}>
+            Una cotización con líneas de varios formatos cuenta en cada uno. % cierre = aceptadas sobre enviadas.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

@@ -5,6 +5,13 @@ import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { espaciosQueOcupa } from '@/lib/disponibilidad/espacios'
 
+export interface SoporteOcupante {
+  tipo: 'venta' | 'bloqueo'
+  /** Número de OIC (solo ventas). */
+  numero: number | null
+  cliente: string | null
+}
+
 export interface SoporteOcupacion {
   id: string
   nombre: string
@@ -18,6 +25,8 @@ export interface SoporteOcupacion {
   pct: number
   disponible: number
   clientes: string[]
+  /** Quién ocupa el soporte en el rango (uso interno): venta (con OIC) o bloqueo. */
+  ocupantes: SoporteOcupante[]
   /** Cuánto se vendió por encima de la capacidad. 0 si está todo bien. */
   sobreventa: number
   estado: 'libre' | 'parcial' | 'ocupado' | 'sobrevendido'
@@ -41,6 +50,7 @@ function buildOcupacion(
   soportes: any[],
   reservadoMap: Map<string, number>,
   clientesMap: Map<string, string[]>,
+  ocupantesMap: Map<string, SoporteOcupante[]>,
 ): SoporteOcupacion[] {
   return soportes.map((s: any) => {
     const cap = s.cap ?? 1
@@ -59,6 +69,7 @@ function buildOcupacion(
       seccion: s.seccion, ubicacion: s.ubicacion, categoria: s.categoria,
       cap, reservado, pct, disponible, sobreventa,
       clientes: clientesMap.get(s.id) ?? [],
+      ocupantes: ocupantesMap.get(s.id) ?? [],
       estado,
     }
   })
@@ -67,6 +78,11 @@ function buildOcupacion(
 function addCliente(map: Map<string, string[]>, soporteId: string, nombre: string) {
   const existing = map.get(soporteId) ?? []
   if (!existing.includes(nombre)) map.set(soporteId, [...existing, nombre])
+}
+
+function addOcupante(map: Map<string, SoporteOcupante[]>, soporteId: string, o: SoporteOcupante) {
+  const existing = map.get(soporteId) ?? []
+  if (!existing.some(x => x.tipo === o.tipo && x.numero === o.numero && x.cliente === o.cliente)) map.set(soporteId, [...existing, o])
 }
 
 const ORDEN_ITEMS_SELECT = 'soporte_id, cantidad, salidas, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real'
@@ -162,7 +178,7 @@ export async function GET(req: NextRequest) {
         .is('orden_id', null),
     supabase
       .from('ordenes_venta')
-      .select(`fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(${ORDEN_ITEMS_SELECT})`)
+      .select(`numero, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, clientes(nombre, empresa), orden_items(${ORDEN_ITEMS_SELECT})`)
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[]),
   ])
 
@@ -175,6 +191,7 @@ export async function GET(req: NextRequest) {
 
   const reservadoMap = new Map<string, number>()
   const clientesMap = new Map<string, string[]>()
+  const ocupantesMap = new Map<string, SoporteOcupante[]>()
 
   reservas?.forEach((r: any) => {
     const cli = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
@@ -187,6 +204,7 @@ export async function GET(req: NextRequest) {
       if (!desde || !hasta || desde > hastaQ || hasta < desdeQ) return
       reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
+      addOcupante(ocupantesMap, item.soporte_id, { tipo: 'bloqueo', numero: null, cliente: nombre })
     })
   })
 
@@ -200,9 +218,10 @@ export async function GET(req: NextRequest) {
       if (!alta || !baja || alta > hastaQ || baja < desdeQ) return
       reservadoMap.set(item.soporte_id, (reservadoMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
       if (nombre) addCliente(clientesMap, item.soporte_id, nombre)
+      addOcupante(ocupantesMap, item.soporte_id, { tipo: 'venta', numero: ord.numero ?? null, cliente: nombre })
     })
   })
 
-  const result = buildOcupacion(soportes ?? [], reservadoMap, clientesMap)
+  const result = buildOcupacion(soportes ?? [], reservadoMap, clientesMap, ocupantesMap)
   return NextResponse.json({ soportes: result, fecha })
 }

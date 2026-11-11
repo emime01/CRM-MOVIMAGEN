@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { areasDeTarea } from '@/lib/auth/roles'
+import { areasDeTarea, es } from '@/lib/auth/roles'
 
 /**
  * GET /api/tasks?rol=&estado=&limite=&vista=tablero|historial&mes=AAAA-MM
@@ -30,7 +30,11 @@ export async function GET(req: NextRequest) {
   // arte y operaciones ven sólo lo suyo; el resto (gerencia, administración)
   // ve todo y puede filtrar. El rol mixto atiende las de operaciones.
   const areas = areasDeTarea(userRol)
-  const effectiveRol = areas.length > 0 ? areas[0] : filterRol
+  // El vendedor y la asistente de ventas sólo ven sus propias tareas del área
+  // ventas (renovaciones y seguimiento de propuestas), nunca las de otras áreas.
+  const soloVentas = areas.length === 0 && !es(userRol, 'gerente_comercial') && !es(userRol, 'administracion') &&
+    !es(userRol, 'asistente_administracion') && (es(userRol, 'vendedor') || es(userRol, 'asistente_ventas'))
+  const effectiveRol = soloVentas ? 'ventas' : areas.length > 0 ? areas[0] : filterRol
 
   const supabase = createServerClient()
 
@@ -38,6 +42,8 @@ export async function GET(req: NextRequest) {
       id, tipo, asignado_a_rol, estado, descripcion, fecha_limite, created_at, completed_at,
       ordenes_venta(id, numero, clientes(nombre, empresa)),
       soportes(nombre)`
+  // Las tareas de seguimiento cuelgan de una cotización (v50).
+  const CAMPOS_PROPUESTA = `${CAMPOS}, propuestas(id, numero, clientes(nombre, empresa))`
 
   // `perfiles(nombre)` es quién tomó la tarea (tasks.asignado_a). Va aparte para
   // poder reintentar sin ese embed: si la relación no resolviera, el tablero
@@ -62,11 +68,15 @@ export async function GET(req: NextRequest) {
       }
     }
     if (effectiveRol) q = q.eq('asignado_a_rol', effectiveRol)
+    if (soloVentas) q = q.eq('asignado_a', session.user.id)
     if (estado) q = q.eq('estado', estado)
     return q
   }
 
-  let { data, error } = await armarQuery(`${CAMPOS}, perfiles(nombre)`)
+  let { data, error } = await armarQuery(`${CAMPOS_PROPUESTA}, perfiles(nombre)`)
+  if (error) {
+    ;({ data, error } = await armarQuery(`${CAMPOS}, perfiles(nombre)`))
+  }
   if (error) {
     ;({ data, error } = await armarQuery(CAMPOS))
   }
