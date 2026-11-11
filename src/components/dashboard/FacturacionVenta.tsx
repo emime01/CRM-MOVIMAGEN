@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Receipt, DollarSign, Printer, X, FileMinus, RefreshCw, Pencil, Undo2 } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
+import DescuentoAgencia from '@/components/dashboard/DescuentoAgencia'
 import type { Factura } from '@/lib/ventas/facturas'
 import { hoyUY } from '@/lib/fechas'
 import { avisar, confirmar as preguntar } from '@/components/ui/dialogos'
@@ -305,7 +306,14 @@ export default function FacturacionVenta({
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{fmtFecha(f.fecha_cobro)}</td>
+                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                      {fmtFecha(f.fecha_cobro)}
+                      {f.estado === 'cobrada' && f.agencia_descuento != null && (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }} title="La agencia se descontó su comisión + IVA">
+                          Entró {formatMoney(Number(f.importe_total) - f.agencia_descuento, f.moneda || moneda)} · agencia −{formatMoney(f.agencia_descuento, f.moneda || moneda)}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ padding: '8px 12px' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {f.estado === 'prevista' && (puedePlanificar || puedeAdministrar) && (
@@ -385,9 +393,10 @@ export default function FacturacionVenta({
                   {modal.f.tipo !== 'nota_credito' && conAgencia && (
                     <label style={{ ...lblSt, display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, fontWeight: 500 }}>
                       <input type="checkbox" checked={form.descuenta === '1'} onChange={e => setForm({ ...form, descuenta: e.target.checked ? '1' : '' })} style={{ marginTop: 2, accentColor: 'var(--orange)' }} />
-                      <span>La agencia se descontó su comisión y pagó el neto. La factura queda cobrada entera y la comisión de la agencia queda saldada.</span>
+                      <span>La agencia se descontó su comisión + IVA y pagó el neto. La factura queda cobrada entera y la comisión de la agencia queda saldada.</span>
                     </label>
                   )}
+                  {form.descuenta === '1' && <DescuentoAgencia facturaId={modal.f.id} />}
                   {modal.f.tipo !== 'nota_credito' && form.descuenta !== '1' && (
                     <label style={lblSt}>Importe cobrado (si pagó una parte, el saldo queda pendiente con el mismo número)
                       <input id="fv-monto" type="number" step="0.01" min="0" max={modal.f.importe_total} value={form.monto ?? ''} onChange={e => setForm({ ...form, monto: e.target.value })} style={inputSt} />

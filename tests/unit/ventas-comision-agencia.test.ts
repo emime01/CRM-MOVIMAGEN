@@ -83,3 +83,14 @@ describe('comisionAgenciaDe', () => {
     expect(await comisionAgenciaDe(client, 'f1')).toBeNull()
   })
 })
+
+import { descuentoAgencia } from '@/lib/ventas/comision-agencia'
+
+describe('descuentoAgencia (la agencia se descuenta comisión + IVA)', () => {
+  it('comisión 15% sobre 100.000 de arrendamiento: 15.000 + IVA 3.300 = 18.300', () => {
+    expect(descuentoAgencia(15000)).toEqual({ comision: 15000, iva: 3300, total: 18300 })
+  })
+  it('redondea al centavo', () => {
+    expect(descuentoAgencia(1234.565)).toEqual({ comision: 1234.57, iva: 271.61, total: 1506.18 })
+  })
+})
