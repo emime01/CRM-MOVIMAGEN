@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
-import { pagaAdministracion } from '@/lib/auth/roles'
+import { haceAdministracion } from '@/lib/auth/roles'
 import { hoyUY } from '@/lib/fechas'
 
 /**
@@ -15,7 +15,7 @@ import { hoyUY } from '@/lib/fechas'
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!pagaAdministracion(session.user.rol)) return NextResponse.json({ error: 'El pago a las agencias lo registra Administración' }, { status: 403 })
+  if (!haceAdministracion(session.user.rol)) return NextResponse.json({ error: 'El pago a las agencias lo registra Administración' }, { status: 403 })
   const body = await req.json().catch(() => ({}))
   const ids = Array.isArray(body.ids) ? body.ids.filter((x: unknown): x is string => typeof x === 'string') : []
   if (!ids.length || !['pagada', 'pendiente'].includes(body.estado)) return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })

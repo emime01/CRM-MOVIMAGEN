@@ -104,6 +104,7 @@ type Tab = 'liquidacion' | 'agencias' | 'bonos'
 
 export default function ComisionesClient({
   mes, cuatrimestre, cuatrimestres, comisiones, agencias, agenciasConEstado = false, bonos, administra, paga = administra, asignaBonos = administra,
+  pagaAgencias = paga, soloAgencias = false,
 }: {
   mes: string
   cuatrimestre: string
@@ -118,9 +119,13 @@ export default function ComisionesClient({
   /** Registra pagos. La asistente administrativa prepara, no paga. */
   paga?: boolean
   asignaBonos?: boolean
+  /** Marca pagadas las comisiones de agencia (también la asistente). */
+  pagaAgencias?: boolean
+  /** La asistente administrativa ve sólo las comisiones de agencia. */
+  soloAgencias?: boolean
 }) {
   const router = useRouter()
-  const [tab, setTab] = useState<Tab>('liquidacion')
+  const [tab, setTab] = useState<Tab>(soloAgencias ? 'agencias' : 'liquidacion')
   const [vendedor, setVendedor] = useState('')
   const [ocupado, setOcupado] = useState(false)
   const [editBono, setEditBono] = useState<{ vendedor_id: string; monto: string } | null>(null)
@@ -226,9 +231,9 @@ export default function ComisionesClient({
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
         <div style={{ display: 'inline-flex', gap: 4, background: '#f4f3f0', borderRadius: 9, padding: 3 }}>
-          {tabBtn('liquidacion', 'Liquidación del mes')}
+          {!soloAgencias && tabBtn('liquidacion', 'Liquidación del mes')}
           {tabBtn('agencias', 'Por agencia')}
-          {tabBtn('bonos', 'Bonos por objetivo')}
+          {!soloAgencias && tabBtn('bonos', 'Bonos por objetivo')}
         </div>
         {tab === 'bonos' ? (
           <select value={cuatrimestre} onChange={e => ir({ q: e.target.value })} style={{ ...inp, width: 'auto' }}>
@@ -383,7 +388,7 @@ export default function ComisionesClient({
                 <tbody>
                   {porAgencia.map(g => (
                     <AgenciaGrupo key={g.nombre} nombre={g.nombre} filas={g.filas} conEstado={conEstado}
-                      onPagar={paga && conEstado ? (ids, estado) => llamar('/api/comisiones-agencia', {
+                      onPagar={pagaAgencias && conEstado ? (ids, estado) => llamar('/api/comisiones-agencia', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, estado }),
                       }, estado === 'pagada' ? `¿Marcar pagada la comisión de ${g.nombre}?` : undefined) : undefined} />
                   ))}

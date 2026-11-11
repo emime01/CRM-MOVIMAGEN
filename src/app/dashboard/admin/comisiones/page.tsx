@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
-import { es, puede, haceAdministracion, pagaAdministracion } from '@/lib/auth/roles'
+import { es, puede, haceAdministracion, pagaAdministracion, rolesDe } from '@/lib/auth/roles'
 import { cuatrimestreDe, cuatrimestresCercanos, rangoCuatrimestre, vendidoEnCuatrimestre } from '@/lib/comisiones/bonos'
 import ComisionesClient, { type ComisionRow, type AgenciaRow, type BonoRow } from './ComisionesClient'
 import { mesUY } from '@/lib/fechas'
@@ -170,17 +170,24 @@ export default async function ComisionesPage({ searchParams }: { searchParams: {
     liquidado: liquidados.get(id) ?? null,
   })).sort((a, b) => a.vendedor.localeCompare(b.vendedor))
 
+  // La comisión de cada vendedor y los bonos los ve Administración (Romina) y
+  // gerencia; la asistente administrativa (Belén) sólo ve las de agencia.
+  const roles = rolesDe(session.user.rol)
+  const soloAgencias = roles.includes('asistente_administracion') && !puede(session.user.rol, ['administracion', 'gerente_comercial'])
+
   return (
     <ComisionesClient
       mes={mes}
       cuatrimestre={cuatri}
       cuatrimestres={cuatrimestresCercanos()}
-      comisiones={comisiones}
+      comisiones={soloAgencias ? [] : comisiones}
       agencias={agencias}
       agenciasConEstado={!comAgErr}
-      bonos={bonosRows}
+      bonos={soloAgencias ? [] : bonosRows}
       administra={haceAdministracion(session.user.rol)}
       paga={pagaAdministracion(session.user.rol)}
+      pagaAgencias={haceAdministracion(session.user.rol)}
+      soloAgencias={soloAgencias}
       asignaBonos={puede(session.user.rol, ['gerente_comercial', 'administracion'])}
     />
   )

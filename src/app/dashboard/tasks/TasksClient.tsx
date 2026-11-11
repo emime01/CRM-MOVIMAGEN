@@ -96,6 +96,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
   const [arrastrando, setArrastrando] = useState<string | null>(null)
   const [columnaActiva, setColumnaActiva] = useState<Estado | null>(null)
   const [moviendo, setMoviendo] = useState<string | null>(null)
+  const [verHistorial, setVerHistorial] = useState(false)
 
   const canSwitchRol = puede(userRol, ['administracion', 'gerente_comercial']) && areasDeTarea(userRol).length === 0
   // El rol mixto trabaja las tareas de operaciones, así que también puede moverlas.
@@ -104,7 +105,8 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
   const fetchTasks = useCallback(async () => {
     setLoading(true)
     // Sin filtro de estado: el tablero necesita las tres columnas de una.
-    const params = new URLSearchParams({ limite: '300' })
+    // Lo terminado hace más de unos días va al historial, no al tablero.
+    const params = new URLSearchParams({ limite: '300', vista: 'tablero' })
     if (canSwitchRol && rolFilter !== 'todas') params.set('rol', rolFilter)
     const res = await fetch(`/api/tasks?${params.toString()}`)
     if (res.ok) {
@@ -169,6 +171,11 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
             {pendientes} por hacer · {enProgreso} en progreso · {porColumna.completada.length} listas
           </p>
         </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={() => setVerHistorial(v => !v)} style={{
+          padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e3dc', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+          fontFamily: 'Montserrat, sans-serif', background: verHistorial ? '#1a1915' : '#fff', color: verHistorial ? '#fff' : '#4a4845',
+        }}>{verHistorial ? '← Volver al tablero' : 'Historial'}</button>
         {canSwitchRol && (
           <div style={{ display: 'flex', gap: 4, background: '#f4f3f0', borderRadius: 8, padding: 3 }}>
             {(['todas', 'arte', 'operaciones', 'administracion'] as const).map(r => (
@@ -182,9 +189,14 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
             ))}
           </div>
         )}
+        </div>
       </div>
 
-      {loading ? (
+      {verHistorial && (
+        <HistorialTareas rol={canSwitchRol && rolFilter !== 'todas' ? rolFilter : null} />
+      )}
+
+      {verHistorial ? null : loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#9a9895', fontSize: 13 }}>Cargando…</div>
       ) : total === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#9a9895' }}>
@@ -338,9 +350,9 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
         </div>
       )}
 
-      {canAct && total > 0 && (
+      {!verHistorial && total > 0 && (
         <p style={{ fontSize: 11.5, color: '#9a9895', marginTop: 12 }}>
-          Arrastrá las tarjetas entre columnas, o usá las flechas.
+          {canAct ? 'Arrastrá las tarjetas entre columnas, o usá las flechas. ' : ''}Lo terminado queda {3} días en "Listo" y después pasa al Historial.
         </p>
       )}
     </div>
@@ -355,4 +367,71 @@ function btnMover(disabled: boolean): React.CSSProperties {
     color: disabled ? '#d4d1cb' : '#6e6a62',
     cursor: disabled ? 'not-allowed' : 'pointer',
   }
+}
+
+/** Las tareas terminadas, por mes: lo que ya no está en el tablero. */
+function HistorialTareas({ rol }: { rol: string | null }) {
+  const hoy = new Date()
+  const [mes, setMes] = useState(`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`)
+  const [filas, setFilas] = useState<Task[] | null>(null)
+  const [buscar, setBuscar] = useState('')
+
+  useEffect(() => {
+    setFilas(null)
+    const p = new URLSearchParams({ vista: 'historial', mes, limite: '500' })
+    if (rol) p.set('rol', rol)
+    fetch(`/api/tasks?${p.toString()}`).then(r => r.json()).then(d => setFilas(d.tasks ?? [])).catch(() => setFilas([]))
+  }, [mes, rol])
+
+  const q = buscar.trim().toLowerCase()
+  const visibles = (filas ?? []).filter(t => {
+    if (!q) return true
+    const ord = first<any>(t.ordenes_venta), cli = first<any>(ord?.clientes), sop = first<any>(t.soportes)
+    return [t.descripcion, cli?.empresa, cli?.nombre, sop?.nombre, ord?.numero && `#${ord.numero}`].some(v => String(v ?? '').toLowerCase().includes(q))
+  })
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e3dc', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 14px', borderBottom: '1px solid #f0eee8', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 800, color: '#1a1915' }}>Historial de tareas terminadas</span>
+        <input type="month" value={mes} onChange={e => e.target.value && setMes(e.target.value)}
+          style={{ padding: '6px 9px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 12.5, fontFamily: 'Montserrat, sans-serif' }} />
+        <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Buscar cliente, OIC, soporte…"
+          style={{ flex: '1 1 180px', padding: '6px 9px', border: '1px solid #e5e3dc', borderRadius: 7, fontSize: 12.5, fontFamily: 'Montserrat, sans-serif' }} />
+        <span style={{ fontSize: 12, color: '#9a9895' }}>{filas ? `${visibles.length} tarea${visibles.length === 1 ? '' : 's'}` : 'Cargando…'}</span>
+      </div>
+      {filas && visibles.length === 0 ? (
+        <p style={{ padding: 20, margin: 0, fontSize: 13, color: '#9a9895' }}>No hay tareas terminadas en ese mes.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr style={{ background: '#fafaf8' }}>
+              {['Terminada', 'Tarea', 'OIC / cliente', 'Soporte', 'Quién'].map(h => (
+                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: '#9a9895', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {visibles.map(t => {
+                const meta = TIPO_META[t.tipo] ?? { label: t.tipo, color: '#6e6a62' }
+                const ord = first<any>(t.ordenes_venta), cli = first<any>(ord?.clientes), sop = first<any>(t.soportes)
+                const quien = first<any>(t.perfiles)?.nombre
+                return (
+                  <tr key={t.id} style={{ borderTop: '1px solid #f0eee8' }}>
+                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(t.completed_at)}</td>
+                    <td style={{ padding: '8px 12px' }}><span style={{ color: meta.color, fontWeight: 700 }}>{meta.label}</span></td>
+                    <td style={{ padding: '8px 12px' }}>
+                      {ord?.id ? <Link href={`/dashboard/ventas/${ord.id}`} style={{ color: 'var(--orange, #eb691c)', fontWeight: 700, textDecoration: 'none' }}>OIC #{ord.numero ?? '—'}</Link> : '—'}
+                      {cli ? ` · ${cli.empresa ?? cli.nombre}` : ''}
+                    </td>
+                    <td style={{ padding: '8px 12px' }}>{sop?.nombre ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', color: '#6e6a62' }}>{quien ?? '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
