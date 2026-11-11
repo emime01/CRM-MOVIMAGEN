@@ -47,7 +47,10 @@ describe('planDeCuotas', () => {
   // binario flotante 1,15 × 100 da 114,99999999999999, así que una cuota de $ 1,15 sale
   // como $ 1,14 y la última absorbe el centavo ($ 1,16). La suma da bien, pero las cuotas
   // quedan desparejas cuando deberían ser iguales.
-  it.todo('repartir 2,30 en 2 cuotas da 1,15 + 1,15 (hoy da 1,14 + 1,16 por redondeo flotante)')
+  it('repartir 2,30 en 2 cuotas da 1,15 + 1,15 (sin error de coma flotante)', () => {
+    const p = plan({ cuotas: 2, total: 2.30, arrendamiento: 2.30 })
+    expect(p.map(c => c.importe_arrendamiento)).toEqual([1.15, 1.15])
+  })
 })
 
 describe('fechas de facturación', () => {
