@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Search, Plus, Minus, Trash2, Download, Send, CheckCircle,
   ChevronRight, Save, ArrowLeft, Loader2, Info, BarChart3,
-  Target, AlertCircle, X, Copy, LayoutTemplate,
+  Target, AlertCircle, X, Copy, LayoutTemplate, Presentation,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -14,6 +14,7 @@ import {
 import { puede } from '@/lib/auth/roles'
 import { esImpuestoMTOP, etiquetaImpuesto } from '@/lib/cotizador/calcular'
 import { generarPdfCotizacion } from '@/lib/cotizador/pdf-cotizacion'
+import { useSession } from 'next-auth/react'
 import { precioDeSemanas, semanasMinimas } from '@/lib/cotizador/temporada'
 import { avisar, confirmar } from '@/components/ui/dialogos'
 
@@ -42,6 +43,7 @@ interface Soporte {
   temporada_baja: boolean
   comentario: string | null
   url_imagen: string | null
+  medidas?: string | null
   activo: boolean
 }
 
@@ -598,6 +600,34 @@ export default function CotizadorClient({
     if (data.orden_id) router.push(`/dashboard/ventas/${data.orden_id}`)
   }
 
+  // ── Presentación comercial (PowerPoint) ────────────────────────────────────
+  const { data: sesion } = useSession()
+  const [armandoPpt, setArmandoPpt] = useState(false)
+  async function exportPPT() {
+    const conPrecios = await confirmar('¿Incluir precios e inversión en la presentación?\n\nAceptar: con precios · Cancelar: sólo los soportes, sin precios')
+    setArmandoPpt(true)
+    try {
+      const { generarPptPropuesta } = await import('@/lib/cotizador/ppt-propuesta')
+      await generarPptPropuesta({
+        numero: propuesta?.numero ?? '',
+        cliente: clienteQuery, campana: nombre, marca,
+        desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin),
+        moneda, observaciones, incluirPrecios: conPrecios,
+        vendedor: { nombre: sesion?.user?.name ?? null, email: sesion?.user?.email ?? null },
+        items: calcs.map(({ item, c }) => ({
+          nombre: item.soporte.nombre, ubicacion: item.soporte.ubicacion ?? null,
+          categoria: item.soporte.categoria ?? null, seccion: item.soporte.seccion ?? null,
+          medidas: item.soporte.medidas ?? null, foto: item.soporte.url_imagen ?? null,
+          cantidad: item.cantidadSoportes, semanas: c.sem, salidas: item.salidasElegidas,
+          impactos: c.imp, arr: c.arr, prod: c.prod, imp: c.mun, ivaArr: c.ivaArr, ivaProd: c.ivaProd, tot: c.tot,
+        })),
+      })
+    } catch (e) {
+      console.error(e)
+      avisar('No se pudo generar la presentación')
+    } finally { setArmandoPpt(false) }
+  }
+
   // ── PDF ────────────────────────────────────────────────────────────────────
 
   async function exportPDF() {
@@ -691,6 +721,11 @@ export default function CotizadorClient({
         <button onClick={exportPDF} disabled={plan.length === 0}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: plan.length === 0 ? 'not-allowed' : 'pointer', opacity: plan.length === 0 ? 0.5 : 1 }}>
           <Download size={14} /> PDF
+        </button>
+
+        <button onClick={exportPPT} disabled={plan.length === 0 || armandoPpt} title="Presentación comercial con las fotos de los soportes, para el cliente"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 12, cursor: plan.length === 0 ? 'not-allowed' : 'pointer', opacity: plan.length === 0 ? 0.5 : 1 }}>
+          <Presentation size={14} /> {armandoPpt ? 'Armando…' : 'Presentación'}
         </button>
 
         {!isNew && (
