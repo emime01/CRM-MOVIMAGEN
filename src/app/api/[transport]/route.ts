@@ -554,7 +554,7 @@ const handler = createMcpHandler(
     // 14. Crear cotización (borrador — los precios los calcula el servidor)
     server.tool(
       'crear_cotizacion',
-      'Crea una cotización en estado BORRADOR con precios calculados por el servidor. La cotización queda SIN lead (sin generar basura). Para asociarla a un lead usá asignar_lead_a_cotizacion después — típicamente cuando el cliente confirma interés.',
+      'Crea una cotización en estado BORRADOR con precios calculados por el servidor. Se asocia al lead abierto del cliente con ese vendedor; si no hay, crea uno (la cotización siempre cuelga de un lead). Para pasarla a otro lead, asignar_lead_a_cotizacion.',
       {
         cliente_nombre: z.string().describe('Cliente existente (exacto o parcial). Si no existe, crearlo antes con crear_cliente.'),
         items: z.array(itemSchema).min(1),
@@ -596,13 +596,29 @@ const handler = createMcpHandler(
         const prod = plan.reduce((s, p) => s + p.calc.prod, 0)
         const mun = plan.reduce((s, p) => s + p.calc.mun, 0)
 
+        // Toda cotización cuelga de un lead (la base lo exige): se usa el lead
+        // abierto de ese cliente y vendedor; si no hay, se crea uno.
+        const { data: abiertos } = await supabase.from('leads').select('id')
+          .eq('cliente_id', cliente.id).eq('vendedor_id', vendedorId)
+          .not('estado', 'in', '(ganado,perdido)').order('created_at', { ascending: false }).limit(1)
+        let leadId = abiertos?.[0]?.id as string | undefined
+        let leadNuevo = false
+        if (!leadId) {
+          const { data: lead, error: lErr } = await supabase.from('leads').insert({
+            cliente_id: cliente.id, vendedor_id: vendedorId, estado: 'propuesta_enviada',
+            descripcion: args.nombre ?? `Cotización para ${cliente.nombre}`, monto_potencial: Math.round(arr + prod + mun),
+          }).select('id').single()
+          if (lErr || !lead) return text(`No pude crear el lead de la cotización: ${lErr?.message ?? 'desconocido'}`)
+          leadId = lead.id; leadNuevo = true
+        }
+
         // Numeración
         const numero = await proximoNumeroCotizacion(supabase)
 
         const { data: propuesta, error } = await supabase
           .from('propuestas')
           .insert({
-            lead_id:        null,
+            lead_id:        leadId,
             cliente_id:     cliente.id,
             vendedor_id:    vendedorId,
             numero,
@@ -624,7 +640,8 @@ const handler = createMcpHandler(
           .single()
         if (error || !propuesta) return text(`Error al crear la cotización: ${error?.message ?? 'desconocido'}`)
 
-        const rows = plan.map(({ soporte, cantidad, salidas, semanas, calc }) => ({
+        const rows = plan.map(({ soporte, cantidad, salidas, semanas, calc }, i) => ({
+          id:                idEnOrden(i),
           propuesta_id:      propuesta.id,
           soporte_id:        soporte.id,
           nombre_soporte:    soporte.nombre,
@@ -643,10 +660,10 @@ const handler = createMcpHandler(
         if (itemsErr) return text(`Cotización ${numero} creada pero falló la carga de items: ${itemsErr.message}. Revisala en la web.`)
 
         return text(
-          `✓ Cotización ${numero} creada en BORRADOR para ${cliente.nombre} (sin lead asignado)\n\n` +
+          `✓ Cotización ${numero} creada en BORRADOR para ${cliente.nombre} (${leadNuevo ? 'con un lead nuevo' : 'en su lead abierto'})\n\n` +
           formatPlan(plan, args.moneda ?? 'UYU') +
           `\n\nRevisala desde la web: https://crm-movimagen.vercel.app/dashboard/cotizaciones/${propuesta.id}` +
-          `\nCuando el cliente confirme interés, asociala a un lead con asignar_lead_a_cotizacion.`,
+          ``,
         )
       },
     )
@@ -1229,6 +1246,7 @@ const handler = createMcpHandler(
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { proximoNumeroCotizacion } from '@/lib/cotizaciones/numero'
+import { idEnOrden } from '@/lib/cotizador/orden-items'
 
 function safeEq(a: string, b: string): boolean {
   // timingSafeEqual requiere longitudes iguales; si difieren igual queremos
