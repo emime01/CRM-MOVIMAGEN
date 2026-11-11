@@ -32,10 +32,14 @@ interface Linea {
   pct_canon: number; canon: number; reparto: number | null
   usd?: number | null; cotizacion?: number | null; cotizacion_provisoria?: boolean
   plan?: { cuota: number; cuotas: number; primer_mes: string } | null
+  /** Viene de otro mes ('AAAA-MM'): se pasó a pagar acá. */
+  diferida_de?: string
 }
 interface FilaMes {
   shopping: { id: string; nombre: string; porcentaje_canon: number; canon_minimo: number }
   lineas: Linea[]
+  /** Líneas de este mes que se pasaron a otro. */
+  diferidas?: (Linea & { mes_destino: string })[]
   variable: number; variable_usd: number; minimo: number; arrastre: number; diferido: number; a_pagar: number
   estado: 'abierto' | 'cerrado' | 'pagado'; fecha_pago: string | null; notas: string | null; recalculado: number | null
 }
@@ -99,7 +103,7 @@ export default function CanonClient({ paga = true, configura = true }: {
   /** El informe de un shopping, para mandarle (logo, fecha, fórmulas, en pesos). */
   async function informe(f: FilaMes) {
     const { informeShoppingExcel } = await import('@/lib/canon/excel')
-    await informeShoppingExcel({ shopping: f.shopping, lineas: f.lineas, minimo: f.minimo, arrastre: f.arrastre, diferido: f.diferido }, mes)
+    await informeShoppingExcel({ shopping: f.shopping, lineas: f.lineas, minimo: f.minimo }, mes)
   }
 
   async function resumenExcel() {
@@ -109,6 +113,17 @@ export default function CanonClient({ paga = true, configura = true }: {
       shopping: f.shopping.nombre, pct: f.shopping.porcentaje_canon, variable: f.variable, minimo: f.minimo,
       arrastre: f.arrastre, diferido: f.diferido, estado: ESTADO[f.estado].label, fecha_pago: f.fecha_pago,
     })), mes)
+  }
+
+  async function pasarLinea(f: FilaMes, l: Linea) {
+    const destino = moverMes(mes, 1)
+    if (!await preguntar(`¿Pasar la factura de ${l.cliente} (canon ${formatMoney(l.canon, 'UYU')}) a ${nombreMes(destino)}? Sale del informe de ${nombreMes(mes)} y entra en el de ${nombreMes(destino)}.`)) return
+    await accion(f.shopping.id, { accion: 'diferir_linea', linea_id: l.factura_id, mes_destino: destino, mes_pauta: l.diferida_de })
+  }
+
+  async function devolverLinea(f: FilaMes, l: Linea, origen: string) {
+    if (!await preguntar(`¿Devolver la factura de ${l.cliente} a ${nombreMes(origen)}?`)) return
+    await accion(f.shopping.id, { accion: 'devolver_linea', linea_id: l.factura_id, mes: origen })
   }
 
   /** En cuántas cuotas se le paga al shopping el canon de una venta, y desde qué mes. */
@@ -270,8 +285,8 @@ export default function CanonClient({ paga = true, configura = true }: {
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 18, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <Dato label="Variable" valor={formatMoney(f.variable, 'UYU')} fuerte={manda === 'variable'} />
                         <Dato label="Mínimo" valor={f.minimo ? formatMoney(f.minimo, 'UYU') : '—'} fuerte={manda === 'mínimo'} />
-                        {f.arrastre !== 0 && <Dato label="Mes anterior" valor={`+ ${formatMoney(f.arrastre, 'UYU')}`} />}
-                        {f.diferido !== 0 && <Dato label="Pasa al siguiente" valor={`− ${formatMoney(f.diferido, 'UYU')}`} />}
+                        {f.arrastre !== 0 && <Dato label="Del mes anterior (incl.)" valor={formatMoney(f.arrastre, 'UYU')} />}
+                        {f.diferido !== 0 && <Dato label="Pasa al siguiente (no incl.)" valor={formatMoney(f.diferido, 'UYU')} />}
                         <Dato label="A pagar" valor={formatMoney(f.a_pagar, 'UYU')} grande />
                         <Dato label="Con IVA" valor={formatMoney(f.a_pagar * (1 + IVA), 'UYU')} />
                       </div>
@@ -285,7 +300,7 @@ export default function CanonClient({ paga = true, configura = true }: {
 
                     {ver && (
                       <div style={{ borderTop: '1px solid var(--border)' }}>
-                        {f.lineas.length === 0 ? (
+                        {f.lineas.length === 0 && !f.diferidas?.length ? (
                           <p style={{ padding: 16, margin: 0, fontSize: 12.5, color: 'var(--text-muted)' }}>
                             No hay pauta en este shopping en {nombreMes(mes)}.{f.minimo ? ' Se paga el mínimo.' : ''}
                           </p>
@@ -302,6 +317,12 @@ export default function CanonClient({ paga = true, configura = true }: {
                                   <tr key={l.factura_id + i} style={{ borderTop: '1px solid var(--border)', color: l.tipo === 'nota_credito' ? '#7c3aed' : undefined }}>
                                     <td style={td}>
                                       <Link href={`/dashboard/ventas/${l.orden_id}`} style={{ color: 'inherit', fontWeight: 600, textDecoration: 'none' }}>{l.cliente}</Link>
+                                      {l.diferida_de && (
+                                        <div style={{ marginTop: 2 }}>
+                                          <span style={{ background: 'rgba(37,99,235,0.1)', color: '#2563eb', borderRadius: 5, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>Viene de {nombreMes(l.diferida_de)}</span>
+                                          {f.estado === 'abierto' && <button disabled={ocupado} onClick={() => devolverLinea(f, l, l.diferida_de!)} style={{ ...btn, padding: '1px 7px', marginLeft: 6, fontSize: 10.5 }}>Devolver</button>}
+                                        </div>
+                                      )}
                                       <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{[l.agencia ?? 'Directo', l.marca, !l.plan && l.cuotas_total > 1 ? `cuota ${l.cuota} de ${l.cuotas_total}` : null].filter(Boolean).join(' · ')}</div>
                                     </td>
                                     <td style={{ ...td, fontSize: 11.5 }}>{l.soportes.join(', ') || '—'}{l.reparto && <span style={{ color: 'var(--text-muted)' }}> · circuito, 1/{l.reparto}</span>}</td>
@@ -324,6 +345,11 @@ export default function CanonClient({ paga = true, configura = true }: {
                                       {f.estado === 'abierto' && l.tipo !== 'nota_credito' && (
                                         <button disabled={ocupado} onClick={() => planCanon(l)} style={{ ...btn, padding: '3px 8px', marginLeft: 6, fontSize: 11 }}>Cambiar</button>
                                       )}
+                                      {f.estado === 'abierto' && l.tipo !== 'nota_credito' && (
+                                        <div style={{ marginTop: 4 }}>
+                                          <button disabled={ocupado} onClick={() => pasarLinea(f, l)} style={{ ...btn, padding: '3px 8px', fontSize: 11 }}>Pasar al mes siguiente</button>
+                                        </div>
+                                      )}
                                     </td>
                                   </tr>
                                 ))}
@@ -331,18 +357,22 @@ export default function CanonClient({ paga = true, configura = true }: {
                             </table>
                           </div>
                         )}
+                        {!!f.diferidas?.length && (
+                          <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)' }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Pasadas al mes siguiente</div>
+                            {f.diferidas.map(l => (
+                              <div key={l.factura_id} style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, padding: '3px 0', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 600 }}>{l.cliente}</span>
+                                <span style={{ fontFamily: 'monospace' }}>{l.numero ?? 'sin emitir'}</span>
+                                <span style={{ fontWeight: 700 }}>{formatMoney(l.canon, 'UYU')}</span>
+                                <span style={{ color: 'var(--text-muted)' }}>→ {nombreMes(l.mes_destino)}</span>
+                                {f.estado === 'abierto' && <button disabled={ocupado} onClick={() => devolverLinea(f, l, mes)} style={{ ...btn, padding: '2px 8px', fontSize: 11 }}>Devolver</button>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: 8, padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg-app)', flexWrap: 'wrap', alignItems: 'center' }}>
                           <button onClick={() => informe(f)} style={btn}><Download size={13} /> Informe del shopping</button>
-                          {f.estado !== 'pagado' && (
-                            <button disabled={ocupado} style={btn} onClick={async () => {
-                              const v = await pedir(`¿Cuánto del canon de ${nombreMes(mes)} pasa al mes siguiente? (0 para nada)`, f.diferido ? f.diferido.toLocaleString('es-UY') : '')
-                              if (v === null) return
-                              const monto = leerMonto(v)
-                              if (monto === null) { avisar('No entendí el monto'); return }
-                              const nota = await pedir('Motivo (opcional)', f.notas ?? '') ?? undefined
-                              accion(f.shopping.id, { accion: 'diferir', diferido: monto, notas: nota })
-                            }}>Pasar parte al mes siguiente</button>
-                          )}
                           {f.estado === 'abierto' && (
                             <button disabled={ocupado} style={btn} onClick={() => accion(f.shopping.id, { accion: 'cerrar' }, `¿Cerrar el canon de ${f.shopping.nombre} de ${nombreMes(mes)}? Los números quedan fijos.`)}>Cerrar mes</button>
                           )}
@@ -367,7 +397,7 @@ export default function CanonClient({ paga = true, configura = true }: {
             </div>
           )}
           <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 12 }}>
-            Todo en pesos: lo facturado en dólares se pasa con la cotización de la factura (si todavía no se facturó, con la del BCU de hoy). Se liquida en el mes en que sale la pauta: cada cuota en su mes, salvo que la venta tenga sus propias cuotas de canon ("Cambiar" en cada línea). Por línea: arrendamiento sin IVA de los soportes del shopping × (1 − % de la agencia) × % de canon. La producción no entra; las notas de crédito restan; un circuito se reparte entre sus shoppings. Se paga el mayor entre el variable y el mínimo, más lo que se pasó del mes anterior.
+            Todo en pesos: lo facturado en dólares se pasa con la cotización de la factura (si todavía no se facturó, con la del BCU de hoy). Se liquida en el mes en que sale la pauta: cada cuota en su mes, salvo que la venta tenga sus propias cuotas de canon ("Cambiar" en cada línea). Por línea: arrendamiento sin IVA de los soportes del shopping × (1 − % de la agencia) × % de canon. La producción no entra; las notas de crédito restan; un circuito se reparte entre sus shoppings. Se paga el mayor entre el variable y el mínimo, Cada línea se puede pasar al mes siguiente: sale del informe de este mes y aparece, como una línea más, en el del mes en que se paga.
           </p>
         </>
       )}
@@ -489,19 +519,6 @@ export default function CanonClient({ paga = true, configura = true }: {
       )}
     </div>
   )
-}
-
-/**
- * Un monto escrito a mano: "17.778,50" (como se escribe acá), "17778,5" o
- * "17778.5". El punto es de miles sólo si hay coma o si deja grupos de tres.
- */
-function leerMonto(v: string): number | null {
-  let t = v.trim().replace(/\s|\$/g, '')
-  if (!t) return 0
-  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.')
-  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '')
-  const n = Number(t)
-  return Number.isFinite(n) && n >= 0 ? n : null
 }
 
 function Dato({ label, valor, fuerte, grande }: { label: string; valor: string; fuerte?: boolean; grande?: boolean }) {

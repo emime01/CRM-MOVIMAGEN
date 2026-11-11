@@ -66,11 +66,15 @@ export type LineaCanon = {
   cotizacion_provisoria?: boolean
   /** Viene de un plan de cuotas de canon de la venta ("cuota k de n del canon"). */
   plan?: { cuota: number; cuotas: number; primer_mes: string } | null
+  /** Línea que se pasó desde otro mes ('AAAA-MM' donde se calculó originalmente). */
+  diferida_de?: string
 }
 
 export type ResumenShopping = {
   shopping: ShoppingCanon
   lineas: LineaCanon[]
+  /** Líneas de este mes que se pasaron a otro: no están en `lineas` ni en `variable`. */
+  diferidas?: (LineaCanon & { mes_destino: string })[]
   variable: number      // en pesos
   variable_usd: number  // lo vendido en dólares, aparte
 }
@@ -162,6 +166,45 @@ export function aPagar(variable: number, minimo: number, arrastre: number, difer
   return r2(Math.max(variable, minimo) + arrastre - diferido)
 }
 
+/** Primer día del mes siguiente a "AAAA-MM-01". */
+export function mesSiguiente(mes: string): string {
+  const [y, m] = mes.split('-').map(Number)
+  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10)
+}
+
+/** Una línea (factura × shopping) que se pasó a pagar en un mes posterior. */
+export type FilaDiferida = { shopping_id: string; linea_id: string; mes_pauta: string; mes_destino: string }
+
+/**
+ * Aplica los diferidos a un mes. `rawPorMes` trae el cálculo crudo (sin
+ * diferidos) de cada mes que haga falta, con clave 'AAAA-MM': el propio `mes` y
+ * los meses de origen de lo que llega. Lo que se pasó a otro mes sale de
+ * `lineas` (y de `variable`) y va a `diferidas`; lo que llega de otro mes entra
+ * como línea normal marcada con `diferida_de`. No muta la entrada.
+ */
+export function aplicarDiferidos(rawPorMes: Record<string, ResumenShopping[]>, filas: FilaDiferida[], mes: string): ResumenShopping[] {
+  const m7 = (f: string) => f.slice(0, 7)
+  return (rawPorMes[mes] ?? []).map(r => {
+    const mias = filas.filter(f => f.shopping_id === r.shopping.id)
+    const salen = new Map(mias.filter(f => m7(f.mes_pauta) === mes && m7(f.mes_destino) !== mes).map(f => [f.linea_id, m7(f.mes_destino)]))
+    const lineas: LineaCanon[] = []
+    const diferidas: (LineaCanon & { mes_destino: string })[] = []
+    for (const l of r.lineas) {
+      const destino = salen.get(l.factura_id)
+      if (destino) diferidas.push({ ...l, mes_destino: destino })
+      else lineas.push(l)
+    }
+    for (const f of mias) {
+      if (m7(f.mes_destino) !== mes || m7(f.mes_pauta) === mes) continue
+      const origen = rawPorMes[m7(f.mes_pauta)]?.find(x => x.shopping.id === r.shopping.id)
+      const l = origen?.lineas.find(x => x.factura_id === f.linea_id)
+      if (l) lineas.push({ ...l, diferida_de: m7(f.mes_pauta) })
+    }
+    lineas.sort((a, b) => a.cliente.localeCompare(b.cliente))
+    return { ...r, lineas, diferidas, variable: r2(lineas.reduce((t, l) => t + l.canon, 0)) }
+  })
+}
+
 /** Primer día del mes anterior a "AAAA-MM-01". */
 export function mesAnterior(mes: string): string {
   const [y, m] = mes.split('-').map(Number)
@@ -208,8 +251,30 @@ function aFacturasCanon(filas: any[], cotizHoy: number | null): FacturaCanon[] {
   return out
 }
 
-/** Trae de la base todo lo del mes y lo calcula. `mes` es "AAAA-MM". */
+/**
+ * El canon del mes con los diferidos aplicados: lo que se pasó a otro mes no
+ * está, y lo que llegó de otro mes está como línea normal. `mes` es "AAAA-MM".
+ * Sin la tabla canon_diferidos (migración v51), es el cálculo crudo.
+ */
 export async function cargarCanonDelMes(supabase: SupabaseClient, mes: string): Promise<{ resumen: ResumenShopping[]; error?: string }> {
+  const crudo = await cargarCanonCrudo(supabase, mes)
+  if (crudo.error) return crudo
+  const mes01 = `${mes}-01`
+  const dRes = await supabase.from('canon_diferidos').select('shopping_id, linea_id, mes_pauta, mes_destino').or(`mes_pauta.eq.${mes01},mes_destino.eq.${mes01}`)
+  if (dRes.error || !dRes.data?.length) return crudo
+  const filas = dRes.data as FilaDiferida[]
+  const rawPorMes: Record<string, ResumenShopping[]> = { [mes]: crudo.resumen }
+  const origenes = Array.from(new Set(filas.filter(f => f.mes_destino.slice(0, 7) === mes && f.mes_pauta.slice(0, 7) !== mes).map(f => f.mes_pauta.slice(0, 7))))
+  for (const o of origenes) {
+    const r = await cargarCanonCrudo(supabase, o)
+    if (r.error) return r
+    rawPorMes[o] = r.resumen
+  }
+  return { resumen: aplicarDiferidos(rawPorMes, filas, mes) }
+}
+
+/** Trae de la base todo lo del mes y lo calcula, sin diferidos. `mes` es "AAAA-MM". */
+async function cargarCanonCrudo(supabase: SupabaseClient, mes: string): Promise<{ resumen: ResumenShopping[]; error?: string }> {
   const mes01 = `${mes}-01`
   // La tabla de planes es de la migración v49: sin ella, ningún plan.
   const planesRes = await supabase.from('canon_planes').select('orden_id, cuotas, primer_mes')

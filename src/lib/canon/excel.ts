@@ -15,7 +15,7 @@ export interface LineaInforme {
 export interface ShoppingInforme {
   shopping: { nombre: string; canon_minimo?: number }
   lineas: LineaInforme[]
-  minimo: number; arrastre: number; diferido: number
+  minimo: number
 }
 
 /** El logo de cada shopping, por su nombre (public/logos-shoppings). */
@@ -110,9 +110,9 @@ export async function informeShoppingExcel(f: ShoppingInforme, mes: string) {
     return r++
   }
   const suma = f.lineas.length ? `SUM(H${H + 1}:H${ult})` : '0'
-  // Al shopping se le informa el canon del mes: lo que se pasa al mes
-  // siguiente (o viene del anterior) es un manejo interno y no va en el informe.
-  // El mínimo no se muestra, pero si lo hay, manda.
+  // Las líneas ya vienen con los diferidos aplicados (lo que se pasó a otro mes
+  // no está; lo que llegó de otro mes figura como una línea más). El mínimo no
+  // se muestra, pero si lo hay, manda.
   const formulaPagar = f.minimo ? `MAX(${suma},${f.minimo})` : suma
   const aPagar = Math.round(Math.max(variable, f.minimo || 0) * 100) / 100
   const rPagar = filaTotal('Canon a pagar', { formula: formulaPagar, result: aPagar }, true)
@@ -123,6 +123,7 @@ export async function informeShoppingExcel(f: ShoppingInforme, mes: string) {
 }
 
 export interface FilaResumen {
+  /** `arrastre` y `diferido` son informativos: el variable ya los incluye. */
   shopping: string; pct: number; variable: number; minimo: number; arrastre: number; diferido: number
   estado: string; fecha_pago: string | null
 }
@@ -132,23 +133,24 @@ export async function resumenMesExcel(filas: FilaResumen[], mes: string) {
   const ExcelJS = (await import('exceljs')).default
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('Canon')
-  ws.columns = [{ width: 32 }, { width: 9 }, { width: 16 }, { width: 16 }, { width: 18 }, { width: 16 }, { width: 14 }, { width: 16 }, { width: 11 }, { width: 13 }]
+  ws.columns = [{ width: 32 }, { width: 9 }, { width: 16 }, { width: 22 }, { width: 24 }, { width: 16 }, { width: 14 }, { width: 16 }, { width: 11 }, { width: 13 }]
   ws.getCell('A1').value = `Canon · ${nombreMes(mes)}`
   ws.getCell('A1').font = { bold: true, size: 14 }
   ws.getCell('A2').value = 'Fecha:'
   ws.getCell('B2').value = new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)) - 1, 1))
   ws.getCell('B2').numFmt = 'dd/mm/yyyy'
   const H = 4
-  ;['Shopping', '% Canon', 'Canon variable', 'Del mes anterior', 'Pasa al siguiente', 'A pagar', 'IVA', 'Total con IVA', 'Estado', 'Fecha de pago'].forEach((t, i) => {
+  ;['Shopping', '% Canon', 'Canon variable', 'Incluye del mes anterior', 'Pasadas al siguiente (no incluidas)', 'A pagar', 'IVA', 'Total con IVA', 'Estado', 'Fecha de pago'].forEach((t, i) => {
     const c = ws.getCell(H, i + 1); c.value = t; c.font = { bold: true }
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: VERDE } }
   })
   let r = H + 1
   for (const f of filas) {
     const fila = ws.getRow(r)
-    const aPagar = Math.round((Math.max(f.variable, f.minimo || 0) + f.arrastre - f.diferido) * 100) / 100
+    // El variable ya incluye lo que llegó y excluye lo que se pasó: A pagar = MAX(variable, mínimo).
+    const aPagar = Math.round(Math.max(f.variable, f.minimo || 0) * 100) / 100
     fila.values = [f.shopping, f.pct, f.variable, f.arrastre, f.diferido]
-    fila.getCell(6).value = { formula: `${f.minimo ? `MAX(C${r},${f.minimo})` : `C${r}`}+D${r}-E${r}`, result: aPagar }
+    fila.getCell(6).value = { formula: f.minimo ? `MAX(C${r},${f.minimo})` : `C${r}`, result: aPagar }
     fila.getCell(7).value = { formula: `F${r}*${IVA}`, result: Math.round(aPagar * IVA * 100) / 100 }
     fila.getCell(8).value = { formula: `F${r}+G${r}`, result: Math.round(aPagar * (1 + IVA) * 100) / 100 }
     fila.getCell(9).value = f.estado
