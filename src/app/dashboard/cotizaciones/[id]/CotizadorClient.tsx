@@ -66,6 +66,9 @@ function getSemanasFromDates(inicio: string | null, fin: string | null): number 
   return dias > 0 ? Math.max(1, Math.round(dias / 7)) : 1
 }
 
+// "Verano · Opción B" → "Verano": la opción ya va en la etiqueta.
+const sinOpcion = (t: string) => t.replace(/\s*·\s*Opción [A-Z]$/i, '')
+
 function fmt(n: number, moneda = 'UYU'): string {
   const sym = moneda === 'USD' ? 'U$S' : '$'
   return `${sym} ${Math.round(n).toLocaleString('es-UY')}`
@@ -541,7 +544,7 @@ export default function CotizadorClient({
         // las otras, de lo guardado, calculadas con la misma fórmula.
         opciones = await Promise.all(versiones.map(async (v, i) => {
           if (v.id === idActual) {
-            return { etiqueta: letra(i), nombre: nombre || v.nombre || '', items: aItems(calcs), moneda, desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin) }
+            return { etiqueta: letra(i), nombre: sinOpcion(nombre || v.nombre || ''), items: aItems(calcs), moneda, desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin) }
           }
           const res = await fetch(`/api/propuestas/${v.id}`)
           if (!res.ok) throw new Error(`No se pudo leer ${letra(i)}`)
@@ -549,7 +552,7 @@ export default function CotizadorClient({
           const p: PropuestaHeader = pd.propuesta
           const planV = planDesdeGuardados(pd.items ?? [], catalog, () => ++uidRef.n)
           return {
-            etiqueta: letra(i), nombre: p.nombre ?? v.nombre ?? '',
+            etiqueta: letra(i), nombre: sinOpcion(p.nombre ?? v.nombre ?? ''),
             items: aItems(planV.map(it => ({ item: it, c: calcItem(it, p.fecha_inicio) }))),
             moneda: p.moneda ?? moneda, desde: fmtDate(p.fecha_inicio), hasta: fmtDate(p.fecha_fin),
           }
