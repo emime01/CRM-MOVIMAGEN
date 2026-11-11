@@ -7,7 +7,7 @@ import { registrarCobroDeFactura } from '@/lib/ventas/cobrar'
 import { registrarPromesa, cerrarSeguimiento } from '@/lib/ventas/cobranza'
 import { hoyUY } from '@/lib/fechas'
 import { cotizacionDolar } from '@/lib/bcu'
-import { registrarComisionAgencia, comisionAgenciaDe } from '@/lib/ventas/comision-agencia'
+import { registrarComisionAgencia, comisionAgenciaDe, descuentoAgencia as descuentoAgencia_ } from '@/lib/ventas/comision-agencia'
 import {
   calcularVencimiento, primerDiaDelMes, CONDICION_PAGO_POR_DEFECTO,
   puedePlanificar, puedeAdministrarFacturas,
@@ -235,12 +235,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       // La agencia se descontó su comisión del pago: pagó el neto. La factura
       // queda cobrada entera (no queda saldo) y la comisión, "descontada"
       // (no se le debe nada a la agencia).
+      // monto = lo que se descontó la agencia (comisión + IVA).
       let descuentoAgencia: { id: string; monto: number } | null = null
       if (body.descuenta_agencia === true) {
         const com = await comisionAgenciaDe(supabase, params.id)
         if (!com) return NextResponse.json({ error: 'Esta factura no tiene comisión de agencia registrada' }, { status: 409 })
         if (com.estado === 'pagada') return NextResponse.json({ error: 'La comisión de esta factura ya se le pagó a la agencia' }, { status: 409 })
-        descuentoAgencia = { id: com.id, monto: com.monto }
+        // La agencia se descuenta la comisión MÁS el IVA.
+        const d = descuentoAgencia_(com.monto)
+        if (d.total >= total) return NextResponse.json({ error: 'La comisión de la agencia con IVA no puede ser mayor que la factura' }, { status: 409 })
+        descuentoAgencia = { id: com.id, monto: d.total }
       }
 
       const monto = !descuentoAgencia && body.monto !== undefined && body.monto !== null && body.monto !== '' ? importe(body.monto) : null
@@ -309,7 +313,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         orden_id: factura.orden_id,
         perfil_id: session.user.id,
         estado_nuevo: orden?.estado ?? null,
-        comentario: `Cobrada${saldoId ? ` en parte (${monto} de ${total})` : ''}${descuentoAgencia ? ` · la agencia descontó su comisión (${descuentoAgencia.monto})` : ''}${typeof body.metodo === 'string' && body.metodo ? ` · ${body.metodo}` : ''}`,
+        comentario: `Cobrada${saldoId ? ` en parte (${monto} de ${total})` : ''}${descuentoAgencia ? ` · la agencia descontó su comisión + IVA (${descuentoAgencia.monto}); entró ${Math.round((total - descuentoAgencia.monto) * 100) / 100}` : ''}${typeof body.metodo === 'string' && body.metodo ? ` · ${body.metodo}` : ''}`,
       })
       return NextResponse.json({ ok: true, comision_generada: r.comisionGenerada, saldo_id: saldoId })
     }

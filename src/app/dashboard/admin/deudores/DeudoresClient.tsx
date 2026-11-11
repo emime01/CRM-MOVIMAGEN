@@ -8,6 +8,7 @@ import { mailSugerido } from '@/lib/cobranza/mail-sugerido'
 import { formatMoney, formatTotales, type TotalPorMoneda } from '@/lib/money'
 import { diasDeAtraso, tramoDe, TRAMO_LABEL, type Tramo } from '@/lib/ventas/cobranza'
 import { avisar } from '@/components/ui/dialogos'
+import DescuentoAgencia from '@/components/dashboard/DescuentoAgencia'
 
 export interface UltimaGestion {
   tipo: string
@@ -412,9 +413,10 @@ export default function DeudoresClient({ rows, puedeCobrar }: { rows: DeudorRow[
                   {modal.r.tipo !== 'nota_credito' && modal.r.agencia && (
                     <label style={{ ...lbl, display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, fontWeight: 500 }}>
                       <input type="checkbox" checked={form.descuenta === '1'} onChange={e => setForm(f => ({ ...f, descuenta: e.target.checked ? '1' : '' }))} style={{ marginTop: 2, accentColor: 'var(--orange)' }} />
-                      <span>{modal.r.agencia} se descontó su comisión y pagó el neto. La factura queda cobrada entera y la comisión de la agencia queda saldada.</span>
+                      <span>{modal.r.agencia} se descontó su comisión + IVA y pagó el neto. La factura queda cobrada entera y la comisión de la agencia queda saldada.</span>
                     </label>
                   )}
+                  {form.descuenta === '1' && <DescuentoAgencia facturaId={modal.r.id} />}
                   {modal.r.tipo !== 'nota_credito' && form.descuenta !== '1' && (
                     <label style={lbl}>Importe cobrado
                       <input type="number" step="0.01" min="0" max={modal.r.importe} value={form.monto ?? ''} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={inp} />

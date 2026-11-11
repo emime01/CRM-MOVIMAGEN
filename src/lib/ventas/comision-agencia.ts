@@ -27,9 +27,34 @@ export async function registrarComisionAgencia(supabase: SupabaseClient, factura
   }, { onConflict: 'factura_id', ignoreDuplicates: false })
 }
 
-/** La comisión de la agencia de una factura, si hay (para el cobro). */
+/** IVA de la comisión: la agencia la factura con IVA. */
+export const IVA_COMISION_AGENCIA = 0.22
+
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * Lo que se descuenta la agencia cuando paga el neto: su comisión MÁS el IVA
+ * (la agencia factura la comisión con IVA).
+ */
+export function descuentoAgencia(comision: number): { comision: number; iva: number; total: number } {
+  const c = r2(comision)
+  const iva = r2(c * IVA_COMISION_AGENCIA)
+  return { comision: c, iva, total: r2(c + iva) }
+}
+
+/**
+ * La comisión de la agencia de una factura, si hay (para el cobro). Si la
+ * factura se marcó facturada antes de existir el registro (v49), se calcula
+ * ahora con lo pactado en la venta.
+ */
 export async function comisionAgenciaDe(supabase: SupabaseClient, facturaId: string): Promise<{ id: string; monto: number; estado: string } | null> {
-  const { data, error } = await supabase.from('comisiones_agencia').select('id, monto, estado').eq('factura_id', facturaId).maybeSingle()
-  if (error || !data) return null
+  const leer = () => supabase.from('comisiones_agencia').select('id, monto, estado').eq('factura_id', facturaId).maybeSingle()
+  let { data, error } = await leer()
+  if (error) return null
+  if (!data) {
+    await registrarComisionAgencia(supabase, facturaId)
+    ;({ data, error } = await leer())
+    if (error || !data) return null
+  }
   return { id: data.id, monto: Number(data.monto), estado: data.estado }
 }

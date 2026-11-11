@@ -34,6 +34,8 @@ export interface Factura {
   fecha_cobro: string | null
   metodo_cobro: string | null
   notas: string | null
+  /** Si la agencia se descontó su comisión al pagar: comisión + IVA descontados. */
+  agencia_descuento?: number | null
 }
 
 export const CONDICION_PAGO_POR_DEFECTO = 60

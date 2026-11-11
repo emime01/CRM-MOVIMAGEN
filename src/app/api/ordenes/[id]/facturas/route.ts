@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { descuentoAgencia } from '@/lib/ventas/comision-agencia'
 import { hoyUY } from '@/lib/fechas'
 import {
   armarPlanDeFacturas, calcularVencimiento, primerDiaDelMes,
@@ -49,8 +50,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .order('tipo')
   if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 })
 
+  // Las facturas en que la agencia se descontó su comisión + IVA al pagar:
+  // así se ve cuánto entró de verdad. Sin la migración v49 no hay nada.
+  const ids = (data ?? []).map((f: any) => f.id)
+  const descuentos = new Map<string, number>()
+  if (ids.length) {
+    const { data: com } = await supabase.from('comisiones_agencia').select('factura_id, monto').in('factura_id', ids).eq('estado', 'descontada')
+    for (const c of com ?? []) descuentos.set(c.factura_id, descuentoAgencia(Number(c.monto)).total)
+  }
+
   return NextResponse.json({
-    facturas: data ?? [],
+    facturas: (data ?? []).map((f: any) => ({ ...f, agencia_descuento: descuentos.get(f.id) ?? null })),
     condicion_pago_dias: orden.condicion_pago_dias,
     puede_planificar: puedePlanificar(session.user.rol, session.user.id, orden.vendedor_id),
     puede_administrar: puedeAdministrarFacturas(session.user.rol),
