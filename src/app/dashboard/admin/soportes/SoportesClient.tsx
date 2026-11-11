@@ -2,7 +2,7 @@
 
 import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Pencil, Upload, Check } from 'lucide-react'
+import { Plus, X, Pencil, Upload, Check, RefreshCw } from 'lucide-react'
 import type { SoporteRow } from './page'
 import { confirmar } from '@/components/ui/dialogos'
 
@@ -36,6 +36,7 @@ interface ImportRow {
 
 interface Props {
   initialSoportes: SoporteRow[]
+  puedeSincronizar?: boolean
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -438,13 +439,41 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function SoportesClient({ initialSoportes }: Props) {
+interface ResumenHub {
+  configurado: boolean
+  revisados: number
+  actualizados: number
+  sinMatch: number
+  cambios: { id: string; nombre: string; campos: string[] }[]
+  errores: string[]
+  mensaje?: string
+  error?: string
+}
+
+export default function SoportesClient({ initialSoportes, puedeSincronizar = false }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [soportes, setSoportes] = useState<SoporteRow[]>(initialSoportes)
   const [editingSoporte, setEditingSoporte] = useState<SoporteRow | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [sincronizando, setSincronizando] = useState(false)
+  const [resumenHub, setResumenHub] = useState<ResumenHub | null>(null)
+
+  async function sincronizarHub() {
+    setSincronizando(true)
+    setResumenHub(null)
+    try {
+      const res = await fetch('/api/cron/hub-sync', { method: 'POST' })
+      const d = await res.json().catch(() => ({}))
+      setResumenHub(res.ok ? d : { configurado: true, revisados: 0, actualizados: 0, sinMatch: 0, cambios: [], errores: [], error: d.error ?? 'Error al sincronizar' })
+      if (res.ok && d.actualizados > 0) startTransition(() => router.refresh())
+    } catch {
+      setResumenHub({ configurado: true, revisados: 0, actualizados: 0, sinMatch: 0, cambios: [], errores: [], error: 'Error de red al sincronizar' })
+    } finally {
+      setSincronizando(false)
+    }
+  }
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filtroActivo, setFiltroActivo] = useState<'todos' | 'activos' | 'inactivos'>('activos')
@@ -522,6 +551,11 @@ export default function SoportesClient({ initialSoportes }: Props) {
           <p style={{ color: '#9a9895', fontSize: 13, marginTop: 3 }}>{activos} activos · {inactivos} inactivos</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {puedeSincronizar && (
+            <button onClick={sincronizarHub} disabled={sincronizando} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid #e5e3dc', borderRadius: 8, background: '#fff', cursor: sincronizando ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: '#4a4845', opacity: sincronizando ? 0.7 : 1 }}>
+              <RefreshCw size={14} /> {sincronizando ? 'Sincronizando...' : 'Sincronizar con el Hub'}
+            </button>
+          )}
           <button onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid #e5e3dc', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: '#4a4845' }}>
             <Upload size={14} /> Importar Excel
           </button>
@@ -530,6 +564,32 @@ export default function SoportesClient({ initialSoportes }: Props) {
           </button>
         </div>
       </div>
+
+      {resumenHub && (
+        <div style={{ marginBottom: 16, padding: '12px 14px', border: '1px solid #e5e3dc', borderRadius: 8, background: '#fff', fontSize: 13, color: '#4a4845' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <strong>Sincronización con el Hub</strong>
+            <button onClick={() => setResumenHub(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9895' }}><X size={14} /></button>
+          </div>
+          {resumenHub.error ? (
+            <p style={{ color: '#c0392b', margin: '6px 0 0' }}>{resumenHub.error}</p>
+          ) : !resumenHub.configurado ? (
+            <p style={{ margin: '6px 0 0' }}>{resumenHub.mensaje ?? 'No configurado'}</p>
+          ) : (
+            <>
+              <p style={{ margin: '6px 0 0' }}>
+                {resumenHub.revisados} revisados · {resumenHub.actualizados} actualizados · {resumenHub.sinMatch} sin match
+                {resumenHub.errores.length > 0 && ` · ${resumenHub.errores.length} errores`}
+              </p>
+              {resumenHub.cambios.length > 0 && (
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18, maxHeight: 160, overflowY: 'auto' }}>
+                  {resumenHub.cambios.map(c => <li key={c.id}>{c.nombre}: {c.campos.join(', ')}</li>)}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>

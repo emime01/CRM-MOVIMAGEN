@@ -35,5 +35,6 @@ export default async function SoportesPage() {
     .order('seccion', { nullsFirst: false })
     .order('nombre')
 
-  return <SoportesClient initialSoportes={(soportes ?? []) as SoporteRow[]} />
+  const puedeSincronizar = puede(session.user.rol, ['gerente_comercial', 'administracion'])
+  return <SoportesClient initialSoportes={(soportes ?? []) as SoporteRow[]} puedeSincronizar={puedeSincronizar} />
 }
