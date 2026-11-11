@@ -7,7 +7,7 @@ import AvisoBuses from '@/components/dashboard/AvisoBuses'
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED = ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion']
+const ALLOWED = ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion', 'vendedor', 'asistente_ventas']
 
 export default async function TasksPage() {
   const session = await getServerSession(authOptions)

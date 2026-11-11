@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { crearOrdenDesdePropuesta } from '@/lib/ventas/crear-orden'
+import { cerrarSeguimientoPropuesta } from '@/lib/ventas/renovaciones'
 
 /**
  * El cliente aceptó la cotización: cierra la venta en un solo paso.
@@ -56,6 +57,9 @@ export async function aceptarCotizacion(
   if (!actualizadas || actualizadas.length === 0) {
     return { ok: false, error: 'Otra sesión ya marcó esta cotización como aceptada' }
   }
+
+  // Ya no hay nada que seguir: se cierra la tarea de seguimiento, si había.
+  await cerrarSeguimientoPropuesta(supabase, propuestaId)
 
   const itemsConSoporte = (propuesta.propuesta_items ?? []).filter((it: any) => it.soporte_id)
 

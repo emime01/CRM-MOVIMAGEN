@@ -25,16 +25,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const supabase = createServerClient()
-  const { data: task } = await supabase.from('tasks').select('asignado_a_rol').eq('id', params.id).maybeSingle()
+  const { data: task } = await supabase.from('tasks').select('asignado_a_rol, asignado_a').eq('id', params.id).maybeSingle()
   if (!task) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
 
-  const allowed = es(session.user.rol, 'administracion') || atiendeTareasDe(session.user.rol, task.asignado_a_rol)
+  // Las tareas de ventas son de su vendedor (y las ve y mueve el gerente comercial).
+  const deVentas = task.asignado_a_rol === 'ventas'
+  const allowed = deVentas
+    ? task.asignado_a === session.user.id || es(session.user.rol, 'gerente_comercial')
+    : es(session.user.rol, 'administracion') || atiendeTareasDe(session.user.rol, task.asignado_a_rol)
   if (!allowed) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  const updates: Record<string, unknown> = {
-    estado: body.estado,
-    asignado_a: session.user.id,
-  }
+  const updates: Record<string, unknown> = { estado: body.estado }
+  // En las de ventas "asignado_a" es el responsable: no se pisa al moverla.
+  if (!deVentas) updates.asignado_a = session.user.id
   if (body.estado === 'completada') updates.completed_at = new Date().toISOString()
   else updates.completed_at = null
 

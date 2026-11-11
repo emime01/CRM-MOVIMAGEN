@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
 import { idEnOrden } from '@/lib/cotizador/orden-items'
+import { cerrarSeguimientoPropuesta } from '@/lib/ventas/renovaciones'
 
 // GET /api/propuestas/[id]
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -146,6 +147,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .eq('id', params.id)
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+
+  // Rechazada (o devuelta a borrador): se cierra la tarea de seguimiento.
+  if (body.estado !== undefined && body.estado !== 'enviada') {
+    await cerrarSeguimientoPropuesta(supabase, params.id)
+  }
 
   if (Array.isArray(body.items)) {
     await supabase.from('propuesta_items').delete().eq('propuesta_id', params.id)
