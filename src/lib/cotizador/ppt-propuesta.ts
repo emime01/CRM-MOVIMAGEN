@@ -1,7 +1,9 @@
 /**
- * Presentación comercial (PowerPoint) de una cotización, para mostrarle al
- * cliente: portada, una diapositiva por soporte con su foto, la inversión y
- * el cierre con los datos de contacto. Se arma en el navegador (pptxgenjs).
+ * Presentación comercial (PowerPoint) de una cotización, con el estilo del
+ * brochure de Movimagen: portada ilustrada, resumen de la campaña, una
+ * diapositiva por soporte con su foto a pantalla completa, la propuesta
+ * económica y el cierre con los datos de contacto. Se arma en el navegador
+ * (pptxgenjs); `armarPresentacion` no depende del navegador.
  */
 
 export interface ItemPpt {
@@ -37,19 +39,217 @@ export interface DatosPpt {
   items: ItemPpt[]
 }
 
-const NARANJA = 'EB691C'
-const TINTA = '1A1915'
-const GRIS = '6E6A62'
-const CLARO = 'F4F3F0'
-// Arial: Montserrat no viene en PowerPoint y el cliente vería otra letra.
-const FUENTE = 'Arial'
+export interface Img { data: string; w: number; h: number }
+export interface Recursos {
+  portada: Img | null
+  logo: Img | null
+  mv: Img | null
+  sombraAbajo: Img | null
+  sombraArriba: Img | null
+  fotos: (Img | null)[]
+}
 
-const COLOR_CAT: Record<string, string> = {
-  Digital: 'EB691C', Shopping: '7C3AED', Exterior: '059669', Bus: 'D97706', Ruta: '0284C7',
+const NARANJA = 'EB691C'
+const TINTA = '1A1A1A'
+const GRIS = '6B6B6B'
+const LINEA = 'E4E4E4'
+// La letra del brochure. Si la compu no la tiene, PowerPoint usa otra parecida.
+const F = 'Montserrat'
+const W = 13.333, H = 7.5
+
+/** "PANTALLA GIGANTE CURVA" → "Pantalla gigante curva" (como en el brochure). */
+const nombreLindo = (t: string) => t === t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]{3}/.test(t) ? t.charAt(0) + t.slice(1).toLowerCase() : t
+
+/** Ancho aproximado de un texto en Montserrat negrita, en pulgadas. */
+const anchoTexto = (t: string, pt: number) =>
+  t.split('').reduce((a, c) => a + (c === ' ' ? 0.28 : /[A-ZÁÉÍÓÚÑMW]/.test(c) ? 0.74 : /[il.,:;'|!1]/.test(c) ? 0.3 : 0.6), 0) * pt / 72
+
+const SECCION: Record<string, string> = {
+  Digital: 'Pantallas digitales', Shopping: 'Shoppings', Exterior: 'Vía pública', Bus: 'Buses', Ruta: 'Rutas',
+}
+
+/** Arma la presentación (sin descargarla). */
+export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos) {
+  const pptx = new PptxGenJS()
+  pptx.layout = 'LAYOUT_WIDE' // 13,33 × 7,5 pulgadas
+  pptx.author = 'Movimagen'
+  pptx.company = 'Movimagen'
+  pptx.title = `Propuesta ${d.cliente}`
+
+  const sym = d.moneda === 'USD' ? 'US$ ' : '$ '
+  const money = (n: number) => sym + Math.round(n).toLocaleString('es-UY')
+  const num = (n: number) => Math.round(n).toLocaleString('es-UY')
+  const periodo = d.desde && d.hasta ? `${d.desde} al ${d.hasta}` : ''
+  const semanas = Math.max(0, ...d.items.map(i => i.semanas))
+
+  // Imagen que cubre la caja (recorta lo que sobra, sin deformar).
+  const cubrir = (s: any, img: Img, x: number, y: number, w: number, h: number) =>
+    s.addImage({ data: img.data, x, y, w, h: w * img.h / img.w, sizing: { type: 'cover', w, h } })
+  const circuloMv = (s: any) => { if (r.mv) s.addImage({ data: r.mv.data, x: W - 0.95, y: 0.2, w: 0.72, h: 0.72 }) }
+  // "—— TÍTULO": la línea naranja y el texto en mayúsculas, como el brochure.
+  const ceja = (s: any, texto: string, x: number, y: number, color = NARANJA) => {
+    s.addShape('line', { x, y: y + 0.17, w: 0.45, h: 0, line: { color, width: 1.5 } })
+    s.addText(texto.toUpperCase(), { x: x + 0.55, y, w: 9, h: 0.34, fontFace: F, fontSize: 12, bold: true, color, margin: 0 })
+  }
+
+  // ── Portada ──────────────────────────────────────────────────────────────
+  {
+    const s = pptx.addSlide()
+    s.background = { color: NARANJA }
+    if (r.portada) cubrir(s, r.portada, 0, 0, W, H)
+    if (r.logo) { const w = 6.1; s.addImage({ data: r.logo.data, x: (W - w) / 2, y: 1.15, w, h: w * r.logo.h / r.logo.w }) }
+    s.addShape('line', { x: 0, y: 2.9, w: 3.25, h: 0, line: { color: 'FFFFFF', width: 1.5 } })
+    s.addShape('line', { x: W - 3.25, y: 2.9, w: 3.25, h: 0, line: { color: 'FFFFFF', width: 1.5 } })
+    s.addText('PROPUESTA COMERCIAL', { x: 3.25, y: 2.6, w: W - 6.5, h: 0.6, align: 'center', fontFace: F, fontSize: 24, color: 'FFFFFF', margin: 0 })
+    const para = [d.cliente, d.campana].filter(Boolean).join(' · ')
+    if (para) s.addText(para, { x: 1.5, y: 3.2, w: W - 3, h: 0.5, align: 'center', fontFace: F, fontSize: 16, bold: true, color: 'FFFFFF', fit: 'shrink', margin: 0 })
+  }
+
+  // ── Tu campaña ───────────────────────────────────────────────────────────
+  {
+    const s = pptx.addSlide()
+    s.background = { color: 'FFFFFF' }
+    circuloMv(s)
+    ceja(s, `Propuesta para ${d.cliente || 'vos'}`, 0.6, 0.55)
+    s.addText(d.campana || 'Tu campaña en vía pública', { x: 0.6, y: 0.95, w: 9, h: 0.7, fontFace: F, fontSize: 26, bold: true, color: TINTA, fit: 'shrink', margin: 0 })
+    if (periodo) s.addText(`Del ${periodo}`, { x: 0.6, y: 1.6, w: 9, h: 0.4, fontFace: F, fontSize: 13, color: GRIS, margin: 0 })
+
+    // Lo que incluye, en dos columnas como las ciudades del brochure.
+    const lineas = d.items.map(i => [
+      { text: `${i.cantidad > 1 ? `${i.cantidad} × ` : ''}${nombreLindo(i.nombre)}`, options: { bold: true, color: TINTA, breakLine: !!i.ubicacion } },
+      ...(i.ubicacion ? [{ text: i.ubicacion, options: { color: GRIS, fontSize: 12 } }] : []),
+    ])
+    const porCol = Math.ceil(lineas.length / (lineas.length > 6 ? 2 : 1))
+    const cols = lineas.length > 6 ? [lineas.slice(0, porCol), lineas.slice(porCol)] : [lineas]
+    cols.forEach((col, c) => {
+      const x = 0.6 + c * 4.45
+      if (c) s.addShape('line', { x: x - 0.25, y: 2.4, w: 0, h: 3.3, line: { color: LINEA, width: 1 } })
+      s.addText(col.flatMap((l, k) => k < col.length - 1 ? [...l.slice(0, -1), { ...l[l.length - 1], options: { ...l[l.length - 1].options, breakLine: true } }] : l) as any,
+        { x, y: 2.35, w: lineas.length > 6 ? 4.1 : 8.4, h: 3.6, fontFace: F, fontSize: lineas.length > 6 ? 13 : 16, valign: 'top', paraSpaceAfter: 10, ...(lineas.length > 6 ? { fit: 'shrink' } : {}), margin: 0 })
+    })
+
+    // Los números a la derecha, en naranja y separados por rayitas.
+    const impactos = d.items.reduce((t, i) => t + i.impactos, 0)
+    const unidades = d.items.reduce((t, i) => t + i.cantidad, 0)
+    const kpis = [
+      { v: String(unidades), l: unidades === 1 ? 'SOPORTE' : 'SOPORTES' },
+      ...(semanas ? [{ v: String(semanas), l: semanas === 1 ? 'SEMANA' : 'SEMANAS' }] : []),
+      ...(new Set(d.items.map(i => i.categoria).filter(Boolean)).size > 1 ? [{ v: String(new Set(d.items.map(i => i.categoria).filter(Boolean)).size), l: 'FORMATOS' }] : []),
+    ]
+    kpis.forEach((k, n) => {
+      const y = 1.2 + n * 1.45
+      if (n) s.addShape('line', { x: 10.35, y: y - 0.2, w: 1.3, h: 0, line: { color: NARANJA, width: 1 } })
+      s.addText(k.v, { x: 9.5, y, w: 3, h: 0.7, align: 'center', fontFace: F, fontSize: 36, bold: true, color: NARANJA, margin: 0 })
+      s.addText(k.l, { x: 9.5, y: y + 0.68, w: 3, h: 0.3, align: 'center', fontFace: F, fontSize: 9, bold: true, color: TINTA, margin: 0 })
+    })
+    if (impactos) s.addText(`+${num(impactos)} impactos estimados`, { x: 0.6, y: 6.25, w: 9, h: 0.7, fontFace: F, fontSize: 28, bold: true, color: NARANJA, fit: 'shrink', margin: 0 })
+  }
+
+  // ── Una diapositiva por soporte, con la foto a pantalla completa ─────────
+  d.items.forEach((i, n) => {
+    const s = pptx.addSlide()
+    s.background = { color: TINTA }
+    const foto = r.fotos[n] ?? r.portada
+    if (foto) cubrir(s, foto, 0, 0, W, H)
+    if (r.sombraArriba) s.addImage({ data: r.sombraArriba.data, x: 0, y: 0, w: W, h: 1.6 })
+    if (r.sombraAbajo) s.addImage({ data: r.sombraAbajo.data, x: 0, y: H - 3.4, w: W, h: 3.4 })
+    circuloMv(s)
+    ceja(s, SECCION[i.categoria ?? ''] ?? i.seccion ?? i.categoria ?? 'Soporte', 0.6, 0.5, 'FFFFFF')
+
+    // El nombre en la franja naranja.
+    const titulo = `${i.cantidad > 1 ? `${i.cantidad} × ` : ''}${nombreLindo(i.nombre)}`
+    const ancho = Math.min(W - 1.2, 0.4 + anchoTexto(titulo, 24))
+    s.addText(titulo, { x: 0.55, y: 4.95, w: ancho, h: 0.62, fontFace: F, fontSize: 24, bold: true, color: 'FFFFFF', fill: { color: NARANJA }, rectRadius: 0.06, shape: 'roundRect', fit: 'shrink', margin: [0, 10, 0, 10] })
+
+    const linea = (k: string, v: string) => [
+      { text: `${k}: `, options: { color: 'FFFFFF' } },
+      { text: v, options: { color: 'FFFFFF', bold: true } },
+    ]
+    const datos = [
+      ...(i.ubicacion ? [linea('Ubicación', i.ubicacion)] : []),
+      ...(i.impactos ? [linea('Impactos estimados', num(i.impactos))] : []),
+      [
+        ...(i.medidas ? linea('Medidas', i.medidas) : []),
+        ...(i.medidas ? [{ text: '     ', options: {} }] : []),
+        ...linea('Duración', `${i.semanas} semana${i.semanas === 1 ? '' : 's'}`),
+        ...(i.salidas ? [{ text: '     ', options: {} }, ...linea('Salidas por hora', String(i.salidas))] : []),
+      ],
+      ...(d.incluirPrecios ? [linea('Inversión', `${money(i.arr + i.prod + i.imp)} + IVA`)] : []),
+    ]
+    s.addText(datos.flatMap((l, k) => k < datos.length - 1 ? [...l.slice(0, -1), { ...l[l.length - 1], options: { ...l[l.length - 1].options, breakLine: true } }] : l) as any,
+      { x: 0.55, y: 5.68, w: W - 1.6, h: 1.25, fontFace: F, fontSize: 15, valign: 'top', paraSpaceAfter: 2, fit: 'shrink', margin: 0 })
+    s.addShape('line', { x: 0.55, y: 7.08, w: 1.7, h: 0, line: { color: NARANJA, width: 2 } })
+  })
+
+  // ── Propuesta económica (de a 8 soportes por diapositiva) ──────────────
+  if (d.incluirPrecios) {
+    const POR_HOJA = 8
+    const hojas = Math.max(1, Math.ceil(d.items.length / POR_HOJA))
+    const borde = (abajo: string, pt = 0.75) => [{ type: 'none' }, { type: 'none' }, { type: 'solid', color: abajo, pt }, { type: 'none' }]
+    const celda = (t: string, o: any = {}) => ({ text: t, options: { fontFace: F, fontSize: 11, color: TINTA, valign: 'middle', border: borde(LINEA), ...o } })
+    const conProd = d.items.some(i => i.prod), conImp = d.items.some(i => i.imp)
+    const cab = ['Soporte', 'Cant.', 'Semanas', 'Espacio', ...(conProd ? ['Producción'] : []), ...(conImp ? ['Impuestos'] : []), 'Subtotal']
+    const extra = (conProd ? 1 : 0) + (conImp ? 1 : 0)
+    const colW = [W - 1.2 - (0.8 + 1.0 + 1.6 + extra * 1.5 + 1.7), 0.8, 1.0, 1.6, ...Array(extra).fill(1.5), 1.7]
+
+    for (let h = 0; h < hojas; h++) {
+      const s = pptx.addSlide()
+      s.background = { color: 'FFFFFF' }
+      circuloMv(s)
+      ceja(s, 'Inversión', 0.6, 0.55)
+      s.addText(`Propuesta económica${hojas > 1 ? ` (${h + 1}/${hojas})` : ''}`, { x: 0.6, y: 0.95, w: 9, h: 0.7, fontFace: F, fontSize: 26, bold: true, color: TINTA, margin: 0 })
+      const filas: any[] = [cab.map((t, k) => celda(t.toUpperCase(), { bold: true, fontSize: 9, color: NARANJA, align: k ? 'right' : 'left', border: borde(NARANJA, 1.5) }))]
+      for (const i of d.items.slice(h * POR_HOJA, (h + 1) * POR_HOJA)) {
+        filas.push([
+          celda(nombreLindo(i.nombre) + (i.ubicacion ? `\n${i.ubicacion}` : ''), { bold: true }),
+          celda(String(i.cantidad), { align: 'right' }), celda(String(i.semanas), { align: 'right' }),
+          celda(money(i.arr), { align: 'right' }),
+          ...(conProd ? [celda(i.prod ? money(i.prod) : '—', { align: 'right' })] : []),
+          ...(conImp ? [celda(i.imp ? money(i.imp) : '—', { align: 'right' })] : []),
+          celda(money(i.arr + i.prod + i.imp), { align: 'right', bold: true }),
+        ])
+      }
+      s.addTable(filas, { x: 0.6, y: 1.85, w: W - 1.2, colW, margin: [4, 6, 4, 6] })
+      if (h < hojas - 1) continue
+
+      const t = d.items.reduce((a, i) => ({ neto: a.neto + i.arr + i.prod + i.imp, iva: a.iva + i.ivaArr + i.ivaProd, tot: a.tot + i.tot }), { neto: 0, iva: 0, tot: 0 })
+      // Totales abajo a la derecha, como los números grandes del brochure.
+      const col = (x: number, v: string, l: string, grande = false) => {
+        s.addText(v, { x, y: 5.75, w: 2.6, h: 0.7, align: 'center', fontFace: F, fontSize: grande ? 30 : 20, bold: true, color: grande ? NARANJA : TINTA, fit: 'shrink', margin: 0 })
+        s.addText(l, { x, y: 6.45, w: 2.6, h: 0.3, align: 'center', fontFace: F, fontSize: 9, bold: true, color: grande ? NARANJA : GRIS, margin: 0 })
+      }
+      col(W - 0.6 - 3.4 - 2 * 2.4, money(t.neto), 'SIN IVA')
+      col(W - 0.6 - 3.4 - 2.4, money(t.iva), 'IVA 22%')
+      s.addShape('line', { x: W - 0.6 - 3.5, y: 5.85, w: 0, h: 0.85, line: { color: NARANJA, width: 1 } })
+      col(W - 0.6 - 3.2, money(t.tot), 'TOTAL CON IVA', true)
+      const notas = [d.observaciones, d.moneda === 'USD' ? 'Importes en dólares.' : 'Importes en pesos uruguayos.'].filter(Boolean).join('  ·  ')
+      s.addText(notas, { x: 0.6, y: 6.95, w: W - 1.2, h: 0.35, fontFace: F, fontSize: 9, color: GRIS, fit: 'shrink', margin: 0 })
+    }
+  }
+
+  // ── Cierre ───────────────────────────────────────────────────────────────
+  {
+    const s = pptx.addSlide()
+    s.background = { color: NARANJA }
+    if (r.logo) { const w = 5.6; s.addImage({ data: r.logo.data, x: (W - w) / 2, y: 1.1, w, h: w * r.logo.h / r.logo.w }) }
+    const vendedor = [d.vendedor?.nombre, d.vendedor?.email].filter(Boolean) as string[]
+    s.addText([
+      ...(vendedor.length ? [{ text: vendedor.join('  ·  '), options: { bold: true, breakLine: true } }, { text: ' ', options: { breakLine: true } }] : []),
+      { text: 'www.movimagen.com', options: { bold: true, breakLine: true } },
+      { text: 'LinkedIn: movimagen', options: { breakLine: true } },
+      { text: 'Instagram: movimagenok', options: { breakLine: true } },
+      { text: ' ', options: { breakLine: true } },
+      { text: 'Almirante Harwood 6411 esq. Cooper', options: { breakLine: true } },
+      { text: 'Tel + (598) 2600 1881', options: { breakLine: true } },
+      { text: 'Montevideo / Uruguay · CP. 11500' },
+    ] as any, { x: 1.5, y: 3.55, w: W - 3, h: 3.6, align: 'center', valign: 'top', fontFace: F, fontSize: 16, color: 'FFFFFF', paraSpaceAfter: 3, margin: 0 })
+  }
+
+  return pptx
 }
 
 /** Foto achicada a JPEG (≤ 1600 px) para que la presentación no pese de más. */
-async function fotoBase64(url: string, max = 1600): Promise<{ data: string; w: number; h: number } | null> {
+async function cargarImagen(url: string, tipo: 'jpeg' | 'png', max = 1600): Promise<Img | null> {
   try {
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -59,161 +259,23 @@ async function fotoBase64(url: string, max = 1600): Promise<{ data: string; w: n
     const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k)
     const c = document.createElement('canvas'); c.width = w; c.height = h
     c.getContext('2d')!.drawImage(img, 0, 0, w, h)
-    return { data: c.toDataURL('image/jpeg', 0.85), w, h }
-  } catch { return null }
-}
-
-async function pngBase64(url: string): Promise<{ data: string; w: number; h: number } | null> {
-  try {
-    const img = new Image(); img.src = url; await img.decode()
-    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight
-    c.getContext('2d')!.drawImage(img, 0, 0)
-    return { data: c.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight }
+    return { data: c.toDataURL(`image/${tipo}`, 0.85), w, h }
   } catch { return null }
 }
 
 export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
   const PptxGenJS = (await import('pptxgenjs')).default
-  const pptx = new PptxGenJS()
-  pptx.layout = 'LAYOUT_WIDE' // 13,33 × 7,5 pulgadas
-  pptx.author = 'Movimagen'
-  pptx.company = 'Movimagen'
-  pptx.title = `Propuesta ${d.cliente}`
+  const [portada, logo, mv, sombraAbajo, sombraArriba, ...fotos] = await Promise.all([
+    cargarImagen('/presentacion/portada.jpg', 'jpeg'),
+    cargarImagen('/presentacion/logo-blanco.png', 'png'),
+    cargarImagen('/presentacion/mv.png', 'png'),
+    cargarImagen('/presentacion/sombra-abajo.png', 'png'),
+    cargarImagen('/presentacion/sombra-arriba.png', 'png'),
+    ...d.items.map(i => (i.foto ? cargarImagen(i.foto, 'jpeg') : Promise.resolve(null))),
+  ])
+  const pptx = await armarPresentacion(PptxGenJS, d, { portada, logo, mv, sombraAbajo, sombraArriba, fotos })
 
-  const W = 13.333, H = 7.5
-  const sym = d.moneda === 'USD' ? 'US$ ' : '$ '
-  const money = (n: number) => sym + Math.round(n).toLocaleString('es-UY')
-  const miles = (n: number) => n >= 1e6 ? `${(n / 1e6).toLocaleString('es-UY', { maximumFractionDigits: 1 })} M` : n >= 1e3 ? `${Math.round(n / 1e3).toLocaleString('es-UY')} mil` : String(Math.round(n))
-  const periodo = d.desde && d.hasta ? `${d.desde} al ${d.hasta}` : ''
-
-  const [logoBlanco, logoNaranja] = await Promise.all([pngBase64('/brand/logo-blanco-700.png'), pngBase64('/brand/logo-color-520.png')])
-  const fotos = await Promise.all(d.items.map(i => (i.foto ? fotoBase64(i.foto) : Promise.resolve(null))))
-
-  const pie = (s: any) => {
-    if (logoNaranja) { const h = 0.32; s.addImage({ data: logoNaranja.data, x: W - 0.5 - h * logoNaranja.w / logoNaranja.h, y: H - 0.55, w: h * logoNaranja.w / logoNaranja.h, h }) }
-  }
-
-  // ── Portada ──────────────────────────────────────────────────────────────
-  {
-    const s = pptx.addSlide()
-    s.background = { color: NARANJA }
-    if (logoBlanco) { const h = 0.75; s.addImage({ data: logoBlanco.data, x: 0.8, y: 0.7, w: h * logoBlanco.w / logoBlanco.h, h }) }
-    s.addText('PROPUESTA COMERCIAL', { x: 0.8, y: 2.55, w: 11.5, h: 0.5, fontFace: FUENTE, fontSize: 16, bold: true, color: 'FFE3D2', charSpacing: 4 })
-    s.addText(d.cliente || 'Cliente', { x: 0.8, y: 3.05, w: 11.5, h: 1.2, fontFace: FUENTE, fontSize: 48, bold: true, color: 'FFFFFF', fit: 'shrink' })
-    const sub = [d.campana, d.marca].filter(Boolean).join(' · ')
-    if (sub) s.addText(sub, { x: 0.8, y: 4.25, w: 11.5, h: 0.6, fontFace: FUENTE, fontSize: 22, color: 'FFFFFF' })
-    if (periodo) s.addText(`Campaña del ${periodo}`, { x: 0.8, y: 4.9, w: 11.5, h: 0.5, fontFace: FUENTE, fontSize: 16, color: 'FFE3D2' })
-    s.addText(new Date().toLocaleDateString('es-UY', { day: 'numeric', month: 'long', year: 'numeric' }) + (d.numero ? ` · ${d.numero}` : ''),
-      { x: 0.8, y: 6.6, w: 8, h: 0.4, fontFace: FUENTE, fontSize: 12, color: 'FFE3D2' })
-  }
-
-  // ── Resumen de la campaña ────────────────────────────────────────────────
-  {
-    const s = pptx.addSlide()
-    s.background = { color: 'FFFFFF' }
-    s.addText('Tu campaña', { x: 0.8, y: 0.6, w: 11, h: 0.8, fontFace: FUENTE, fontSize: 32, bold: true, color: TINTA })
-    s.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.45, w: 1.2, h: 0.08, fill: { color: NARANJA }, line: { color: NARANJA } })
-    const unidades = d.items.reduce((t, i) => t + i.cantidad, 0)
-    const impactos = d.items.reduce((t, i) => t + i.impactos, 0)
-    const kpis = [
-      { v: String(unidades), l: unidades === 1 ? 'soporte' : 'soportes' },
-      { v: periodo ? `${Math.max(...d.items.map(i => i.semanas))} sem.` : '—', l: periodo || 'duración' },
-      ...(impactos ? [{ v: miles(impactos), l: 'impactos estimados' }] : []),
-      ...(d.incluirPrecios ? [{ v: money(d.items.reduce((t, i) => t + i.tot, 0)), l: 'inversión total con IVA' }] : []),
-    ]
-    const ancho = (W - 1.6 - (kpis.length - 1) * 0.3) / kpis.length
-    kpis.forEach((k, n) => {
-      const x = 0.8 + n * (ancho + 0.3)
-      s.addShape(pptx.ShapeType.roundRect, { x, y: 2.1, w: ancho, h: 1.8, fill: { color: CLARO }, line: { color: CLARO }, rectRadius: 0.12 })
-      s.addText(k.v, { x, y: 2.35, w: ancho, h: 0.8, align: 'center', fontFace: FUENTE, fontSize: 30, bold: true, color: NARANJA, fit: 'shrink' })
-      s.addText(k.l, { x, y: 3.15, w: ancho, h: 0.5, align: 'center', fontFace: FUENTE, fontSize: 13, color: GRIS })
-    })
-    // Lista de lo que incluye
-    const lineas = d.items.map(i => ({
-      text: `${i.cantidad > 1 ? `${i.cantidad} × ` : ''}${i.nombre}${i.ubicacion ? ` — ${i.ubicacion}` : ''} · ${i.semanas} sem.`,
-      options: { bullet: { code: '25CF' }, color: TINTA, breakLine: true },
-    }))
-    s.addText(lineas as any, { x: 0.8, y: 4.3, w: 11.7, h: 2.6, fontFace: FUENTE, fontSize: 14, valign: 'top', paraSpaceAfter: 4, fit: 'shrink' })
-    pie(s)
-  }
-
-  // ── Una diapositiva por soporte ──────────────────────────────────────────
-  d.items.forEach((i, n) => {
-    const s = pptx.addSlide()
-    s.background = { color: 'FFFFFF' }
-    const FW = 8.2
-    const foto = fotos[n]
-    if (foto) {
-      s.addImage({ data: foto.data, x: 0, y: 0, w: FW, h: H, sizing: { type: 'cover', w: FW, h: H } })
-    } else {
-      s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: FW, h: H, fill: { color: CLARO }, line: { color: CLARO } })
-      s.addText(i.nombre, { x: 0.5, y: H / 2 - 0.6, w: FW - 1, h: 1.2, align: 'center', fontFace: FUENTE, fontSize: 26, bold: true, color: 'C9C6C0' })
-    }
-    const color = COLOR_CAT[i.categoria ?? ''] ?? NARANJA
-    const x = FW + 0.5, ancho = W - FW - 0.9
-    s.addShape(pptx.ShapeType.rect, { x: FW, y: 0, w: 0.12, h: H, fill: { color }, line: { color } })
-    s.addText((i.seccion || i.categoria || '').toUpperCase(), { x, y: 0.6, w: ancho, h: 0.4, fontFace: FUENTE, fontSize: 11, bold: true, color, charSpacing: 2 })
-    s.addText(i.nombre, { x, y: 1.0, w: ancho, h: 1.2, fontFace: FUENTE, fontSize: 26, bold: true, color: TINTA, valign: 'top', fit: 'shrink' })
-    if (i.ubicacion) s.addText(i.ubicacion, { x, y: 2.2, w: ancho, h: 0.9, fontFace: FUENTE, fontSize: 14, color: GRIS, valign: 'top', fit: 'shrink' })
-    const datos: [string, string][] = [
-      ['Cantidad', String(i.cantidad)],
-      ['Duración', `${i.semanas} semana${i.semanas === 1 ? '' : 's'}`],
-      ...(periodo ? [['Período', periodo] as [string, string]] : []),
-      ...(i.medidas ? [['Medidas', i.medidas] as [string, string]] : []),
-      ...(i.salidas ? [['Salidas por hora', String(i.salidas)] as [string, string]] : []),
-      ...(i.impactos ? [['Impactos estimados', miles(i.impactos)] as [string, string]] : []),
-      ...(d.incluirPrecios ? [['Inversión (sin IVA)', money(i.arr + i.prod + i.imp)] as [string, string]] : []),
-    ]
-    datos.forEach(([k, v], j) => {
-      const y = 3.3 + j * 0.52
-      s.addText(k, { x, y, w: ancho * 0.48, h: 0.42, fontFace: FUENTE, fontSize: 12, color: GRIS })
-      s.addText(v, { x: x + ancho * 0.48, y, w: ancho * 0.52, h: 0.42, fontFace: FUENTE, fontSize: 12, bold: true, color: TINTA, align: 'right', fit: 'shrink' })
-    })
-    pie(s)
-  })
-
-  // ── Inversión ────────────────────────────────────────────────────────────
-  if (d.incluirPrecios) {
-    const s = pptx.addSlide()
-    s.background = { color: 'FFFFFF' }
-    s.addText('Inversión', { x: 0.8, y: 0.5, w: 11, h: 0.8, fontFace: FUENTE, fontSize: 32, bold: true, color: TINTA })
-    s.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.35, w: 1.2, h: 0.08, fill: { color: NARANJA }, line: { color: NARANJA } })
-    const cab = ['Soporte', 'Cant.', 'Sem.', 'Arrendamiento', 'Producción', 'Impuestos', 'Total s/IVA']
-    const celda = (t: string, o: any = {}) => ({ text: t, options: { fontFace: FUENTE, fontSize: 11, color: TINTA, ...o } })
-    const filas: any[] = [cab.map((t, k) => celda(t, { bold: true, color: 'FFFFFF', fill: { color: NARANJA }, align: k ? 'right' : 'left' }))]
-    for (const i of d.items) {
-      filas.push([
-        celda(`${i.nombre}${i.ubicacion ? `\n${i.ubicacion}` : ''}`),
-        celda(String(i.cantidad), { align: 'right' }), celda(String(i.semanas), { align: 'right' }),
-        celda(money(i.arr), { align: 'right' }), celda(i.prod ? money(i.prod) : '—', { align: 'right' }),
-        celda(i.imp ? money(i.imp) : '—', { align: 'right' }), celda(money(i.arr + i.prod + i.imp), { align: 'right', bold: true }),
-      ])
-    }
-    const t = d.items.reduce((a, i) => ({ arr: a.arr + i.arr, prod: a.prod + i.prod, imp: a.imp + i.imp, iva: a.iva + i.ivaArr + i.ivaProd, tot: a.tot + i.tot }), { arr: 0, prod: 0, imp: 0, iva: 0, tot: 0 })
-    const neto = t.arr + t.prod + t.imp
-    filas.push([celda('Subtotal sin IVA', { bold: true, fill: { color: CLARO } }), celda('', { fill: { color: CLARO } }), celda('', { fill: { color: CLARO } }),
-      celda(money(t.arr), { align: 'right', bold: true, fill: { color: CLARO } }), celda(money(t.prod), { align: 'right', bold: true, fill: { color: CLARO } }),
-      celda(money(t.imp), { align: 'right', bold: true, fill: { color: CLARO } }), celda(money(neto), { align: 'right', bold: true, fill: { color: CLARO } })])
-    s.addTable(filas, { x: 0.8, y: 1.7, w: W - 1.6, colW: [4.6, 0.8, 0.8, 1.6, 1.4, 1.3, 1.233], border: { type: 'solid', color: 'E5E3DC', pt: 0.75 }, autoPage: true, autoPageRepeatHeader: true })
-    s.addText([
-      { text: `IVA ${money(t.iva)}   ·   `, options: { color: GRIS } },
-      { text: `TOTAL ${money(t.tot)}`, options: { color: NARANJA, bold: true } },
-    ] as any, { x: 0.8, y: H - 1.25, w: W - 1.6, h: 0.5, align: 'right', fontFace: FUENTE, fontSize: 18 })
-    if (d.observaciones) s.addText(d.observaciones, { x: 0.8, y: H - 0.75, w: 9, h: 0.4, fontFace: FUENTE, fontSize: 10, color: GRIS, fit: 'shrink' })
-    pie(s)
-  }
-
-  // ── Cierre ───────────────────────────────────────────────────────────────
-  {
-    const s = pptx.addSlide()
-    s.background = { color: NARANJA }
-    s.addText('¡Gracias!', { x: 0.8, y: 2.3, w: 11.5, h: 1.2, fontFace: FUENTE, fontSize: 54, bold: true, color: 'FFFFFF' })
-    const contacto = [d.vendedor?.nombre, d.vendedor?.email].filter(Boolean).join(' · ')
-    s.addText([contacto, 'www.movimagen.com.uy'].filter(Boolean).join('\n'), { x: 0.8, y: 3.7, w: 11.5, h: 1.2, fontFace: FUENTE, fontSize: 18, color: 'FFFFFF', valign: 'top' })
-    if (logoBlanco) { const h = 0.6; s.addImage({ data: logoBlanco.data, x: 0.8, y: H - 1.3, w: h * logoBlanco.w / logoBlanco.h, h }) }
-  }
-
-  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}.pptx`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/:*?"<>|]/g, '')
+  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}.pptx`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\\/:*?"<>|]/g, '')
   // Descarga propia: con writeFile algunos navegadores lo bajaban como
   // "download", sin nombre ni extensión.
   const blob = await pptx.write({ outputType: 'blob' }) as Blob
