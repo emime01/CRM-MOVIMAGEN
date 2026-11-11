@@ -196,7 +196,7 @@ function fakeSupabase(tablas: Record<string, any[] | any[][]>) {
     const fuente = tablas[tabla]
     const data = Array.isArray(fuente?.[0]) || fuente === undefined ? ((fuente as any[][] | undefined)?.[n] ?? []) : (fuente as any[])
     const q: any = {
-      select: () => q, eq: () => q, neq: () => q, in: () => q, order: () => q,
+      select: () => q, eq: () => q, neq: () => q, in: () => q, or: () => q, order: () => q,
       then: (ok: any, ko: any) => Promise.resolve({ data, error: null }).then(ok, ko),
     }
     return q
