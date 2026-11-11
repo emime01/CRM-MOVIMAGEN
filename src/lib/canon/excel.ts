@@ -84,8 +84,8 @@ export async function informeShoppingExcel(f: ShoppingInforme, mes: string) {
   for (const l of f.lineas) {
     const fila = ws.getRow(r)
     fila.getCell(1).value = l.agencia ?? 'Directo'
+    // Sin "cuota k de n": al shopping se le informa la línea, no el plan de pago.
     fila.getCell(2).value = (l.marca ?? '') + (l.tipo === 'nota_credito' ? ' (nota de crédito)' : '')
-      + (l.plan ? ` · cuota ${l.plan.cuota} de ${l.plan.cuotas}` : l.cuotas_total > 1 ? ` · cuota ${l.cuota} de ${l.cuotas_total}` : '')
     fila.getCell(3).value = l.numero ?? ''
     fila.getCell(4).value = l.arrendamiento
     fila.getCell(5).value = l.pct_agencia
