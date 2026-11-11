@@ -334,7 +334,7 @@ export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
   const fotos = resto.slice(shoppings.length)
   const pptx = await armarPresentacion(PptxGenJS, d, { portada, logo, mv, sombraAbajo, sombraArriba, fotos, logosShopping, medir })
 
-  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}${d.version && !(d.campana ?? '').includes(d.version) ? ` - ${d.version}` : ''}.pptx`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\\/:*?"<>|]/g, '')
+  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}${d.version && !(d.campana ?? '').includes(d.version) ? ` - ${d.version}` : ''}.pptx`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/·/g, '-').replace(/[^\x20-\x7E]/g, '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ')
   // Descarga propia: con writeFile algunos navegadores lo bajaban como
   // "download", sin nombre ni extensión.
   const blob = await pptx.write({ outputType: 'blob' }) as Blob

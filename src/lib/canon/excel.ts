@@ -37,7 +37,7 @@ async function imagenBase64(url: string): Promise<{ base64: string; ancho: numbe
 async function descargar(wb: any, archivo: string) {
   const buf = await wb.xlsx.writeBuffer()
   const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
-  const a = document.createElement('a'); a.href = url; a.download = archivo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/:*?"<>|]/g, '')
+  const a = document.createElement('a'); a.href = url; a.download = archivo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/·/g, '-').replace(/[^\x20-\x7E]/g, '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ')
   document.body.appendChild(a); a.click(); a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
