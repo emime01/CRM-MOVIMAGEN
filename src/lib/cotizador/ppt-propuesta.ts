@@ -50,6 +50,8 @@ export interface Recursos {
   sombraArriba: Img | null
   fotos: (Img | null)[]
   logosShopping?: Record<string, Img | null>
+  /** Ancho real de un texto en Montserrat negrita (pulgadas); si no está, se estima. */
+  medir?: (texto: string, pt: number) => number
 }
 
 const NARANJA = 'EB691C'
@@ -63,9 +65,6 @@ const W = 13.333, H = 7.5
 const PT = W / 1440 // un punto del brochure, en pulgadas
 
 const sinTildes = (t: string) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-
-/** "PANTALLA GIGANTE CURVA" → "Pantalla gigante curva" (como en el brochure). */
-const nombreLindo = (t: string) => t === t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]{3}/.test(t) ? t.charAt(0) + t.slice(1).toLowerCase() : t
 
 /** Ancho de un texto en Montserrat negrita, en pulgadas (calibrado con el brochure). */
 const anchoTexto = (t: string, pt: number) =>
@@ -126,13 +125,16 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
   const circuloMv = (s: any) => { if (r.mv) s.addImage({ data: r.mv.data, x: 1348 * PT, y: 17 * PT, w: 76 * PT, h: 76 * PT }) }
   const raya = (s: any, x: number, y: number, w: number, color = NARANJA, grosor = 1.5) =>
     s.addShape('line', { x, y, w, h: 0, line: { color, width: grosor } })
-  // Franja naranja con el texto en blanco (el "pill" del brochure).
-  const franja = (s: any, texto: string, x: number, y: number, pt: number, h = pt * 1.55 / 72, pad = 0.17) => {
+  const medir = (t: string, pt: number) => r.medir ? r.medir(t, pt) : anchoTexto(t, pt)
+  // Franja naranja con el texto en blanco, centrado (el "pill" del brochure).
+  // El ancho es el del texto más el mismo margen a cada lado.
+  const franja = (s: any, texto: string, x: number, y: number, pt: number, h = pt * 1.5 / 72, pad = 0.18) => {
+    const w = Math.min(W - x - 0.4, medir(texto, pt) + 2 * pad)
     s.addText(texto, {
-      x, y, w: Math.min(W - x - 0.4, anchoTexto(texto, pt) * 1.04 + 2 * pad + 0.05), h,
-      fontFace: F, fontSize: pt, bold: true, color: BLANCO, fill: { color: NARANJA }, wrap: false,
-      shape: 'roundRect', rectRadius: 0.05, valign: 'middle', margin: [0, pad * 72, 0, pad * 72],
+      x, y, w, h, fontFace: F, fontSize: pt, bold: true, color: BLANCO, fill: { color: NARANJA }, wrap: false,
+      shape: 'roundRect', rectRadius: 0.05, align: 'center', valign: 'middle', margin: 0, fit: 'none',
     })
+    return w
   }
 
   // ── Portada (la del brochure) ────────────────────────────────────────────
@@ -160,15 +162,15 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       circuloMv(s)
       raya(s, 84 * PT, 76 * PT, 53 * PT)
       s.addText(rutero.ruta.toUpperCase(), { x: 150 * PT, y: 61 * PT, w: 6, h: 30 * PT, fontFace: F, fontSize: 16, bold: true, color: NARANJA, margin: 0, valign: 'middle' })
-      const wKm = anchoTexto(rutero.km, 40) * 1.13
+      const wKm = medir(rutero.km, 40) * 1.05
       s.addText(rutero.km, { x: 72 * PT, y: 101 * PT, w: wKm + 0.2, h: 74 * PT, fontFace: F, fontSize: 40, bold: true, color: BLANCO, margin: 0, valign: 'middle', wrap: false })
-      let x = 72 * PT + wKm + 0.2
+      let x = 72 * PT + wKm + 0.3
       const sep = (xx: number) => s.addShape('line', { x: xx, y: 112 * PT, w: 0, h: 58 * PT, line: { color: NARANJA, width: 1.5 } })
       if (rutero.depto || rutero.vista) {
         sep(x); x += 0.15
-        if (rutero.depto) franja(s, rutero.depto, x, 111 * PT, 16, 27 * PT, 0.07)
+        if (rutero.depto) franja(s, rutero.depto, x, 110 * PT, 16, 28 * PT, 0.08)
         if (rutero.vista) s.addText(rutero.vista, { x, y: 140 * PT, w: 3.5, h: 30 * PT, fontFace: F, fontSize: 16, bold: true, color: BLANCO, margin: 0, valign: 'middle', wrap: false })
-        x += Math.max(rutero.depto ? anchoTexto(rutero.depto, 16) * 1.04 + 0.19 : 0, rutero.vista ? anchoTexto(rutero.vista, 16) * 1.04 : 0) + 0.2
+        x += Math.max(rutero.depto ? medir(rutero.depto, 16) + 0.16 : 0, rutero.vista ? medir(rutero.vista, 16) : 0) + 0.2
       }
       if (rutero.margen || rutero.tamano) {
         sep(x); x += 0.15
@@ -194,36 +196,30 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       s.addImage({ data: logo.data, x: 0.45 + (lado - logo.w * k) / 2, y: 0.3 + (lado - logo.h * k) / 2, w: logo.w * k, h: logo.h * k })
     }
 
-    let titulo: string, dato: { k: string; v: string } | null = null, conFranja = true
+    // El nombre del soporte tal cual está en el CRM, en la franja naranja.
+    // Debajo, la ubicación y un dato según el tipo (como en el brochure).
+    const titulo = i.nombre
+    type Linea = { k: string; v: string }
+    const lineas: Linea[] = []
+    if (i.ubicacion) lineas.push({ k: '', v: i.ubicacion })
     if (i.categoria === 'Exterior') {
-      // "Av. Italia y Francisco Simón" + "Medianera de 96 m² (8 x 12)"
-      titulo = (i.ubicacion ?? i.nombre).split(/\s+[-·]\s+/)[0]
       const sup = superficie(i.medidas ?? (i.ubicacion ?? '').match(/(\d+\s*x\s*\d+)/)?.[1])
-      dato = { k: `${nombreLindo(i.nombre).replace(/\s+edificio$/i, '')}${sup ? ' de ' : ''}`, v: sup ?? '' }
-    } else if (i.categoria === 'Bus') {
-      titulo = i.nombre.toUpperCase()                      // "FULL BUS", "MEGA BUS"
-    } else if (i.categoria === 'Shopping') {
-      titulo = nombreLindo(i.nombre).replace(/\s+shopping$/i, '') // "Puertas de ingreso", "Ascensor"
-      conFranja = false
-      if (i.ubicacion) dato = { k: '', v: /shopping/i.test(i.ubicacion) ? i.ubicacion : `${i.ubicacion} Shopping` }
-    } else {
-      // Pantallas: "Pantalla gigante Av. Rivera y L. A. de Herrera" + impactos mensuales
-      titulo = `${nombreLindo(i.nombre)}${i.ubicacion ? ` ${i.ubicacion}` : ''}`
-      if (i.impactosMensuales) dato = { k: 'Impactos mensuales: ', v: num(i.impactosMensuales) }
+      if (sup) lineas.push({ k: 'Superficie: ', v: sup })
+    } else if (i.impactosMensuales) {
+      lineas.push({ k: 'Impactos mensuales: ', v: num(i.impactosMensuales) })
     }
-    if (i.cantidad > 1) titulo = `${i.cantidad} × ${titulo}`
 
-    const pt = anchoTexto(titulo, 28) > W - 2 ? 24 : 28
-    const yTitulo = dato ? 628 * PT : 680 * PT
-    if (conFranja) franja(s, titulo, X, yTitulo, pt)
-    else s.addText(titulo, { x: X, y: yTitulo, w: W - 2, h: pt * 1.55 / 72, fontFace: F, fontSize: pt, bold: true, color: BLANCO, margin: 0, valign: 'middle', wrap: false })
-    if (dato) {
+    const pt = medir(titulo, 28) > W - 2 ? 24 : 28
+    const altoFranja = pt * 1.5 / 72
+    const yLinea0 = 750 * PT - lineas.length * 33 * PT
+    franja(s, titulo, X, yLinea0 - altoFranja - 0.1, pt)
+    lineas.forEach((l, j) => {
       s.addText([
-        { text: dato.k, options: { bold: false } },
-        { text: dato.v, options: { bold: true } },
-      ] as any, { x: X, y: 697 * PT, w: W - 2, h: 36 * PT, fontFace: F, fontSize: 19, color: BLANCO, margin: 0, valign: 'middle' })
-    }
-    raya(s, X, 760 * PT, 1.7)
+        ...(l.k ? [{ text: l.k, options: { bold: false } }] : []),
+        { text: l.v, options: { bold: !!l.k } },
+      ] as any, { x: X, y: yLinea0 + j * 33 * PT, w: W - 2, h: 33 * PT, fontFace: F, fontSize: 18, color: BLANCO, margin: 0, valign: 'middle', fit: 'shrink' })
+    })
+    raya(s, X, 775 * PT, 1.7)
   })
 
   // ── Propuesta económica (de a 8 soportes por diapositiva) ──────────────
@@ -247,7 +243,7 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       const filas: any[] = [cab.map((t, k) => celda(t.toUpperCase(), { bold: true, fontSize: 9, color: NARANJA, align: k ? 'right' : 'left', border: borde(NARANJA, 1.5) }))]
       for (const i of d.items.slice(h * POR_HOJA, (h + 1) * POR_HOJA)) {
         filas.push([
-          celda(nombreLindo(i.nombre) + (i.ubicacion ? `\n${i.ubicacion}` : ''), { bold: true }),
+          celda(i.nombre + (i.ubicacion ? `\n${i.ubicacion}` : ''), { bold: true }),
           celda(String(i.cantidad), { align: 'right' }), celda(String(i.semanas), { align: 'right' }),
           celda(money(i.arr), { align: 'right' }),
           ...(conProd ? [celda(i.prod ? money(i.prod) : '—', { align: 'right' })] : []),
@@ -320,8 +316,16 @@ export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
     ...d.items.map(i => (i.foto ? cargarImagen(i.foto, 'jpeg') : Promise.resolve(null))),
   ])
   const logosShopping = Object.fromEntries(shoppings.map((k, j) => [k, resto[j]]))
+  // Medir los textos con la Montserrat de verdad, para que las franjas calcen.
+  let medir: Recursos['medir']
+  try {
+    const ff = new FontFace('MontserratPpt', 'url(/presentacion/Montserrat.ttf)', { weight: '100 900' })
+    await ff.load(); document.fonts.add(ff)
+    const ctx = document.createElement('canvas').getContext('2d')!
+    medir = (t, pt) => { ctx.font = `700 ${pt}px MontserratPpt`; return ctx.measureText(t).width / 72 }
+  } catch { /* se estima */ }
   const fotos = resto.slice(shoppings.length)
-  const pptx = await armarPresentacion(PptxGenJS, d, { portada, logo, mv, sombraAbajo, sombraArriba, fotos, logosShopping })
+  const pptx = await armarPresentacion(PptxGenJS, d, { portada, logo, mv, sombraAbajo, sombraArriba, fotos, logosShopping, medir })
 
   const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}.pptx`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\\/:*?"<>|]/g, '')
   // Descarga propia: con writeFile algunos navegadores lo bajaban como
