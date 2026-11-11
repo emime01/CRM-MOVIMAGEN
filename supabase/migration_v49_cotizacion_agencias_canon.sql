@@ -20,6 +20,36 @@ alter table facturas add column if not exists cotizacion numeric(12,4);
 comment on column facturas.cotizacion is
   'Pesos por dólar al facturar (sólo facturas en USD). Lo usa el canon, que se liquida siempre en pesos.';
 
+-- Algunas bases traen una tabla comisiones_agencia vieja (del armado original,
+-- con otras columnas y que el CRM nunca usó). Se guarda con otro nombre, sin
+-- perder sus datos, para crear la nueva.
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'comisiones_agencia')
+     and not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'comisiones_agencia' and column_name = 'factura_id') then
+    execute 'alter table public.comisiones_agencia rename to comisiones_agencia_vieja';
+  end if;
+end $$;
+
+-- Sus restricciones e índices conservan el nombre viejo ("comisiones_agencia_pkey"…)
+-- y chocarían con los de la tabla nueva: se renombran también.
+do $$
+declare r record;
+begin
+  for r in
+    select conname from pg_constraint
+     where conrelid = to_regclass('public.comisiones_agencia_vieja') and conname not like '%\_vieja%'
+  loop
+    execute format('alter table public.comisiones_agencia_vieja rename constraint %I to %I', r.conname, left(r.conname, 50) || '_vieja');
+  end loop;
+  for r in
+    select indexname from pg_indexes
+     where schemaname = 'public' and tablename = 'comisiones_agencia_vieja' and indexname not like '%\_vieja%'
+  loop
+    execute format('alter index public.%I rename to %I', r.indexname, left(r.indexname, 50) || '_vieja');
+  end loop;
+end $$;
+
 create table if not exists comisiones_agencia (
   id            uuid primary key default gen_random_uuid(),
   factura_id    uuid not null unique references facturas(id) on delete cascade,
