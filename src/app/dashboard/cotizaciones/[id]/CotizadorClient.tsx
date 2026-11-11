@@ -619,6 +619,7 @@ export default function CotizadorClient({
           categoria: item.soporte.categoria ?? null, seccion: item.soporte.seccion ?? null,
           medidas: item.soporte.medidas ?? null, foto: item.soporte.url_imagen ?? null,
           cantidad: item.cantidadSoportes, semanas: c.sem, salidas: item.salidasElegidas,
+          impactosMensuales: item.soporte.impactos_mensuales ?? null,
           impactos: c.imp, arr: c.arr, prod: c.prod, imp: c.mun, ivaArr: c.ivaArr, ivaProd: c.ivaProd, tot: c.tot,
         })),
       })
