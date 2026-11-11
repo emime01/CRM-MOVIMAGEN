@@ -214,5 +214,12 @@ export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
   }
 
   const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}.pptx`.replace(/[\\/:*?"<>|]/g, '')
-  await pptx.writeFile({ fileName: archivo })
+  // Descarga propia: con writeFile algunos navegadores lo bajaban como
+  // "download", sin nombre ni extensión.
+  const blob = await pptx.write({ outputType: 'blob' }) as Blob
+  const url = URL.createObjectURL(new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }))
+  const a = document.createElement('a')
+  a.href = url; a.download = archivo
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
