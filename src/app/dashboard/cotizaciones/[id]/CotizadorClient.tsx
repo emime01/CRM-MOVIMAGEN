@@ -16,44 +16,11 @@ import { esImpuestoMTOP, etiquetaImpuesto } from '@/lib/cotizador/calcular'
 import { generarPdfCotizacion } from '@/lib/cotizador/pdf-cotizacion'
 import { useSession } from 'next-auth/react'
 import { precioDeSemanas, semanasMinimas } from '@/lib/cotizador/temporada'
-import { avisar, confirmar } from '@/components/ui/dialogos'
+import { avisar, confirmar, elegir } from '@/components/ui/dialogos'
+import type { OpcionPpt } from '@/lib/cotizador/ppt-propuesta'
+import { calcItem, planDesdeGuardados, type Soporte, type PlanItem, type SavedItem, type Calc } from '@/lib/cotizador/plan'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Soporte {
-  id: string
-  cotizador_id: number | null
-  nombre: string
-  categoria: string                                     // Digital | Shopping | Exterior | Bus | Otro
-  seccion: string | null                                // full grouping label, e.g. "PANTALLAS GIGANTES"
-  tipo_cotizador: string | null                         // led | circuito | estatico_bus | banner_shopping | estatico_shopping | medianera
-  ubicacion: string | null
-  precio_semanal: number | null
-  tiene_iva: boolean                                    // iva_arrendamiento
-  salidas_por_hora: number | null
-  horas_encendido: number | null
-  impactos_mensuales: number | null
-  costo_produccion: number | null
-  impuestos_municipales: number | null                  // flat $ per week per unit
-  cantidad_default: number | null
-  semanas_minimas: number | null
-  precio_semanal_alta?: number | null
-  semanas_minimas_alta?: number | null
-  temporada_alta: boolean
-  temporada_baja: boolean
-  comentario: string | null
-  url_imagen: string | null
-  medidas?: string | null
-  activo: boolean
-}
-
-interface PlanItem {
-  uid: number
-  soporte: Soporte
-  semanas: number
-  salidasElegidas: number | null
-  cantidadSoportes: number
-}
 
 interface PropuestaHeader {
   id: string
@@ -77,26 +44,7 @@ interface PropuestaHeader {
   condicion_pago_dias?: number | null
 }
 
-interface SavedItem {
-  id: string
-  soporte_id: string | null
-  nombre_soporte: string
-  ubicacion: string | null
-  categoria_soporte: string | null
-  tipo_cotizador: string | null
-  cantidad: number
-  cantidad_soportes: number | null
-  salidas_elegidas: number | null
-  semanas: number
-  precio_unitario: number
-  subtotal: number | null
-  impactos_calc: number | null
-}
-
 interface Cliente { id: string; nombre: string; empresa: string | null }
-
-const IVA_RATE = 0.22
-const HORAS_MES = 4.33  // weeks per month for impact pro-rating
 
 const CAT_COLORS: Record<string, string> = {
   Digital:  '#FF5C1A',
@@ -116,41 +64,6 @@ function getSemanasFromDates(inicio: string | null, fin: string | null): number 
   if (!inicio || !fin) return 1
   const dias = Math.round((new Date(fin).getTime() - new Date(inicio).getTime()) / 86400000)
   return dias > 0 ? Math.max(1, Math.round(dias / 7)) : 1
-}
-
-interface Calc {
-  arr: number      // arrendamiento (rental)
-  ivaArr: number   // IVA on arrendamiento (only if tiene_iva)
-  prod: number     // production cost
-  ivaProd: number  // IVA on production (always 22%)
-  mun: number      // municipal tax (per week × cant)
-  imp: number      // total impactos
-  tot: number      // total con impuestos
-  mul: number      // salidas multiplier
-  cpm: number      // cost per mille
-  sem: number      // effective semanas (clamped to semanas_minimas)
-}
-
-function calcItem(item: PlanItem, inicio?: string | null): Calc {
-  const s = item.soporte
-  const sem = Math.max(item.semanas, semanasMinimas(s, inicio))
-  const sal = item.salidasElegidas
-  const cant = item.cantidadSoportes
-  let mul = 1
-  if (isCircuito(s) && sal) mul = sal / 10
-  if (isLed(s)      && sal) mul = sal / 30
-  // Cada semana a su precio: en Punta del Este dic-feb es temporada alta.
-  const arr     = precioDeSemanas(s, sem, inicio) * mul * cant
-  const ivaArr  = s.tiene_iva ? arr * IVA_RATE : 0
-  const prod    = (s.costo_produccion ?? 0) * cant
-  const ivaProd = prod * IVA_RATE
-  const mun     = (s.impuestos_municipales ?? 0) * sem * cant
-  const imp     = s.impactos_mensuales
-    ? Math.round(s.impactos_mensuales * sem / HORAS_MES * cant * mul)
-    : 0
-  const tot = arr + ivaArr + prod + ivaProd + mun
-  const cpm = imp > 0 ? (tot / imp) * 1000 : 0
-  return { arr, ivaArr, prod, ivaProd, mun, imp, tot, mul, cpm, sem }
 }
 
 function fmt(n: number, moneda = 'UYU'): string {
@@ -307,40 +220,7 @@ export default function CotizadorClient({
 
         // Rebuild plan from saved items
         const saved: SavedItem[] = pData.items ?? []
-        const items: PlanItem[] = saved.map((it, i) => {
-          const matched = soportes.find(s => s.id === it.soporte_id) ??
-            soportes.find(s => s.nombre === it.nombre_soporte && (s.ubicacion ?? '') === (it.ubicacion ?? ''))
-          const fallback: Soporte = matched ?? {
-            id: it.soporte_id ?? `legacy-${i}`,
-            cotizador_id: null,
-            nombre: it.nombre_soporte,
-            categoria: it.categoria_soporte ?? 'Otro',
-            seccion: null,
-            tipo_cotizador: it.tipo_cotizador ?? null,
-            ubicacion: it.ubicacion,
-            precio_semanal: it.precio_unitario,
-            tiene_iva: false,
-            salidas_por_hora: null,
-            horas_encendido: null,
-            impactos_mensuales: null,
-            costo_produccion: null,
-            impuestos_municipales: null,
-            cantidad_default: 1,
-            semanas_minimas: 1,
-            temporada_alta: false,
-            temporada_baja: false,
-            comentario: null,
-            url_imagen: null,
-            activo: true,
-          }
-          return {
-            uid: ++uidRef.n,
-            soporte: fallback,
-            semanas: it.semanas || 1,
-            salidasElegidas: it.salidas_elegidas ?? (isLed(fallback) ? 30 : isCircuito(fallback) ? 10 : null),
-            cantidadSoportes: it.cantidad_soportes ?? it.cantidad ?? 1,
-          }
-        })
+        const items = planDesdeGuardados(saved, soportes, () => ++uidRef.n)
         setPlan(items)
       } else if (isNew) {
         const today = new Date()
@@ -630,25 +510,60 @@ export default function CotizadorClient({
   const { data: sesion } = useSession()
   const [armandoPpt, setArmandoPpt] = useState(false)
   async function exportPPT() {
+    // Con varias versiones (opciones A, B, C…) se puede armar la comparación.
+    let todas = false
+    if (versiones.length > 1) {
+      const eleccion = await elegir(
+        `Esta propuesta tiene ${versiones.length} opciones.\n\n¿Qué presentación querés armar?`,
+        [{ valor: 'una', texto: 'Solo esta opción' }, { valor: 'todas', texto: 'Todas, para comparar' }],
+      )
+      if (!eleccion) return
+      todas = eleccion === 'todas'
+    }
     const conPrecios = await confirmar('¿Incluir precios e inversión en la presentación?\n\nAceptar: con precios · Cancelar: sólo los soportes, sin precios')
     setArmandoPpt(true)
     try {
       const { generarPptPropuesta } = await import('@/lib/cotizador/ppt-propuesta')
+      const aItems = (cs: { item: PlanItem; c: Calc }[]) => cs.map(({ item, c }) => ({
+        soporteId: item.soporte.id.startsWith('legacy-') ? null : item.soporte.id,
+        nombre: item.soporte.nombre, ubicacion: item.soporte.ubicacion ?? null,
+        categoria: item.soporte.categoria ?? null, seccion: item.soporte.seccion ?? null,
+        medidas: item.soporte.medidas ?? null, foto: item.soporte.url_imagen ?? null,
+        cantidad: item.cantidadSoportes, semanas: c.sem, salidas: item.salidasElegidas,
+        impactosMensuales: item.soporte.impactos_mensuales ?? null,
+        impactos: c.imp, arr: c.arr, prod: c.prod, imp: c.mun, ivaArr: c.ivaArr, ivaProd: c.ivaProd, tot: c.tot,
+      }))
+      const idActual = savedId ?? propuestaId
+      const letra = (i: number) => `Opción ${String.fromCharCode(65 + i)}`
+      let opciones: OpcionPpt[] | undefined
+      if (todas) {
+        // La opción abierta sale de la pantalla (con lo que se esté editando);
+        // las otras, de lo guardado, calculadas con la misma fórmula.
+        opciones = await Promise.all(versiones.map(async (v, i) => {
+          if (v.id === idActual) {
+            return { etiqueta: letra(i), nombre: nombre || v.nombre || '', items: aItems(calcs), moneda, desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin) }
+          }
+          const res = await fetch(`/api/propuestas/${v.id}`)
+          if (!res.ok) throw new Error(`No se pudo leer ${letra(i)}`)
+          const pd = await res.json()
+          const p: PropuestaHeader = pd.propuesta
+          const planV = planDesdeGuardados(pd.items ?? [], catalog, () => ++uidRef.n)
+          return {
+            etiqueta: letra(i), nombre: p.nombre ?? v.nombre ?? '',
+            items: aItems(planV.map(it => ({ item: it, c: calcItem(it, p.fecha_inicio) }))),
+            moneda: p.moneda ?? moneda, desde: fmtDate(p.fecha_inicio), hasta: fmtDate(p.fecha_fin),
+          }
+        }))
+      }
       await generarPptPropuesta({
         numero: propuesta?.numero ?? '',
         cliente: clienteQuery, campana: nombre, marca,
         desde: fmtDate(fechaInicio), hasta: fmtDate(fechaFin),
         moneda, observaciones, incluirPrecios: conPrecios,
-        version: versiones.length > 1 ? `Opción ${String.fromCharCode(65 + Math.max(0, versiones.findIndex(v => v.id === (savedId ?? propuestaId))))}` : null,
+        version: versiones.length > 1 ? letra(Math.max(0, versiones.findIndex(v => v.id === idActual))) : null,
         vendedor: { nombre: sesion?.user?.name ?? null, email: sesion?.user?.email ?? null },
-        items: calcs.map(({ item, c }) => ({
-          nombre: item.soporte.nombre, ubicacion: item.soporte.ubicacion ?? null,
-          categoria: item.soporte.categoria ?? null, seccion: item.soporte.seccion ?? null,
-          medidas: item.soporte.medidas ?? null, foto: item.soporte.url_imagen ?? null,
-          cantidad: item.cantidadSoportes, semanas: c.sem, salidas: item.salidasElegidas,
-          impactosMensuales: item.soporte.impactos_mensuales ?? null,
-          impactos: c.imp, arr: c.arr, prod: c.prod, imp: c.mun, ivaArr: c.ivaArr, ivaProd: c.ivaProd, tot: c.tot,
-        })),
+        items: aItems(calcs),
+        opciones,
       })
     } catch (e) {
       console.error(e)

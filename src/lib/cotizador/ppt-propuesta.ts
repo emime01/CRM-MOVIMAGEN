@@ -8,6 +8,8 @@
  */
 
 export interface ItemPpt {
+  /** Id del soporte; sirve para no repetir su foto entre opciones. */
+  soporteId?: string | null
   nombre: string
   ubicacion: string | null
   categoria: string | null
@@ -27,6 +29,16 @@ export interface ItemPpt {
   tot: number
 }
 
+/** Una versión de la propuesta (Opción A, B, C…) para la presentación comparativa. */
+export interface OpcionPpt {
+  etiqueta: string          // "Opción A"
+  nombre: string            // nombre de la versión
+  items: ItemPpt[]
+  moneda?: string
+  desde?: string
+  hasta?: string
+}
+
 export interface DatosPpt {
   numero: string
   cliente: string
@@ -41,6 +53,8 @@ export interface DatosPpt {
   version?: string | null
   vendedor?: { nombre?: string | null; email?: string | null } | null
   items: ItemPpt[]
+  /** Todas las versiones, para comparar. Con más de una, la presentación las compara. */
+  opciones?: OpcionPpt[]
 }
 
 export interface Img { data: string; w: number; h: number }
@@ -113,6 +127,47 @@ function superficie(medidas?: string | null) {
   return `${Math.round(a * b).toLocaleString('es-UY')} m²  (${m[1]} x ${m[2]})`
 }
 
+const totalesDe = (items: ItemPpt[]) =>
+  items.reduce((a, i) => ({ neto: a.neto + i.arr + i.prod + i.imp, iva: a.iva + i.ivaArr + i.ivaProd, tot: a.tot + i.tot, imp: a.imp + i.impactos }), { neto: 0, iva: 0, tot: 0, imp: 0 })
+
+const claveSoporte = (i: ItemPpt) => i.soporteId || `${i.nombre}|${i.ubicacion ?? ''}`
+
+/** ¿La presentación compara varias opciones? */
+export const comparaOpciones = (d: DatosPpt) => (d.opciones?.length ?? 0) > 1
+
+/**
+ * Los soportes que llevan una diapositiva con foto. Una sola opción: sus
+ * ítems. Varias: cada soporte una vez (en el orden en que aparece) con las
+ * opciones que lo incluyen.
+ */
+export function soportesParaFotos(d: DatosPpt): (ItemPpt & { enOpciones?: string[] })[] {
+  if (!comparaOpciones(d)) return d.items
+  const vistos = new Map<string, ItemPpt & { enOpciones: string[] }>()
+  for (const o of d.opciones!) {
+    for (const i of o.items) {
+      const k = claveSoporte(i)
+      const previo = vistos.get(k)
+      if (!previo) vistos.set(k, { ...i, enOpciones: [o.etiqueta] })
+      else if (!previo.enOpciones.includes(o.etiqueta)) previo.enOpciones.push(o.etiqueta)
+    }
+  }
+  return Array.from(vistos.values())
+}
+
+/** "En opción A · C" / "En todas las opciones". */
+function textoOpciones(en: string[], total: number) {
+  if (en.length >= total) return 'En todas las opciones'
+  return `En ${en.length > 1 ? 'opciones' : 'opción'} ${en.map(e => e.replace(/^Opción\s+/i, '')).join(' · ')}`
+}
+
+/** Nombre del archivo: sin tildes ni caracteres raros. */
+export function nombreArchivoPpt(d: DatosPpt) {
+  const base = comparaOpciones(d)
+    ? `Propuesta ${d.cliente || 'Movimagen'} - comparacion de opciones.pptx`
+    : `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}${d.version && !(d.campana ?? '').includes(d.version) ? ` - ${d.version}` : ''}.pptx`
+  return base.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/·/g, '-').replace(/[^\x20-\x7E]/g, '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ')
+}
+
 /** Arma la presentación (sin descargarla). */
 export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos) {
   const pptx = new PptxGenJS()
@@ -121,8 +176,7 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
   pptx.company = 'Movimagen'
   pptx.title = `Propuesta ${d.cliente}`
 
-  const sym = d.moneda === 'USD' ? 'US$ ' : '$ '
-  const money = (n: number) => sym + Math.round(n).toLocaleString('es-UY')
+  const moneyEn = (moneda: string) => (n: number) => (moneda === 'USD' ? 'US$ ' : '$ ') + Math.round(n).toLocaleString('es-UY')
   const num = (n: number) => Math.round(n).toLocaleString('es-UY')
 
   // Imagen que cubre la caja (recorta lo que sobra, sin deformar).
@@ -155,7 +209,9 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
   }
 
   // ── Una diapositiva por soporte ──────────────────────────────────────────
-  d.items.forEach((i, n) => {
+  const comparar = comparaOpciones(d)
+  const paraFotos = soportesParaFotos(d)
+  paraFotos.forEach((i, n) => {
     const s = pptx.addSlide()
     s.background = { color: TINTA }
     const foto = r.fotos[n] ?? r.portada
@@ -205,7 +261,7 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
     // El nombre del soporte tal cual está en el CRM, en la franja naranja.
     // Debajo, la ubicación y un dato según el tipo (como en el brochure).
     const titulo = i.nombre
-    type Linea = { k: string; v: string }
+    type Linea = { k: string; v: string; suave?: boolean }
     const lineas: Linea[] = []
     const ubic = ubicacionCorta(i.ubicacion)
     if (ubic && ubic !== i.nombre) lineas.push({ k: '', v: ubic })
@@ -215,6 +271,7 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
     } else if (i.impactosMensuales) {
       lineas.push({ k: 'Impactos mensuales: ', v: num(i.impactosMensuales) })
     }
+    if (comparar && i.enOpciones) lineas.push({ k: '', v: textoOpciones(i.enOpciones, d.opciones!.length), suave: true })
 
     const pt = medir(titulo, 28) > W - 2 ? 24 : 28
     const altoFranja = pt * 1.5 / 72
@@ -224,18 +281,20 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       s.addText([
         ...(l.k ? [{ text: l.k, options: { bold: false } }] : []),
         { text: l.v, options: { bold: !!l.k } },
-      ] as any, { x: X, y: yLinea0 + j * 33 * PT, w: W - 2, h: 33 * PT, fontFace: F, fontSize: 18, color: BLANCO, margin: 0, valign: 'middle', fit: 'shrink' })
+      ] as any, { x: X, y: yLinea0 + j * 33 * PT, w: W - 2, h: 33 * PT, fontFace: F, fontSize: l.suave ? 14 : 18, color: l.suave ? 'E6E6E6' : BLANCO, margin: 0, valign: 'middle', fit: 'shrink' })
     })
     raya(s, X, 775 * PT, 1.7)
   })
 
   // ── Propuesta económica (de a 8 soportes por diapositiva) ──────────────
-  if (d.incluirPrecios) {
+  // Una por opción cuando se comparan varias; si no, la de siempre.
+  const hojasInversion = (items: ItemPpt[], titulo: string, moneda: string, desde: string, hasta: string) => {
+    const money = moneyEn(moneda)
     const POR_HOJA = 8
-    const hojas = Math.max(1, Math.ceil(d.items.length / POR_HOJA))
+    const hojas = Math.max(1, Math.ceil(items.length / POR_HOJA))
     const borde = (abajo: string, pt = 0.75) => [{ type: 'none' }, { type: 'none' }, { type: 'solid', color: abajo, pt }, { type: 'none' }]
     const celda = (t: string, o: any = {}) => ({ text: t, options: { fontFace: F, fontSize: 11, color: TINTA, valign: 'middle', border: borde(LINEA), ...o } })
-    const conProd = d.items.some(i => i.prod), conImp = d.items.some(i => i.imp)
+    const conProd = items.some(i => i.prod), conImp = items.some(i => i.imp)
     const cab = ['Soporte', 'Cant.', 'Semanas', 'Espacio', ...(conProd ? ['Producción'] : []), ...(conImp ? ['Impuestos'] : []), 'Subtotal']
     const extra = (conProd ? 1 : 0) + (conImp ? 1 : 0)
     const colW = [W - 1.2 - (0.8 + 1.0 + 1.6 + extra * 1.5 + 1.7), 0.8, 1.0, 1.6, ...Array(extra).fill(1.5), 1.7]
@@ -246,9 +305,9 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       circuloMv(s)
       raya(s, 0.6, 0.72, 0.45)
       s.addText('INVERSIÓN', { x: 1.15, y: 0.55, w: 6, h: 0.34, fontFace: F, fontSize: 12, bold: true, color: NARANJA, margin: 0 })
-      s.addText(`Propuesta para ${d.cliente || 'vos'}${d.version ? ` · ${d.version}` : ''}${hojas > 1 ? ` (${h + 1}/${hojas})` : ''}`, { x: 0.6, y: 0.95, w: 11, h: 0.7, fontFace: F, fontSize: 26, bold: true, color: TINTA, fit: 'shrink', margin: 0 })
+      s.addText(`${titulo}${hojas > 1 ? ` (${h + 1}/${hojas})` : ''}`, { x: 0.6, y: 0.95, w: 11, h: 0.7, fontFace: F, fontSize: 26, bold: true, color: TINTA, fit: 'shrink', margin: 0 })
       const filas: any[] = [cab.map((t, k) => celda(t.toUpperCase(), { bold: true, fontSize: 9, color: NARANJA, align: k ? 'right' : 'left', border: borde(NARANJA, 1.5) }))]
-      for (const i of d.items.slice(h * POR_HOJA, (h + 1) * POR_HOJA)) {
+      for (const i of items.slice(h * POR_HOJA, (h + 1) * POR_HOJA)) {
         filas.push([
           celda(i.nombre + (ubicacionCorta(i.ubicacion) ? `\n${ubicacionCorta(i.ubicacion)}` : ''), { bold: true }),
           celda(String(i.cantidad), { align: 'right' }), celda(String(i.semanas), { align: 'right' }),
@@ -261,7 +320,7 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       s.addTable(filas, { x: 0.6, y: 1.85, w: W - 1.2, colW, margin: [4, 6, 4, 6] })
       if (h < hojas - 1) continue
 
-      const t = d.items.reduce((a, i) => ({ neto: a.neto + i.arr + i.prod + i.imp, iva: a.iva + i.ivaArr + i.ivaProd, tot: a.tot + i.tot }), { neto: 0, iva: 0, tot: 0 })
+      const t = totalesDe(items)
       const col = (x: number, v: string, l: string, grande = false) => {
         s.addText(v, { x, y: 5.75, w: 2.6, h: 0.7, align: 'center', fontFace: F, fontSize: grande ? 30 : 20, bold: true, color: grande ? NARANJA : TINTA, fit: 'shrink', margin: 0 })
         s.addText(l, { x, y: 6.45, w: 2.6, h: 0.3, align: 'center', fontFace: F, fontSize: 9, bold: true, color: grande ? NARANJA : GRIS, margin: 0 })
@@ -270,10 +329,52 @@ export async function armarPresentacion(PptxGenJS: any, d: DatosPpt, r: Recursos
       col(W - 0.6 - 3.4 - 2.4, money(t.iva), 'IVA 22%')
       s.addShape('line', { x: W - 0.6 - 3.5, y: 5.85, w: 0, h: 0.85, line: { color: NARANJA, width: 1 } })
       col(W - 0.6 - 3.2, money(t.tot), 'TOTAL CON IVA', true)
-      const periodo = d.desde && d.hasta ? `Campaña del ${d.desde} al ${d.hasta}.` : ''
-      const notas = [periodo, d.observaciones, d.moneda === 'USD' ? 'Importes en dólares.' : 'Importes en pesos uruguayos.'].filter(Boolean).join('  ·  ')
+      const periodo = desde && hasta ? `Campaña del ${desde} al ${hasta}.` : ''
+      const notas = [periodo, d.observaciones, moneda === 'USD' ? 'Importes en dólares.' : 'Importes en pesos uruguayos.'].filter(Boolean).join('  ·  ')
       s.addText(notas, { x: 0.6, y: 6.95, w: W - 1.2, h: 0.35, fontFace: F, fontSize: 9, color: GRIS, fit: 'shrink', margin: 0 })
     }
+  }
+
+  if (d.incluirPrecios) {
+    if (comparar) {
+      for (const o of d.opciones!) {
+        hojasInversion(o.items, `${o.etiqueta}${o.nombre ? ` — ${o.nombre}` : ''}`, o.moneda ?? d.moneda, o.desde ?? d.desde, o.hasta ?? d.hasta)
+      }
+    } else {
+      hojasInversion(d.items, `Propuesta para ${d.cliente || 'vos'}${d.version ? ` · ${d.version}` : ''}`, d.moneda, d.desde, d.hasta)
+    }
+  }
+
+  // ── Comparación de opciones: una columna por opción ─────────────────────
+  if (comparar) {
+    const ops = d.opciones!
+    const s = pptx.addSlide()
+    s.background = { color: BLANCO }
+    circuloMv(s)
+    raya(s, 0.6, 0.72, 0.45)
+    s.addText('COMPARACIÓN', { x: 1.15, y: 0.55, w: 6, h: 0.34, fontFace: F, fontSize: 12, bold: true, color: NARANJA, margin: 0 })
+    s.addText('Comparación de opciones', { x: 0.6, y: 0.95, w: 11, h: 0.7, fontFace: F, fontSize: 26, bold: true, color: TINTA, fit: 'shrink', margin: 0 })
+    const borde = (abajo: string, pt = 0.75) => [{ type: 'none' }, { type: 'none' }, { type: 'solid', color: abajo, pt }, { type: 'none' }]
+    const celda = (t: string, o: any = {}) => ({ text: t, options: { fontFace: F, fontSize: 14, color: TINTA, valign: 'middle', border: borde(LINEA), ...o } })
+    const rango = (v: number[]) => { const a = Math.min(...v), b = Math.max(...v); return a === b ? String(a) : `${a}–${b}` }
+    const datos = ops.map(o => ({ o, t: totalesDe(o.items), money: moneyEn(o.moneda ?? d.moneda) }))
+    const filas: any[] = [[
+      celda('', { border: borde(NARANJA, 1.5) }),
+      ...ops.map(o => celda(`${o.etiqueta.toUpperCase()}${o.nombre ? `\n${o.nombre}` : ''}`, { bold: true, fontSize: 11, color: NARANJA, align: 'center', border: borde(NARANJA, 1.5) })),
+    ]]
+    const fila = (titulo: string, valor: (x: typeof datos[number]) => string, o: any = {}) =>
+      filas.push([celda(titulo, { bold: true, fontSize: 12, color: GRIS, ...o.etiqueta }), ...datos.map(x => celda(valor(x), { align: 'center', bold: true, ...o.valor }))])
+    fila('Cantidad de soportes', x => num(x.o.items.reduce((a, i) => a + i.cantidad, 0)))
+    fila('Semanas', x => x.o.items.length ? rango(x.o.items.map(i => i.semanas)) : '—')
+    fila('Impactos estimados', x => x.t.imp ? num(x.t.imp) : '—')
+    if (d.incluirPrecios) {
+      fila('Inversión sin IVA', x => x.money(x.t.neto))
+      fila('Total con IVA', x => x.money(x.t.tot), { etiqueta: { color: NARANJA }, valor: { color: NARANJA, fontSize: 18 } })
+    }
+    const wPrim = 3.4
+    s.addTable(filas, { x: 0.6, y: 1.95, w: W - 1.2, colW: [wPrim, ...ops.map(() => (W - 1.2 - wPrim) / ops.length)], margin: [8, 8, 8, 8] })
+    const notas = [d.desde && d.hasta ? `Campaña del ${d.desde} al ${d.hasta}.` : '', d.incluirPrecios ? (d.moneda === 'USD' ? 'Importes en dólares.' : 'Importes en pesos uruguayos.') : ''].filter(Boolean).join('  ·  ')
+    if (notas) s.addText(notas, { x: 0.6, y: 6.95, w: W - 1.2, h: 0.35, fontFace: F, fontSize: 9, color: GRIS, fit: 'shrink', margin: 0 })
   }
 
   // ── Cierre (el del brochure) ─────────────────────────────────────────────
@@ -312,7 +413,8 @@ async function cargarImagen(url: string, tipo: 'jpeg' | 'png', max = 1600): Prom
 
 export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
   const PptxGenJS = (await import('pptxgenjs')).default
-  const shoppings = Array.from(new Set(d.items.filter(i => i.categoria === 'Shopping').map(shoppingDe).filter(Boolean))) as string[]
+  const soportes = soportesParaFotos(d)
+  const shoppings = Array.from(new Set(soportes.filter(i => i.categoria === 'Shopping').map(shoppingDe).filter(Boolean))) as string[]
   const [portada, logo, mv, sombraAbajo, sombraArriba, ...resto] = await Promise.all([
     cargarImagen('/presentacion/portada.jpg', 'jpeg'),
     cargarImagen('/presentacion/logo-blanco.png', 'png'),
@@ -320,7 +422,7 @@ export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
     cargarImagen('/presentacion/sombra-abajo.png', 'png'),
     cargarImagen('/presentacion/sombra-arriba.png', 'png'),
     ...shoppings.map(k => cargarImagen(`/logos-shoppings/${k}.png`, 'png')),
-    ...d.items.map(i => (i.foto ? cargarImagen(i.foto, 'jpeg') : Promise.resolve(null))),
+    ...soportes.map(i => (i.foto ? cargarImagen(i.foto, 'jpeg') : Promise.resolve(null))),
   ])
   const logosShopping = Object.fromEntries(shoppings.map((k, j) => [k, resto[j]]))
   // Medir los textos con la Montserrat de verdad, para que las franjas calcen.
@@ -334,7 +436,7 @@ export async function generarPptPropuesta(d: DatosPpt): Promise<void> {
   const fotos = resto.slice(shoppings.length)
   const pptx = await armarPresentacion(PptxGenJS, d, { portada, logo, mv, sombraAbajo, sombraArriba, fotos, logosShopping, medir })
 
-  const archivo = `Propuesta ${d.cliente || 'Movimagen'}${d.campana ? ` - ${d.campana}` : ''}${d.version && !(d.campana ?? '').includes(d.version) ? ` - ${d.version}` : ''}.pptx`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/·/g, '-').replace(/[^\x20-\x7E]/g, '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ')
+  const archivo = nombreArchivoPpt(d)
   // Descarga propia: con writeFile algunos navegadores lo bajaban como
   // "download", sin nombre ni extensión.
   const blob = await pptx.write({ outputType: 'blob' }) as Blob
