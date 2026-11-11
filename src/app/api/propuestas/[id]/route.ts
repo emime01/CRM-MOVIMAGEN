@@ -50,7 +50,16 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .from('ordenes_venta').select('id, numero, estado').eq('propuesta_id', params.id)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
-  return NextResponse.json({ propuesta, items: items ?? [], orden: orden ?? null })
+  // Las otras versiones (opciones A, B, C…) de la misma oportunidad: todas
+  // las cotizaciones del mismo lead, en el orden en que se crearon.
+  const { data: versiones } = propuesta.lead_id
+    ? await supabase.from('propuestas')
+        .select('id, numero, nombre, estado, moneda, monto_total, created_at')
+        .eq('lead_id', propuesta.lead_id)
+        .order('created_at')
+    : { data: [] as any[] }
+
+  return NextResponse.json({ propuesta, items: items ?? [], orden: orden ?? null, versiones: versiones ?? [] })
 }
 
 // PATCH /api/propuestas/[id]
