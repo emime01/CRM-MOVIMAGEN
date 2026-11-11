@@ -110,11 +110,11 @@ export async function informeShoppingExcel(f: ShoppingInforme, mes: string) {
     return r++
   }
   const suma = f.lineas.length ? `SUM(H${H + 1}:H${ult})` : '0'
-  const rArr = f.arrastre ? filaTotal('Del mes anterior', f.arrastre) : null
-  const rDif = f.diferido ? filaTotal('Pasa al mes siguiente', -f.diferido) : null
+  // Al shopping se le informa el canon del mes: lo que se pasa al mes
+  // siguiente (o viene del anterior) es un manejo interno y no va en el informe.
   // El mínimo no se muestra, pero si lo hay, manda.
-  const formulaPagar = `${f.minimo ? `MAX(${suma},${f.minimo})` : suma}${rArr ? `+H${rArr}` : ''}${rDif ? `+H${rDif}` : ''}`
-  const aPagar = Math.round((Math.max(variable, f.minimo || 0) + (f.arrastre || 0) - (f.diferido || 0)) * 100) / 100
+  const formulaPagar = f.minimo ? `MAX(${suma},${f.minimo})` : suma
+  const aPagar = Math.round(Math.max(variable, f.minimo || 0) * 100) / 100
   const rPagar = filaTotal('Canon a pagar', { formula: formulaPagar, result: aPagar }, true)
   const rIva = filaTotal('IVA 22%', { formula: `H${rPagar}*${IVA}`, result: Math.round(aPagar * IVA * 100) / 100 })
   filaTotal('Total con IVA', { formula: `H${rPagar}+H${rIva}`, result: Math.round(aPagar * (1 + IVA) * 100) / 100 }, true)
