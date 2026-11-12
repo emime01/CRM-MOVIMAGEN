@@ -231,6 +231,15 @@ export function esFotoDelHub(url: string, hubSiteUrl: string = HUB_SITE_URL_DEFA
 export type Parche = Record<string, string | number>
 
 /**
+ * El nombre del Hub para el CRM: el Hub separa temporada alta y baja en dos
+ * soportes ("… (TEMP ALTA)" / "… (TEMP BAJA)") que en el CRM son uno solo.
+ */
+export function nombreDesdeHub(nombre: string | null | undefined): string | null {
+  const n = String(nombre ?? '').replace(/\s*\((TEMP|TEMPORADA)\.?\s+(ALTA|BAJA)\)\s*$/i, '').trim()
+  return n || null
+}
+
+/**
  * Campos a completar en un soporte del CRM a partir del Hub. Devuelve {} si no
  * hay nada que cambiar. `fotoHub` ya debe venir absoluta (ver primeraFotoHub).
  */
@@ -246,6 +255,11 @@ export function calcularParche(
     const actual = (crm.url_imagen ?? '').trim()
     if (!actual || (esFotoDelHub(actual, hubSiteUrl) && actual !== fotoHub)) p.url_imagen = fotoHub
   }
+
+  // El nombre manda el Hub ("COLONIA BANNER GIGANTE SHOPPING" dice en qué
+  // shopping está; "BANNER GIGANTE SHOPPING" no).
+  const nombre = nombreDesdeHub(hub.nombre)
+  if (nombre && nombre !== String(crm.nombre ?? '').trim()) p.nombre = nombre
 
   if (vacio(crm.medidas) && !vacio(hub.medidas)) p.medidas = String(hub.medidas).trim()
 
