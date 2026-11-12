@@ -2,8 +2,9 @@
 
 import { parsearHoja, type FilaObjetivo } from '@/lib/objetivos/parse-excel'
 
-import { useState, useRef } from 'react'
-import { ChevronDown, ChevronRight, Upload, Download, X } from 'lucide-react'
+import { useState, useRef, useMemo } from 'react'
+import { ChevronDown, ChevronRight, Upload, Download, X, Pencil, Plus } from 'lucide-react'
+import BuscadorSelect from '@/components/ui/BuscadorSelect'
 
 const y = new Date().getFullYear()
 const CUATRIMESTRES = [`Q1-${y}`, `Q2-${y}`, `Q3-${y}`]
@@ -33,6 +34,8 @@ interface Props {
   clienteObjetivos: ClienteObjetivo[]
   /** Clientes con objetivo cargado pero sin dueño: su objetivo no suma para nadie. */
   sinVendedor: ClienteObjetivo[]
+  /** Clientes activos, para cargarle objetivo a uno que no tiene. */
+  clientes: { id: string; nombre: string; empresa: string | null }[]
   year: number
 }
 
@@ -213,7 +216,176 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   )
 }
 
-export default function ObjetivosClient({ vendedores, objMap: initialObjMap, clienteObjetivos, sinVendedor, year }: Props) {
+// ─── Edición de objetivos por cliente ─────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  width: 100, padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6,
+  fontSize: 12, fontFamily: 'Montserrat, sans-serif', textAlign: 'right', outline: 'none',
+  background: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box',
+}
+const selectStyle: React.CSSProperties = {
+  height: 32, padding: '0 8px', borderRadius: 7, border: '1px solid var(--border)',
+  background: 'var(--bg-card)', fontSize: 12.5, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-primary)',
+}
+const btnPrimario = (off: boolean): React.CSSProperties => ({
+  padding: '7px 14px', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600,
+  fontFamily: 'Montserrat, sans-serif', color: off ? 'var(--text-muted)' : '#fff',
+  background: off ? '#e5e3dc' : 'var(--orange)', cursor: off ? 'not-allowed' : 'pointer',
+})
+const btnSecundario: React.CSSProperties = {
+  padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg-card)',
+  fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-secondary)', cursor: 'pointer',
+}
+
+async function guardarObjetivoCliente(body: {
+  clienteId: string; vendedorId: string | null; year: number
+  c1: string; c2: string; c3: string; ponderacion: string
+}): Promise<string | null> {
+  const res = await fetch('/api/objetivos/cliente', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      clienteId: body.clienteId, vendedorId: body.vendedorId, year: body.year,
+      c1: Number(body.c1 || 0), c2: Number(body.c2 || 0), c3: Number(body.c3 || 0),
+      ponderacion: body.ponderacion === '' ? 100 : Number(body.ponderacion),
+    }),
+  })
+  if (res.ok) return null
+  const d = await res.json().catch(() => ({}))
+  return d.error ?? 'No se pudo guardar'
+}
+
+/** Fila editable de "Potenciales por cliente". */
+function ClienteFilaEditable({ co, vendedores, year, onCancel }: {
+  co: ClienteObjetivo; vendedores: Vendedor[]; year: number; onCancel: () => void
+}) {
+  const [c1, setC1] = useState(String(co.objetivo_c1 ?? 0))
+  const [c2, setC2] = useState(String(co.objetivo_c2 ?? 0))
+  const [c3, setC3] = useState(String(co.objetivo_c3 ?? 0))
+  const [pond, setPond] = useState(String(co.ponderacion_pct ?? 100))
+  const [vend, setVend] = useState(co.vendedor_id ?? '')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function guardar() {
+    setGuardando(true); setError(null)
+    const err = await guardarObjetivoCliente({
+      clienteId: co.cliente_id, vendedorId: vend || null, year, c1, c2, c3, ponderacion: pond,
+    })
+    setGuardando(false)
+    if (err) { setError(err); return }
+    // Recargar: cambian los totales por vendedor.
+    window.location.reload()
+  }
+
+  const num = (v: string, set: (s: string) => void, w = 100) => (
+    <input type="number" min={0} value={v} onChange={e => set(e.target.value)} style={{ ...inputStyle, width: w }} />
+  )
+
+  return (
+    <tr style={{ background: 'rgba(235,105,28,0.05)' }}>
+      <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+        {clienteNombre(co)}
+        <div style={{ marginTop: 6 }}>
+          <select value={vend} onChange={e => setVend(e.target.value)} style={selectStyle}>
+            <option value="">— sin vendedor —</option>
+            {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+          </select>
+        </div>
+        {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>{error}</div>}
+      </td>
+      <td style={{ padding: '6px 8px', textAlign: 'right', verticalAlign: 'top' }}>{num(pond, setPond, 64)}</td>
+      <td style={{ padding: '6px 8px', textAlign: 'right', verticalAlign: 'top' }}>{num(c1, setC1)}</td>
+      <td style={{ padding: '6px 8px', textAlign: 'right', verticalAlign: 'top' }}>{num(c2, setC2)}</td>
+      <td style={{ padding: '6px 8px', textAlign: 'right', verticalAlign: 'top' }}>{num(c3, setC3)}</td>
+      <td style={{ padding: '6px 8px', textAlign: 'right', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+        <button onClick={guardar} disabled={guardando} style={btnPrimario(guardando)}>{guardando ? 'Guardando…' : 'Guardar'}</button>{' '}
+        <button onClick={onCancel} disabled={guardando} style={btnSecundario}>Cancelar</button>
+      </td>
+      <td />
+    </tr>
+  )
+}
+
+/** Alta del objetivo de un cliente que todavía no tiene. */
+function AgregarClienteObjetivo({ clientes, conObjetivo, vendedores, year }: {
+  clientes: { id: string; nombre: string; empresa: string | null }[]
+  conObjetivo: Set<string>; vendedores: Vendedor[]; year: number
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const [clienteId, setClienteId] = useState('')
+  const [vend, setVend] = useState('')
+  const [c1, setC1] = useState('')
+  const [c2, setC2] = useState('')
+  const [c3, setC3] = useState('')
+  const [pond, setPond] = useState('100')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const opciones = useMemo(
+    () => clientes.filter(c => !conObjetivo.has(c.id)).map(c => ({ id: c.id, label: c.nombre, extra: c.empresa })),
+    [clientes, conObjetivo],
+  )
+
+  async function guardar() {
+    setGuardando(true); setError(null)
+    const err = await guardarObjetivoCliente({ clienteId, vendedorId: vend || null, year, c1, c2, c3, ponderacion: pond })
+    setGuardando(false)
+    if (err) { setError(err); return }
+    window.location.reload()
+  }
+
+  if (!abierto) {
+    return (
+      <button onClick={() => setAbierto(true)} style={{ ...btnSecundario, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, padding: '8px 14px', fontSize: 13 }}>
+        <Plus size={14} /> Agregar objetivo a un cliente
+      </button>
+    )
+  }
+
+  const campo = (label: string, v: string, set: (s: string) => void, w = 110) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+      {label}
+      <input type="number" min={0} value={v} onChange={e => set(e.target.value)} placeholder="0" style={{ ...inputStyle, width: w, padding: '7px 10px' }} />
+    </label>
+  )
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 20, padding: '14px 16px' }}>
+      <div style={{ fontSize: 14, fontWeight: 750, color: 'var(--text-primary)', marginBottom: 12 }}>Agregar objetivo a un cliente</div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div style={{ width: 260 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Cliente</div>
+          <BuscadorSelect
+            opciones={opciones} value={clienteId} onChange={setClienteId}
+            placeholder="Buscar cliente…" vacio="— Elegí un cliente —"
+            style={{ height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg-card)', fontSize: 13, fontFamily: 'Montserrat, sans-serif', color: 'var(--text-primary)' }}
+          />
+        </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          Vendedor
+          <select value={vend} onChange={e => setVend(e.target.value)} style={{ ...selectStyle, height: 34, width: 180 }}>
+            <option value="">— sin vendedor —</option>
+            {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+          </select>
+        </label>
+        {campo('Pond. %', pond, setPond, 70)}
+        {campo('C1', c1, setC1)}
+        {campo('C2', c2, setC2)}
+        {campo('C3', c3, setC3)}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+        <button onClick={guardar} disabled={!clienteId || guardando} style={btnPrimario(!clienteId || guardando)}>
+          {guardando ? 'Guardando…' : 'Guardar objetivo'}
+        </button>
+        <button onClick={() => setAbierto(false)} disabled={guardando} style={btnSecundario}>Cancelar</button>
+        {error && <span style={{ fontSize: 12.5, color: '#dc2626' }}>{error}</span>}
+      </div>
+    </div>
+  )
+}
+
+export default function ObjetivosClient({ vendedores, objMap: initialObjMap, clienteObjetivos, sinVendedor, clientes, year }: Props) {
   const [objMap, setObjMap] = useState<Record<string, number>>(initialObjMap)
   const [editValues, setEditValues] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {}
@@ -227,6 +399,11 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [importOpen, setImportOpen] = useState(false)
+  const [editandoCliente, setEditandoCliente] = useState<string | null>(null)
+  const conObjetivo = useMemo(
+    () => new Set([...clienteObjetivos, ...sinVendedor].map(co => co.cliente_id)),
+    [clienteObjetivos, sinVendedor],
+  )
 
   // ── Asignación de clientes sin dueño ──────────────────────────────────────
   // Un cliente sin vendedor tiene su objetivo cargado pero no suma para nadie,
@@ -410,6 +587,8 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
         </div>
       )}
 
+      <AgregarClienteObjetivo clientes={clientes} conObjetivo={conObjetivo} vendedores={vendedores} year={year} />
+
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -515,6 +694,7 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
                                 <th key={c} style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>C{c.replace('Q', '')}</th>
                               ))}
                               <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>Total</th>
+                              <th />
                             </tr>
                           </thead>
                           <tbody>
@@ -523,6 +703,12 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
                               const c2 = Number(co.objetivo_c2 ?? 0)
                               const c3 = Number(co.objetivo_c3 ?? 0)
                               const total = c1 + c2 + c3
+                              if (editandoCliente === co.cliente_id) {
+                                return (
+                                  <ClienteFilaEditable key={co.cliente_id} co={co} vendedores={vendedores} year={year}
+                                    onCancel={() => setEditandoCliente(null)} />
+                                )
+                              }
                               return (
                                 <tr key={co.cliente_id}>
                                   <td style={{ padding: '4px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>{clienteNombre(co)}</td>
@@ -531,6 +717,12 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
                                   <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>{c2 > 0 ? fmt(c2) : '—'}</td>
                                   <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>{c3 > 0 ? fmt(c3) : '—'}</td>
                                   <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--orange)' }}>{total > 0 ? fmt(total) : '—'}</td>
+                                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                    <button onClick={() => setEditandoCliente(co.cliente_id)} title="Editar objetivo del cliente"
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'inline-flex' }}>
+                                      <Pencil size={13} />
+                                    </button>
+                                  </td>
                                 </tr>
                               )
                             })}
