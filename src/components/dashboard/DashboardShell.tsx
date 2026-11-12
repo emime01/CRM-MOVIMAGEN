@@ -8,7 +8,7 @@ import Link from 'next/link'
 import GlobalSearch from '@/components/dashboard/GlobalSearch'
 import Dialogos from '@/components/ui/dialogos'
 import {
-  Home, FileText, Filter, Calendar, BarChart2, Users, Target, Star, Truck, Factory, Receipt, AlertCircle, Percent, Building2, CreditCard, Settings, FlaskConical, Package, BookUser, Camera, Bell, UserCircle, CalendarDays, AlertTriangle, Clock, Megaphone, ClipboardList, Menu,
+  Home, FileText, Filter, Calendar, BarChart2, Users, Target, Star, Truck, Factory, Receipt, AlertCircle, Percent, Building2, CreditCard, Settings, FlaskConical, Package, BookUser, Camera, Bell, UserCircle, CalendarDays, AlertTriangle, Clock, Megaphone, ClipboardList, Menu, UserCog, Briefcase,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -100,20 +100,22 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/ventas', label: 'Ventas', icon: <FileText size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
   { href: '/dashboard/reportes', label: 'Reportes', icon: <BarChart2 size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion'] },
   { href: '/dashboard/cuentas', label: 'Cuentas', icon: <BookUser size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'administracion', 'asistente_administracion'] },
+  { href: '/dashboard/gerente/resumen', label: 'Gerencia', icon: <Briefcase size={16} />, roles: ['gerente_comercial'] },
   { href: '/dashboard/gerente', label: 'Mi Equipo', icon: <Users size={16} />, roles: ['gerente_comercial', 'administracion'] },
-  { href: '/dashboard/gerente/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['asistente_ventas'] },
+  { href: '/dashboard/objetivos', label: 'Objetivos', icon: <Target size={16} />, roles: ['asistente_ventas', 'gerente_comercial', 'administracion'] },
   { href: '/dashboard/tasks', label: 'Tareas', icon: <ClipboardList size={16} />, roles: ['arte', 'operaciones', 'administracion', 'gerente_comercial', 'asistente_administracion', 'vendedor', 'asistente_ventas'] },
   { href: '/dashboard/calendario', label: 'Calendario', icon: <CalendarDays size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
   // La pantalla existía pero no estaba en el menú ni enlazada desde ningún
   // lado: operaciones sólo llegaba escribiendo la URL.
   { href: '/dashboard/oic', label: 'Producción', icon: <Factory size={16} />, roles: ['operaciones', 'arte'] },
   { href: '/dashboard/buses', label: 'Buses', icon: <Truck size={16} />, roles: ['operaciones', 'administracion'] },
-  { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas', 'gerente_comercial'] },
+  { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas'] },
   { href: '/dashboard/admin/facturacion', label: 'Facturación', icon: <Receipt size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/deudores', label: 'Deudores', icon: <AlertCircle size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
   { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
   { href: '/dashboard/admin/canon', label: 'Canon', icon: <Building2 size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/soportes', label: 'Soportes', icon: <Package size={16} />, roles: ['asistente_ventas', 'administracion'] },
+  { href: '/dashboard/admin/usuarios', label: 'Usuarios', icon: <UserCog size={16} />, roles: ['administracion', 'gerente_comercial'] },
   { href: '/dashboard/config', label: 'Configuración', icon: <Settings size={16} />, roles: ['administracion'] },
   { href: '/dashboard/perfil', label: 'Mi Perfil', icon: <UserCircle size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
 ]
@@ -128,6 +130,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/reportes': 'Reportes',
   '/dashboard/cuentas': 'Cuentas',
   '/dashboard/gerente': 'Mi Equipo',
+  '/dashboard/objetivos': 'Objetivos',
+  '/dashboard/gerente/resumen': 'Gerencia',
   '/dashboard/gerente/objetivos': 'Objetivos',
   '/dashboard/tasks': 'Tareas',
   '/dashboard/calendario': 'Calendario',
@@ -140,6 +144,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/admin/comisiones': 'Comisiones',
   '/dashboard/admin/canon': 'Canon',
   '/dashboard/admin/soportes': 'Soportes',
+  '/dashboard/admin/usuarios': 'Usuarios',
   '/dashboard/config': 'Configuración',
   '/dashboard/perfil': 'Mi Perfil',
 }
@@ -233,6 +238,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
+    // Gerencia cuelga de /dashboard/gerente: sin esto "Mi Equipo" y "Gerencia" se marcan juntos.
+    if (href === '/dashboard/gerente') return pathname === href
     return pathname.startsWith(href)
   }
 

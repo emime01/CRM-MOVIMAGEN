@@ -120,8 +120,8 @@ export default async function DashboardPage() {
     const [teamRes, pendingRes] = await Promise.all([
       supabase
         .from('perfiles')
-        .select('id, nombre')
-        .in('rol', ['vendedor', 'asistente_ventas']),
+        .select('id, nombre, rol')
+        .in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial']),
 
       supabase
         .from('ordenes_venta')
@@ -131,6 +131,9 @@ export default async function DashboardPage() {
         .limit(10),
     ])
 
+    // Los gerentes que venden (el CEO) entran como un vendedor más, pero sólo
+    // si tienen ventas u objetivo: si no, el cuadro se llenaría de gerentes
+    // sin números. Se decide más abajo, cuando están las ventas y objetivos.
     const team = teamRes.data ?? []
     pendingApprovals = pendingRes.data ?? []
 
@@ -155,7 +158,13 @@ export default async function DashboardPage() {
       const teamOrders = comoNeto(teamOrdersRes.data ?? [])
       const teamObjetivos = teamObjetivosRes.data ?? []
 
-      teamData = team.map(member => {
+      const conActividad = new Set<string>([
+        ...teamOrders.map(o => o.vendedor_id as string),
+        ...teamObjetivos.filter(o => Number(o.objetivo_monto ?? 0) > 0).map(o => o.vendedor_id as string),
+      ])
+      teamData = team
+        .filter(m => m.rol !== 'gerente_comercial' || conActividad.has(m.id))
+        .map(member => {
         const memberFact = sumarPorMoneda(teamOrders.filter(o => o.vendedor_id === member.id))
         const memberObj = Number(teamObjetivos.find(o => o.vendedor_id === member.id)?.objetivo_monto ?? 0)
         return { id: member.id, nombre: member.nombre, facturado: memberFact, objetivo: memberObj }

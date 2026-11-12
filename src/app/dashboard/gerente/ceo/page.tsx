@@ -32,7 +32,7 @@ export default async function CeoDashboardPage() {
     supabase.from('ordenes_venta').select('monto_total, monto_neto, moneda, estado, created_at, fecha_cobro, vendedor_id').gte('created_at', yearStart).lte('created_at', `${yearEnd}T23:59:59`),
     supabase.from('leads').select('estado, monto_potencial, vendedor_id'),
     supabase.from('objetivos').select('objetivo_monto, cuatrimestre, vendedor_id').in('cuatrimestre', quarters.map(q => q.label)),
-    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true),
+    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial']).eq('activo', true),
     // Lo cobrado sale de las facturas: desde que se cobra por cuota, la venta
     // ya no tiene una única fecha_cobro y esto quedaba siempre en $0.
     supabase.from('facturas').select('importe_total, moneda').eq('estado', 'cobrada')
@@ -72,7 +72,13 @@ export default async function CeoDashboardPage() {
   const maxQRev = Math.max(...qStats.map(q => Math.max(q.rev, q.obj)), 1)
 
   // Vendor performance
-  const vendorStats = vendedores?.map(v => {
+  // El gerente que vende (el CEO) aparece como un vendedor más, pero sólo si
+  // tiene ventas u objetivo en el año.
+  const conActividad = new Set<string>([
+    ...ordenes.filter(o => activeStates.includes(o.estado ?? '')).map(o => o.vendedor_id as string),
+    ...(objetivos ?? []).filter(o => Number(o.objetivo_monto ?? 0) > 0).map(o => o.vendedor_id as string),
+  ])
+  const vendorStats = vendedores?.filter(v => v.rol !== 'gerente_comercial' || conActividad.has(v.id)).map(v => {
     const myOrds = ordenes?.filter(o => o.vendedor_id === v.id && activeStates.includes(o.estado ?? '')) ?? []
     const porMoneda = sumarPorMoneda(myOrds)
     const facturado = montoEnPesos(porMoneda)
