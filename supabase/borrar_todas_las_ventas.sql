@@ -8,10 +8,12 @@
 --     de ellas: líneas, buses asignados, cuotas y facturas, notas de crédito,
 --     cobros, comisiones, gestiones de cobranza, tareas, fotos de registros,
 --     comprobantes, documentos, comentarios e historial.
---   · El canon mensual calculado (se recalcula con las ventas nuevas).
+--   · Las comisiones de agencia registradas al facturar.
+--   · El canon: liquidaciones mensuales, planes de cuotas y líneas diferidas
+--     (se recalcula con las ventas nuevas).
 --   · Todos los bloqueos de soportes (reservas).
 --   · Todas las cotizaciones y todos los leads.
---   · Los clientes [PRUEBA] con sus contactos.
+--   · Los clientes y agencias [PRUEBA] con sus contactos y regalos.
 --   · Todas las notificaciones (eran de esas ventas, leads y tareas).
 --   · Reinicia la numeración: la próxima venta es la OIC #1 y la próxima
 --     cotización la COT-0001.
@@ -34,7 +36,8 @@
 -- union all select 'bloqueos',     count(*) from reservas
 -- union all select 'cotizaciones', count(*) from propuestas
 -- union all select 'leads',        count(*) from leads
--- union all select 'clientes [PRUEBA]', count(*) from clientes where nombre ilike '[PRUEBA]%' or empresa ilike '[PRUEBA]%';
+-- union all select 'clientes [PRUEBA]', count(*) from clientes where nombre ilike '[PRUEBA]%' or empresa ilike '[PRUEBA]%'
+-- union all select 'agencias [PRUEBA]', count(*) from agencias where nombre ilike '[PRUEBA]%';
 
 begin;
 
@@ -52,8 +55,11 @@ select pg_temp.vaciar('comisiones');
 select pg_temp.vaciar('pagos');
 select pg_temp.vaciar('tasks');
 select pg_temp.vaciar('gestiones_cobranza');
+select pg_temp.vaciar('comisiones_agencia');
 select pg_temp.vaciar('facturas');
 select pg_temp.vaciar('canon_mensual');
+select pg_temp.vaciar('canon_diferidos');
+select pg_temp.vaciar('canon_planes');
 select pg_temp.vaciar('registros');
 select pg_temp.vaciar('comprobantes');
 select pg_temp.vaciar('materiales_digitales');
@@ -104,6 +110,21 @@ begin
       delete from cliente_objetivos where cliente_id = any(v_ids);
     end if;
     delete from clientes where id = any(v_ids);
+  end if;
+end $$;
+
+-- Agencias [PRUEBA] con sus contactos (y los regalos de esos contactos).
+do $$
+declare v_ids uuid[];
+begin
+  select array_agg(id) into v_ids from agencias where nombre ilike '[PRUEBA]%';
+  if v_ids is not null then
+    update clientes set agencia_id = null where agencia_id = any(v_ids);
+    if to_regclass('public.regalos') is not null then
+      delete from regalos where contacto_id in (select id from contactos where cuenta_id = any(v_ids));
+    end if;
+    delete from contactos where cuenta_id = any(v_ids);
+    delete from agencias where id = any(v_ids);
   end if;
 end $$;
 
