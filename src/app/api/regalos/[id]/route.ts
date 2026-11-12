@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { cerrarTareaRegalo } from '@/lib/regalos/tarea'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -32,5 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .eq('id', params.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Entregado (o no se envía): la tarea de la asistente queda lista.
+  if (estado !== 'pendiente') await cerrarTareaRegalo(supabase, params.id)
   return NextResponse.json({ ok: true })
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
+import { TIPO_TAREA_REGALO } from '@/lib/regalos/tarea'
 import { atiendeTareasDe, es } from '@/lib/auth/roles'
 
 /**
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const supabase = createServerClient()
-  const { data: task } = await supabase.from('tasks').select('asignado_a_rol, asignado_a').eq('id', params.id).maybeSingle()
+  const { data: task } = await supabase.from('tasks').select('*').eq('id', params.id).maybeSingle()
   if (!task) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
 
   // Las tareas de ventas son de su vendedor (y las ve y mueve el gerente comercial).
@@ -43,5 +44,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const { error } = await supabase.from('tasks').update(updates).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // La tarea de entregar un regalo, lista: el regalo queda entregado.
+  if (body.estado === 'completada' && task.tipo === TIPO_TAREA_REGALO && task.regalo_id) {
+    await supabase.from('regalos').update({ estado: 'entregado', updated_at: new Date().toISOString() })
+      .eq('id', task.regalo_id).eq('estado', 'pendiente')
+  }
   return NextResponse.json({ ok: true })
 }
