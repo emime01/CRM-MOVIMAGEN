@@ -13,6 +13,7 @@ import { intervalosBloqueos, intervalosVentas, ocupacionPorSoporte, sumarDias } 
 import { ocupacionPorFormato, soportesConLugar } from '@/lib/gerencia/ocupacion'
 import { cuatrimestreDe, sumarMeses, ultimoDiaDelMes } from '@/lib/gerencia/periodo'
 import { construirEmbudo } from '@/lib/gerencia/embudo'
+import { construirLeadsPropuestas } from '@/lib/gerencia/leads-propuestas'
 import { facturadoVsCobrado } from '@/lib/gerencia/facturado-cobrado'
 import { descuentoPorFormato } from '@/lib/gerencia/descuento'
 
@@ -161,6 +162,23 @@ export default async function GerenciaResumenPage() {
     libres30 = soportesConLugar(ocupacionPorSoporte(caps, ventasIv, bloqueosIv, hoy, sumarDias(hoy, 29)))
   }
   const formatosOcup = Array.from(new Set(ocupMeses.flatMap(m => m.formatos.map(f => f.formato))))
+
+  // Leads abiertos y cuántas propuestas se les enviaron (contando versiones).
+  const { data: leadsAbiertos, error: errLA } = await supabase.from('leads').select('id, vendedor_id')
+    .not('estado', 'in', '(ganado,perdido)').limit(10000)
+  const idsAbiertos = (leadsAbiertos ?? []).map((l: any) => l.id)
+  let propsDeAbiertos: { lead_id: string }[] = []
+  let errPA: unknown = null
+  for (let i = 0; i < idsAbiertos.length; i += 300) {
+    const { data, error } = await supabase.from('propuestas').select('lead_id')
+      .in('lead_id', idsAbiertos.slice(i, i + 300)).in('estado', ['enviada', 'aceptada', 'rechazada'])
+    if (error) { errPA = error; break }
+    propsDeAbiertos = propsDeAbiertos.concat((data ?? []) as any[])
+  }
+  const leadsProp = construirLeadsPropuestas({
+    perfiles: (perfilesRes.data ?? []) as any[], leads: (leadsAbiertos ?? []) as any[], propuestas: propsDeAbiertos,
+  })
+  const errLeadsProp = errLA ?? errPA
 
   // Embudo del cuatrimestre (el gerente con objetivo entra aunque no tenga actividad)
   const { data: objsQ } = await supabase.from('objetivos').select('vendedor_id, objetivo_monto').eq('cuatrimestre', q.label)
@@ -343,6 +361,36 @@ export default async function GerenciaResumenPage() {
           </div>
         )}
         <Vacio t="Leads creados, propuestas enviadas/aceptadas/rechazadas y ventas vivas del cuatrimestre, por vendedor." />
+      </Seccion>
+
+      <Seccion titulo="Leads abiertos y propuestas enviadas" href="/dashboard/cotizaciones" enlace="Ir a Cotizaciones">
+        {errLeadsProp ? <Vacio t="No se pudo calcular." /> : leadsProp.filas.length === 0 ? <Vacio t="No hay leads abiertos." /> : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ ...th, textAlign: 'left' }}>Vendedor</th>
+                  <th style={th}>Leads abiertos</th><th style={th}>Con propuesta</th><th style={th}>% cotizado</th>
+                  <th style={th}>Sin propuesta</th><th style={th}>Propuestas enviadas</th><th style={th}>Por lead</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...leadsProp.filas, leadsProp.total].map((f, i, arr) => {
+                  const esTotal = i === arr.length - 1
+                  return (
+                    <tr key={f.id} style={{ borderBottom: '1px solid var(--border)', fontWeight: esTotal ? 700 : 400, color: 'var(--text-primary)' }}>
+                      <td style={{ ...td, textAlign: 'left' }}>{f.nombre}</td>
+                      <td style={td}>{f.leads}</td><td style={td}>{f.conPropuesta}</td><td style={td}>{pctTxt(f.pctCotizado)}</td>
+                      <td style={{ ...td, color: f.sinPropuesta > 0 && !esTotal ? '#b45309' : undefined }}>{f.sinPropuesta}</td>
+                      <td style={td}>{f.propuestas}</td><td style={td}>{f.promedio == null ? '—' : f.promedio.toLocaleString('es-UY')}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Vacio t="Leads sin ganar ni perder. 'Propuestas enviadas' cuenta todas las versiones mandadas (enviadas, aceptadas o rechazadas); 'Por lead' es el promedio entre los leads cotizados." />
       </Seccion>
 
       <Seccion titulo={`Facturado vs cobrado · ${nombreMes(mes)}`} href="/dashboard/admin/facturacion" enlace="Ir a Facturación">
