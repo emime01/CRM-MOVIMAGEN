@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_BLOQUEO_VIVO, ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
 import { espaciosQueOcupa } from '@/lib/disponibilidad/espacios'
+import { efAlta, efBaja, intervalosVentas, intervalosBloqueos } from '@/lib/disponibilidad/ocupacion'
 
 export interface SoporteOcupante {
   tipo: 'venta' | 'bloqueo'
@@ -36,14 +37,6 @@ export interface DiaStats {
   fecha: string
   libres: number
   total: number
-}
-
-// Effective dates: prefer item.real → item.prevista → orden.real → orden.prevista
-function efAlta(item: any, ord: any): string | null {
-  return item.fecha_alta_real ?? item.fecha_alta_prevista ?? ord.fecha_alta_real ?? ord.fecha_alta_prevista ?? null
-}
-function efBaja(item: any, ord: any): string | null {
-  return item.fecha_baja_real ?? item.fecha_baja_prevista ?? ord.fecha_baja_real ?? ord.fecha_baja_prevista ?? null
 }
 
 function buildOcupacion(
@@ -135,31 +128,17 @@ export async function GET(req: NextRequest) {
     const capMap = new Map<string, number>((soportes ?? []).map((s: any) => [s.id, s.cap ?? 1]))
     const total = (soportes ?? []).length
 
+    // Misma regla que el resumen de Gerencia: ver lib/disponibilidad/ocupacion.
+    const intervalos = [...intervalosBloqueos(reservas, tipoDe), ...intervalosVentas(ordenes, tipoDe)]
+
     const dias: DiaStats[] = []
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${mes}-${String(d).padStart(2, '0')}`
       const resMap = new Map<string, number>()
-
-      reservas?.forEach((r: any) => {
-        ;(r.reserva_items ?? []).forEach((item: any) => {
-          if (!item.soporte_id) return
-          // Fecha efectiva por soporte: real (si se instaló) ?? ventana de la reserva
-          const desde = item.fecha_alta_real ?? r.fecha_desde
-          const hasta = item.fecha_baja_real ?? r.fecha_hasta
-          if (!desde || !hasta || desde > dateStr || hasta < dateStr) return
-          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
-        })
-      })
-
-      ordenes?.forEach((ord: any) => {
-        ;(ord.orden_items ?? []).forEach((item: any) => {
-          if (!item.soporte_id) return
-          const alta = efAlta(item, ord)
-          const baja = efBaja(item, ord)
-          if (!alta || !baja || alta > dateStr || baja < dateStr) return
-          resMap.set(item.soporte_id, (resMap.get(item.soporte_id) ?? 0) + espaciosQueOcupa(tipoDe.get(item.soporte_id), item))
-        })
-      })
+      for (const iv of intervalos) {
+        if (iv.desde > dateStr || iv.hasta < dateStr) continue
+        resMap.set(iv.soporte_id, (resMap.get(iv.soporte_id) ?? 0) + iv.espacios)
+      }
 
       let libres = 0
       capMap.forEach((cap, id) => { if ((resMap.get(id) ?? 0) < cap) libres++ })
