@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { puede, es, areasDeTarea } from '@/lib/auth/roles'
-import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical, DollarSign, RefreshCw, PhoneCall } from 'lucide-react'
+import { ClipboardList, Palette, Printer, Truck, Camera, Sparkles, ChevronLeft, ChevronRight, GripVertical, DollarSign, RefreshCw, PhoneCall, Gift } from 'lucide-react'
 import { avisar } from '@/components/ui/dialogos'
 import Link from 'next/link'
 
@@ -40,6 +40,7 @@ const TIPO_META: Record<string, { label: string; icon: React.ReactNode; color: s
   ops_asignar_buses:              { label: 'Asignar buses',     icon: <Truck size={12} />,    color: '#0891b2' },
   ops_producir_impresos:          { label: 'Producir impresos', icon: <Printer size={12} />,  color: '#d97706' },
   ops_crear_comprobante:          { label: 'Crear comprobante', icon: <Camera size={12} />,   color: '#16a34a' },
+  ops_entregar_regalo:            { label: 'Entregar regalo',   icon: <Gift size={12} />,     color: '#db2777' },
   admin_verificar_pago:           { label: 'Verificar pago',    icon: <DollarSign size={12} />, color: '#b45309' },
   admin_seguimiento_cobranza:     { label: 'Cobranza',          icon: <DollarSign size={12} />, color: '#b45309' },
   vendedor_renovacion:            { label: 'Renovación',        icon: <RefreshCw size={12} />, color: '#0d9488' },

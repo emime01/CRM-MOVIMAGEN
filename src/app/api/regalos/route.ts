@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
+import { crearTareaRegalo } from '@/lib/regalos/tarea'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,5 +54,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data, { status: 201 })
+
+  // A la asistente (Magaly) le llega la tarea de entregar el regalo, con aviso.
+  const tarea = await crearTareaRegalo(supabase, data.id, contactoId, { id: session.user.id, nombre: session.user.name })
+  return NextResponse.json({ ...data, tarea_creada: tarea.ok, ...(tarea.ok ? {} : { aviso: tarea.error }) }, { status: 201 })
 }
