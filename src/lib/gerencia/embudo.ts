@@ -28,14 +28,16 @@ export function construirEmbudo(input: {
   leads: ReadonlyArray<{ vendedor_id?: string | null }>
   propuestas: ReadonlyArray<{ vendedor_id?: string | null }>
   ventas: ReadonlyArray<{ vendedor_id?: string | null; monto_neto?: unknown; monto_total?: unknown; moneda?: unknown }>
+  /** Perfiles con objetivo en el período: el gerente que vende entra aunque todavía no tenga actividad. */
+  conObjetivo?: ReadonlySet<string>
 }): { filas: FilaEmbudo[]; total: FilaEmbudo } {
   const filas: FilaEmbudo[] = []
   for (const p of input.perfiles) {
     const leads = input.leads.filter(l => l.vendedor_id === p.id).length
     const propuestas = input.propuestas.filter(x => x.vendedor_id === p.id).length
     const ventasP = input.ventas.filter(v => v.vendedor_id === p.id)
-    // El gerente que vende entra como un vendedor más, pero sólo con actividad.
-    if (p.rol === 'gerente_comercial' && leads + propuestas + ventasP.length === 0) continue
+    // El gerente que vende entra como un vendedor más: con actividad o con objetivo.
+    if (p.rol === 'gerente_comercial' && leads + propuestas + ventasP.length === 0 && !input.conObjetivo?.has(p.id)) continue
     filas.push(fila(p.id, p.nombre, leads, propuestas, ventasP))
   }
   filas.sort((a, b) => b.ventas - a.ventas || b.propuestas - a.propuestas || a.nombre.localeCompare(b.nombre))

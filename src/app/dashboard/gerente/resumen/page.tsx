@@ -162,8 +162,11 @@ export default async function GerenciaResumenPage() {
   }
   const formatosOcup = Array.from(new Set(ocupMeses.flatMap(m => m.formatos.map(f => f.formato))))
 
-  // Embudo del cuatrimestre
+  // Embudo del cuatrimestre (el gerente con objetivo entra aunque no tenga actividad)
+  const { data: objsQ } = await supabase.from('objetivos').select('vendedor_id, objetivo_monto').eq('cuatrimestre', q.label)
+  const conObjetivo = new Set<string>((objsQ ?? []).filter((o: any) => Number(o.objetivo_monto) > 0).map((o: any) => o.vendedor_id))
   const embudo = construirEmbudo({
+    conObjetivo,
     perfiles: (perfilesRes.data ?? []) as any[],
     leads: (leadsQRes.data ?? []) as any[],
     propuestas: (propQRes.data ?? []) as any[],
@@ -287,7 +290,8 @@ export default async function GerenciaResumenPage() {
               </span>
             </div>
             {formatosOcup.length === 0 ? <Vacio t="No hay soportes activos cargados." /> : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px 16px', alignItems: 'end' }}>
+              <div style={{ overflowX: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `minmax(130px, 1.1fr) repeat(${ocupMeses.length}, minmax(120px, 1fr))`, gap: '10px 16px', alignItems: 'end', minWidth: 520 }}>
                 <span />
                 {ocupMeses.map(m => <span key={m.mes} style={{ ...th, textAlign: 'left' }}>{nombreMes(m.mes)}</span>)}
                 {formatosOcup.map(fmt => (
@@ -302,6 +306,7 @@ export default async function GerenciaResumenPage() {
                     })}
                   </div>
                 ))}
+              </div>
               </div>
             )}
             <Vacio t="Espacios-día vendidos (ventas vivas) y reservados (bloqueos vivos) sobre la capacidad del mes; misma regla que Disponibilidad." />
