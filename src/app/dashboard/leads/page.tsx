@@ -34,7 +34,7 @@ export default async function LeadsPage() {
     leadsQuery,
     supabase.from('clientes').select('id, nombre, empresa, agencia_id').eq('activo', true).order('nombre'),
     isGerente
-      ? supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'asistente_ventas']).eq('activo', true).order('nombre')
+      ? supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial']).eq('activo', true).order('nombre')
       : Promise.resolve({ data: [] }),
     !isGerente
       ? supabase
