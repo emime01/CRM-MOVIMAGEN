@@ -46,6 +46,8 @@ export const authOptions: NextAuthOptions = {
           .maybeSingle()
 
         if (!perfil) return null
+        // Un usuario desactivado desde la pantalla de usuarios no puede entrar.
+        if (perfil.activo === false) return null
 
         return {
           id: perfil.id,

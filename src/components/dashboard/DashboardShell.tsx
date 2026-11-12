@@ -8,7 +8,7 @@ import Link from 'next/link'
 import GlobalSearch from '@/components/dashboard/GlobalSearch'
 import Dialogos from '@/components/ui/dialogos'
 import {
-  Home, FileText, Filter, Calendar, BarChart2, Users, Target, Star, Truck, Factory, Receipt, AlertCircle, Percent, Building2, CreditCard, Settings, FlaskConical, Package, BookUser, Camera, Bell, UserCircle, CalendarDays, AlertTriangle, Clock, Megaphone, ClipboardList, Menu,
+  Home, FileText, Filter, Calendar, BarChart2, Users, Target, Star, Truck, Factory, Receipt, AlertCircle, Percent, Building2, CreditCard, Settings, FlaskConical, Package, BookUser, Camera, Bell, UserCircle, CalendarDays, AlertTriangle, Clock, Megaphone, ClipboardList, Menu, UserCog,
 } from 'lucide-react'
 
 // ─── Markdown renderer ───────────────────────────────────────────────────────
@@ -114,6 +114,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
   { href: '/dashboard/admin/canon', label: 'Canon', icon: <Building2 size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/soportes', label: 'Soportes', icon: <Package size={16} />, roles: ['asistente_ventas', 'administracion'] },
+  { href: '/dashboard/admin/usuarios', label: 'Usuarios', icon: <UserCog size={16} />, roles: ['administracion', 'gerente_comercial'] },
   { href: '/dashboard/config', label: 'Configuración', icon: <Settings size={16} />, roles: ['administracion'] },
   { href: '/dashboard/perfil', label: 'Mi Perfil', icon: <UserCircle size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
 ]
@@ -140,6 +141,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/admin/comisiones': 'Comisiones',
   '/dashboard/admin/canon': 'Canon',
   '/dashboard/admin/soportes': 'Soportes',
+  '/dashboard/admin/usuarios': 'Usuarios',
   '/dashboard/config': 'Configuración',
   '/dashboard/perfil': 'Mi Perfil',
 }
