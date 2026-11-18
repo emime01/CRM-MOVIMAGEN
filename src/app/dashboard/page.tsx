@@ -58,7 +58,7 @@ export default async function DashboardPage() {
   // La asistente administrativa no vende: su inicio es lo que hay que facturar.
   if (session.user.rol === 'asistente_administracion') redirect('/dashboard/admin/facturacion')
   // El gerente comercial arranca en su resumen de Gerencia (menú agrupado).
-  if (session.user.rol === 'gerente_comercial') redirect('/dashboard/gerente/resumen')
+  if ((session.user.rol as string) === 'gerente_comercial') redirect('/dashboard/gerente/resumen')
   // El tablero es de ventas (facturado, objetivo, leads del que entra). Arte,
   // operaciones y administración arrancan en lo suyo.
   if (!puede(session.user.rol, ['vendedor', 'asistente_ventas', 'gerente_comercial'])) {
