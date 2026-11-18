@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 
 const TABS = [
@@ -14,6 +15,9 @@ const TABS = [
 
 export default function GerenteLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const { data: sesion } = useSession()
+  // El gerente comercial ve estas pestañas desde el menú agrupado (DashboardShell).
+  if ((sesion?.user as any)?.rol === 'gerente_comercial') return <>{children}</>
 
   return (
     <div style={{ fontFamily: 'Montserrat, sans-serif' }}>

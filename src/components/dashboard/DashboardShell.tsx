@@ -120,6 +120,44 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/perfil', label: 'Mi Perfil', icon: <UserCircle size={16} />, roles: ['vendedor', 'asistente_ventas', 'gerente_comercial', 'operaciones', 'arte', 'administracion', 'asistente_administracion'] },
 ]
 
+/**
+ * Menú del gerente comercial: en vez de 16 entradas sueltas, grupos con
+ * pestañas arriba de la pantalla. Las pantallas son las mismas; sólo cambia
+ * cómo se llega. El resto de los perfiles usa NAV_ITEMS.
+ */
+type GrupoNav = { label: string; icon: React.ReactNode; tabs: { href: string; label: string }[] }
+const NAV_GERENTE: GrupoNav[] = [
+  { label: 'Inicio', icon: <Home size={16} />, tabs: [
+    { href: '/dashboard/gerente/resumen', label: 'Resumen' },
+    { href: '/dashboard/gerente', label: 'Equipo' },
+    { href: '/dashboard/objetivos', label: 'Objetivos' },
+    { href: '/dashboard/gerente/bandeja', label: 'Bandeja' },
+  ] },
+  { label: 'Comercial', icon: <Filter size={16} />, tabs: [
+    { href: '/dashboard/leads', label: 'Leads' },
+    { href: '/dashboard/cotizaciones', label: 'Cotizaciones' },
+    { href: '/dashboard/disponibilidad', label: 'Disponibilidad' },
+  ] },
+  { label: 'Ventas', icon: <FileText size={16} />, tabs: [{ href: '/dashboard/ventas', label: 'Ventas' }] },
+  { label: 'Reportes', icon: <BarChart2 size={16} />, tabs: [
+    { href: '/dashboard/reportes', label: 'Reportes' },
+    { href: '/dashboard/gerente/ceo', label: 'CEO' },
+  ] },
+  { label: 'Cobranza', icon: <AlertCircle size={16} />, tabs: [
+    { href: '/dashboard/admin/deudores', label: 'Deudores' },
+    { href: '/dashboard/admin/comisiones', label: 'Comisiones' },
+  ] },
+  { label: 'Cuentas', icon: <BookUser size={16} />, tabs: [{ href: '/dashboard/cuentas', label: 'Cuentas' }] },
+  { label: 'Agenda', icon: <CalendarDays size={16} />, tabs: [
+    { href: '/dashboard/tasks', label: 'Tareas' },
+    { href: '/dashboard/calendario', label: 'Calendario' },
+  ] },
+  { label: 'Mi Perfil', icon: <UserCircle size={16} />, tabs: [
+    { href: '/dashboard/perfil', label: 'Mi Perfil' },
+    { href: '/dashboard/admin/usuarios', label: 'Usuarios' },
+  ] },
+]
+
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/dashboard/ventas': 'Ventas',
@@ -236,6 +274,13 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   const navItems = testMode ? NAV_ITEMS : NAV_ITEMS.filter(item => puede(user.rol, item.roles))
   const pageTitle = PAGE_TITLES[pathname] ?? TITULOS_DETALLE.find(([pre]) => pathname.startsWith(pre))?.[1] ?? 'Dashboard'
 
+  // El gerente comercial (no el administrador del sistema) usa el menú agrupado.
+  const esGerente = !testMode && user.rol === 'gerente_comercial'
+  const enTab = (href: string) => href === '/dashboard/gerente'
+    ? pathname === href
+    : pathname === href || pathname.startsWith(href + '/')
+  const grupoActivo = esGerente ? NAV_GERENTE.find(g => g.tabs.some(t => enTab(t.href))) ?? null : null
+
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
     // Gerencia cuelga de /dashboard/gerente: sin esto "Mi Equipo" y "Gerencia" se marcan juntos.
@@ -301,8 +346,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 0' }}>
-          {navItems.map(item => {
-            const active = isActive(item.href)
+          {(esGerente ? NAV_GERENTE.map(g => ({ href: g.tabs[0].href, label: g.label, icon: g.icon, grupo: g })) : navItems.map(i => ({ ...i, grupo: null as GrupoNav | null }))).map(item => {
+            const active = item.grupo ? item.grupo === grupoActivo : isActive(item.href)
             return (
               <Link
                 key={item.href}
@@ -551,6 +596,21 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           padding: 24,
           background: 'var(--bg-app)',
         }}>
+          {grupoActivo && grupoActivo.tabs.length > 1 && (
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, overflowX: 'auto', scrollbarWidth: 'none' }}>
+              {grupoActivo.tabs.map(t => {
+                const on = enTab(t.href)
+                return (
+                  <Link key={t.href} href={t.href} style={{
+                    padding: '10px 16px', flexShrink: 0, fontSize: 13, fontWeight: on ? 700 : 500,
+                    color: on ? 'var(--orange)' : 'var(--text-secondary)',
+                    borderBottom: on ? '2px solid var(--orange)' : '2px solid transparent',
+                    textDecoration: 'none', marginBottom: -1, whiteSpace: 'nowrap',
+                  }}>{t.label}</Link>
+                )
+              })}
+            </div>
+          )}
           {children}
         </main>
       </div>
