@@ -188,4 +188,12 @@ describe('descuento por formato', () => {
   it('precio por encima de lista da descuento negativo', () => {
     expect(descuentoPorFormato([{ soporte_id: 'a', precio_unitario: 1100 }], soportes)[0].descuentoPct).toBe(-10)
   })
+  it('deja afuera las ventas en dólares (la lista está en pesos)', () => {
+    const r = descuentoPorFormato([
+      { soporte_id: 'a', precio_unitario: 900, moneda: 'UYU' },
+      { soporte_id: 'a', precio_unitario: 25, moneda: 'USD' },
+    ], soportes)
+    expect(r[0].items).toBe(1)
+    expect(r[0].descuentoPct).toBe(10)
+  })
 })

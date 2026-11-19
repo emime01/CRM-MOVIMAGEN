@@ -7,6 +7,8 @@ import { nombreFormato } from './ocupacion'
  * El descuento promedio del formato es 1 − Σreal / Σlista (ponderado por
  * importe de lista). Items sin precio o sin precio de lista se ignoran.
  * Puede dar negativo si se vendió por encima de la lista.
+ * La lista está en pesos: las líneas de ventas en dólares se dejan afuera
+ * (el sistema no guarda la cotización de la venta para compararlas).
  */
 
 export interface ItemVendido {
@@ -15,6 +17,8 @@ export interface ItemVendido {
   semanas?: unknown
   precio_unitario?: unknown
   descuento_pct?: unknown
+  /** Moneda de la venta; sólo se comparan las de pesos (o sin moneda). */
+  moneda?: unknown
 }
 export interface SoporteLista { id: string; categoria?: string | null; precio_semanal?: unknown }
 
@@ -33,6 +37,7 @@ export function descuentoPorFormato(items: readonly ItemVendido[], soportes: rea
   for (const it of items) {
     const s = porId.get(it.soporte_id)
     if (!s) continue
+    if (it.moneda != null && it.moneda !== '' && it.moneda !== 'UYU') continue
     const precio = Number(it.precio_unitario)
     const lista = Number(s.precio_semanal)
     if (!(it.precio_unitario != null && it.precio_unitario !== '' && Number.isFinite(precio) && precio >= 0)) continue

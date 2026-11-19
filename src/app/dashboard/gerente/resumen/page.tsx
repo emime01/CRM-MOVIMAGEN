@@ -201,7 +201,7 @@ export default async function GerenciaResumenPage() {
   const errFactCob = factMesRes.error ?? pagosMesRes.error
 
   // Precio real vs lista del cuatrimestre
-  const itemsVendidos = ((ventasQRes.data ?? []) as any[]).flatMap(o => o.orden_items ?? [])
+  const itemsVendidos = ((ventasQRes.data ?? []) as any[]).flatMap(o => (o.orden_items ?? []).map((it: any) => ({ ...it, moneda: o.moneda })))
   const descuentos = descuentoPorFormato(itemsVendidos, soportes)
 
   // Ventas pendientes de aprobación
@@ -446,7 +446,7 @@ export default async function GerenciaResumenPage() {
             ))}
           </div>
         )}
-        <Vacio t="Precio de venta con su descuento contra el precio semanal de lista del soporte, ponderado por importe. Negativo: se vendió sobre lista." />
+        <Vacio t="Precio de venta con su descuento contra el precio semanal de lista del soporte, ponderado por importe. Negativo: se vendió sobre lista. Sólo ventas en pesos (la lista está en pesos)." />
       </Seccion>
     </div>
   )
