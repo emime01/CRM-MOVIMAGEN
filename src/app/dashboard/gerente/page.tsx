@@ -3,8 +3,8 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
 import { ESTADOS_VENTA_VIVA } from '@/lib/ventas/asignar-buses'
-import { puede, rolesDe } from '@/lib/auth/roles'
-import { comoNeto } from '@/lib/money'
+import { puede } from '@/lib/auth/roles'
+import { comoNeto, formatTotales, montoEnPesos, sumarPorMoneda } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +26,7 @@ export default async function GerentePage() {
 
   const [{ data: vendedores }, { data: ordenesRaw }, { data: leads }, { data: objetivos }] = await Promise.all([
     supabase.from('perfiles').select('id, nombre, rol').eq('activo', true),
-    supabase.from('ordenes_venta').select('vendedor_id, monto_total, monto_neto, estado, created_at')
+    supabase.from('ordenes_venta').select('vendedor_id, monto_total, monto_neto, moneda, estado, created_at')
       .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
       .gte('created_at', q.start).lte('created_at', `${q.end}T23:59:59`),
     supabase.from('leads').select('vendedor_id, estado, monto_potencial'),
@@ -49,15 +49,16 @@ export default async function GerentePage() {
   }
 
   // El equipo es quien vende o tiene objetivo en el cuatrimestre (el gerente
-  // también vende), así el total coincide con el del Inicio. Antes sólo
-  // entraban los perfiles con rol exacto de vendedor.
-  const conObjetivo = new Set((objetivos ?? []).map(o => o.vendedor_id))
+  // también vende), así el total coincide con el del Inicio. Las asistentes y
+  // el administrador del sistema no venden: no entran salvo que tengan ventas.
+  const conObjetivo = new Set((objetivos ?? []).filter(o => Number(o.objetivo_monto) > 0).map(o => o.vendedor_id))
   const conVentas = new Set(ordenes.map(o => o.vendedor_id))
-  const equipo = (vendedores ?? []).filter(v =>
-    rolesDe(v.rol).some(r => r === 'vendedor' || r === 'asistente_ventas') || conObjetivo.has(v.id) || conVentas.has(v.id))
+  const equipo = (vendedores ?? []).filter(v => v.rol === 'vendedor' || conObjetivo.has(v.id) || conVentas.has(v.id))
   const stats = equipo.map(v => {
     const myOrds = ordenes?.filter(o => o.vendedor_id === v.id) ?? []
-    const facturado = myOrds.reduce((s, o) => s + Number(o.monto_total ?? 0), 0)
+    // Pesos y dólares por separado; el avance (objetivos en pesos) cuenta sólo los pesos.
+    const vendido = sumarPorMoneda(myOrds)
+    const facturado = montoEnPesos(vendido)
     const myLeads = leads?.filter(l => l.vendedor_id === v.id) ?? []
     const leadsActivos = myLeads.filter(l => !['ganado', 'perdido'].includes(l.estado ?? '')).length
     const pipeline = myLeads.filter(l => !['ganado', 'perdido'].includes(l.estado ?? '')).reduce((s, l) => s + Number(l.monto_potencial ?? 0), 0)
@@ -66,10 +67,11 @@ export default async function GerentePage() {
     const avance = objetivo > 0 ? Math.min(Math.round((facturado / objetivo) * 100), 100) : 0
     const byStage: Record<string, number> = {}
     for (const s of STAGES) byStage[s] = myLeads.filter(l => l.estado === s).length
-    return { ...v, facturado, objetivo, avance, leadsActivos, pipeline, byStage }
+    return { ...v, vendido, facturado, objetivo, avance, leadsActivos, pipeline, byStage }
   })
 
-  const totalFact = stats.reduce((s, v) => s + v.facturado, 0)
+  const totalVendido = sumarPorMoneda(stats.flatMap(v => (['UYU', 'USD'] as const).map(m => ({ monto_total: v.vendido[m] ?? 0, moneda: m }))))
+  const totalFact = montoEnPesos(totalVendido)
   const totalObj = stats.reduce((s, v) => s + v.objetivo, 0)
   const teamAvance = totalObj > 0 ? Math.min(Math.round((totalFact / totalObj) * 100), 100) : 0
 
@@ -79,7 +81,7 @@ export default async function GerentePage() {
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', marginBottom: 24, display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Equipo vendido {q.label} · sin IVA</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(totalFact)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{formatTotales(totalVendido)}</div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Objetivo equipo</div>
@@ -106,7 +108,7 @@ export default async function GerentePage() {
             </div>
             <div style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-                <span>Vendido s/IVA: <strong style={{ color: 'var(--text-primary)' }}>{fmt(v.facturado)}</strong></span>
+                <span>Vendido s/IVA: <strong style={{ color: 'var(--text-primary)' }}>{formatTotales(v.vendido)}</strong></span>
                 <span>Objetivo: <strong style={{ color: 'var(--text-primary)' }}>{v.objetivo > 0 ? fmt(v.objetivo) : '—'}</strong></span>
               </div>
               <div style={{ height: 8, background: 'var(--bg-app)', borderRadius: 4, overflow: 'hidden' }}>
