@@ -29,7 +29,8 @@ function finDeMes(mes: string): string {
 export default async function ComisionesPage({ searchParams }: { searchParams: { mes?: string; q?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!puede(session.user.rol, ['administracion', 'gerente_comercial', 'asistente_administracion'])) redirect('/dashboard')
+  // Comisiones y bonos son de Administración: el gerente comercial sólo asigna objetivos.
+  if (!puede(session.user.rol, ['administracion', 'asistente_administracion'])) redirect('/dashboard')
   const supabase = createServerClient()
 
   const mes = searchParams.mes && /^\d{4}-\d{2}$/.test(searchParams.mes) ? searchParams.mes : mesUY()
@@ -173,7 +174,7 @@ export default async function ComisionesPage({ searchParams }: { searchParams: {
   // La comisión de cada vendedor y los bonos los ve Administración (Romina) y
   // gerencia; la asistente administrativa (Belén) sólo ve las de agencia.
   const roles = rolesDe(session.user.rol)
-  const soloAgencias = roles.includes('asistente_administracion') && !puede(session.user.rol, ['administracion', 'gerente_comercial'])
+  const soloAgencias = roles.includes('asistente_administracion') && !puede(session.user.rol, ['administracion'])
 
   return (
     <ComisionesClient
@@ -188,7 +189,7 @@ export default async function ComisionesPage({ searchParams }: { searchParams: {
       paga={pagaAdministracion(session.user.rol)}
       pagaAgencias={haceAdministracion(session.user.rol)}
       soloAgencias={soloAgencias}
-      asignaBonos={puede(session.user.rol, ['gerente_comercial', 'administracion'])}
+      asignaBonos={puede(session.user.rol, ['administracion'])}
     />
   )
 }

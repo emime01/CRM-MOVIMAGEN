@@ -17,12 +17,12 @@ const importe = (v: unknown) => {
  * PUT /api/comisiones/bonos  { vendedor_id, cuatrimestre, monto | null, moneda? }
  *
  * Asigna (o quita, con monto null o 0) el bono por objetivo de un vendedor en
- * un cuatrimestre. Lo asigna gerencia o Administración.
+ * un cuatrimestre. Lo asigna Administración (el gerente sólo asigna objetivos).
  */
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  if (!puede(session.user.rol, ['gerente_comercial', 'administracion'])) {
+  if (!puede(session.user.rol, ['administracion'])) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 

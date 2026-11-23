@@ -112,7 +112,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas'] },
   { href: '/dashboard/admin/facturacion', label: 'Facturación', icon: <Receipt size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/deudores', label: 'Deudores', icon: <AlertCircle size={16} />, roles: ['administracion', 'asistente_administracion'] },
-  { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'gerente_comercial', 'asistente_administracion'] },
+  { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/canon', label: 'Canon', icon: <Building2 size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/soportes', label: 'Soportes', icon: <Package size={16} />, roles: ['asistente_ventas', 'administracion'] },
   { href: '/dashboard/admin/usuarios', label: 'Usuarios', icon: <UserCog size={16} />, roles: ['administracion', 'gerente_comercial'] },
@@ -132,8 +132,6 @@ const NAV_GERENTE: GrupoNav[] = [
     { href: '/dashboard/gerente', label: 'Equipo' },
     { href: '/dashboard/objetivos', label: 'Objetivos' },
     { href: '/dashboard/gerente/bandeja', label: 'Bandeja' },
-    // Comisiones y bonos del equipo (los bonos por objetivo los asigna él).
-    { href: '/dashboard/admin/comisiones', label: 'Comisiones' },
   ] },
   { label: 'Comercial', icon: <Filter size={16} />, tabs: [
     { href: '/dashboard/leads', label: 'Leads' },
