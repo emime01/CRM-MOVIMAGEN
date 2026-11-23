@@ -33,10 +33,11 @@ export default async function CeoDashboardPage() {
     supabase.from('leads').select('estado, monto_potencial, vendedor_id'),
     supabase.from('objetivos').select('objetivo_monto, cuatrimestre, vendedor_id').in('cuatrimestre', quarters.map(q => q.label)),
     supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'asistente_ventas', 'gerente_comercial']).eq('activo', true),
-    // Lo cobrado sale de las facturas: desde que se cobra por cuota, la venta
-    // ya no tiene una única fecha_cobro y esto quedaba siempre en $0.
-    supabase.from('facturas').select('importe_total, moneda').eq('estado', 'cobrada')
-      .gte('fecha_cobro', yearStart).lte('fecha_cobro', yearEnd),
+    // Lo cobrado es la plata que entró en el año: los pagos registrados, con
+    // IVA y ya sin lo que se descontó la agencia (mismo criterio que
+    // "Facturado vs cobrado" del Resumen).
+    supabase.from('pagos').select('monto, ordenes_venta(moneda)')
+      .gte('fecha_pago', yearStart).lte('fecha_pago', yearEnd).limit(20000),
   ])
 
   const activeStates = ESTADOS_VENTA_VIVA as unknown as string[]
@@ -45,7 +46,7 @@ export default async function CeoDashboardPage() {
 
   // YTD metrics
   const facturadoYTD = sumarPorMoneda(ordenes?.filter(o => activeStates.includes(o.estado ?? '')) ?? [])
-  const cobradoYTD = sumarPorMoneda((cobradas ?? []).map(f => ({ monto_total: f.importe_total, moneda: f.moneda })))
+  const cobradoYTD = sumarPorMoneda((cobradas ?? []).map((p: any) => ({ monto_total: p.monto, moneda: (Array.isArray(p.ordenes_venta) ? p.ordenes_venta[0] : p.ordenes_venta)?.moneda })))
   const pipeline = leads?.filter(l => !['ganado', 'perdido'].includes(l.estado ?? '')).reduce((s, l) => s + Number(l.monto_potencial ?? 0), 0) ?? 0
   const leadsTotal = leads?.length ?? 0
   const leadsGanados = leads?.filter(l => l.estado === 'ganado').length ?? 0
@@ -103,7 +104,7 @@ export default async function CeoDashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
         {[
           { label: `Vendido ${new Date().getFullYear()}`, value: formatTotales(facturadoYTD), sub: 'Año en curso · sin IVA' },
-          { label: 'Cobrado YTD', value: formatTotales(cobradoYTD), sub: 'Efectivamente cobrado' },
+          { label: `Cobrado ${new Date().getFullYear()}`, value: formatTotales(cobradoYTD), sub: 'Lo que entró en el año · con IVA' },
           { label: 'Pipeline activo', value: formatMoney(pipeline, 'UYU'), sub: 'Leads en curso' },
           { label: 'Tasa de cierre', value: `${convRate}%`, sub: `${leadsGanados} de ${leadsTotal} leads` },
         ].map(s => (
