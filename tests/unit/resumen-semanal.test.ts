@@ -48,6 +48,13 @@ describe('construirResumenSemanal', () => {
     expect(asuntoSemanal({ desde: '2026-12-28' })).toBe('Resumen semanal Movimagen · semana del 28/12')
   })
 
+  it('para el gerente comercial va sin la deuda vencida', () => {
+    expect(construirResumenSemanal(vacio()).texto).toContain('Deuda vencida total')
+    const g = construirResumenSemanal(vacio(), undefined, { conDeudores: false })
+    expect(g.texto).not.toContain('Deuda vencida')
+    expect(g.texto).toContain('Cobrado en la semana')
+  })
+
   it('sin ventas: no rompe y lo dice', () => {
     const r = construirResumenSemanal(vacio())
     expect(r.html).toContain('No hubo ventas cerradas en la semana.')

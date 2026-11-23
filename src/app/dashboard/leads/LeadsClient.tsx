@@ -787,10 +787,13 @@ function LeadModal({
 function LeadCard({
   lead,
   isGerente,
+  editable,
   onClick,
 }: {
   lead: LeadRow
   isGerente: boolean
+  /** Es un lead propio: se puede editar, cotizar y vender. El gerente ve los del equipo en sólo lectura. */
+  editable: boolean
   onClick: () => void
 }) {
   const [hovered, setHovered] = useState(false)
@@ -817,7 +820,7 @@ function LeadCard({
       }}
     >
       {/* Edit badge on hover */}
-      {hovered && (
+      {hovered && editable && (
         <button title="Editar lead" onClick={e => { e.stopPropagation(); onClick() }} style={{
           position: 'absolute', top: 8, right: 8, border: 'none', cursor: 'pointer',
           background: '#eb691c', borderRadius: 5,
@@ -832,7 +835,7 @@ function LeadCard({
       <div style={{
         fontSize: 13, fontWeight: 700, color: '#1a1915',
         marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        paddingRight: hovered ? 28 : 0,
+        paddingRight: hovered && editable ? 28 : 0,
       }}>
         {clientName(lead)}
       </div>
@@ -915,7 +918,7 @@ function LeadCard({
       </Link>
 
       {/* Nueva cotización button */}
-      {(lead.estado === 'nuevo' || lead.estado === 'en_conversacion' || lead.estado === 'negociacion') && (
+      {editable && (lead.estado === 'nuevo' || lead.estado === 'en_conversacion' || lead.estado === 'negociacion') && (
         <Link
           href={`/dashboard/leads/${lead.id}/cotizar`}
           onClick={e => e.stopPropagation()}
@@ -935,7 +938,7 @@ function LeadCard({
       )}
 
       {/* Crear venta button */}
-      {(lead.estado === 'ganado' || lead.estado === 'negociacion' || lead.estado === 'propuesta_enviada') && (
+      {editable && (lead.estado === 'ganado' || lead.estado === 'negociacion' || lead.estado === 'propuesta_enviada') && (
         <Link
           href={`/dashboard/ventas/nueva?lead=${lead.id}`}
           onClick={e => e.stopPropagation()}
@@ -963,11 +966,13 @@ function KanbanColumn({
   col,
   leads,
   isGerente,
+  userId,
   onCardClick,
 }: {
   col: ColumnDef
   leads: LeadRow[]
   isGerente: boolean
+  userId: string
   onCardClick: (lead: LeadRow) => void
 }) {
   return (
@@ -1013,6 +1018,7 @@ function KanbanColumn({
               key={lead.id}
               lead={lead}
               isGerente={isGerente}
+              editable={!isGerente || lead.vendedor_id === userId}
               onClick={() => onCardClick(lead)}
             />
           ))
@@ -1508,6 +1514,7 @@ export default function LeadsClient({ leads, isGerente, userId, userRol, cliente
                 col={col}
                 leads={byColumn[col.estado]}
                 isGerente={isGerente}
+                userId={userId}
                 onCardClick={openEdit}
               />
             ))}

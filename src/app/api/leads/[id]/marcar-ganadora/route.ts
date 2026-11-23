@@ -27,8 +27,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const supabase = createServerClient()
 
-  // Ownership: el vendedor solo puede marcar ganadoras en SUS leads.
-  if (session.user.rol === 'vendedor') {
+  // Ownership: vendedor y gerente sólo marcan ganadoras en SUS leads (el
+  // gerente ve los del equipo pero no los gestiona).
+  if (session.user.rol === 'vendedor' || session.user.rol === 'gerente_comercial') {
     const { data: lead } = await supabase.from('leads').select('vendedor_id').eq('id', params.id).maybeSingle()
     if (!lead) return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
     if (lead.vendedor_id !== session.user.id) {

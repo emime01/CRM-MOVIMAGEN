@@ -91,7 +91,7 @@ interface Seccion { titulo: string; bloques: Bloque[] }
 const texto = (t: string): Bloque => ({ tipo: 'texto', texto: t })
 const tabla = (cols: string[], filas: string[][]): Bloque => ({ tipo: 'tabla', cols, filas })
 
-function secciones(d: DatosResumenSemanal): Seccion[] {
+function secciones(d: DatosResumenSemanal, conDeudores = true): Seccion[] {
   const out: Seccion[] = []
   const sem = `${dmy(d.semana.desde)} al ${dmy(d.semana.hasta)}`
 
@@ -158,7 +158,7 @@ function secciones(d: DatosResumenSemanal): Seccion[] {
     bloques: [
       texto(`Facturado en la semana: ${plataTotales(c.facturado)}`),
       texto(`Cobrado en la semana: ${plataTotales(c.cobrado)}`),
-      texto(`Deuda vencida total: ${plataTotales(c.deudaVencida)}${c.facturasVencidas ? ` (${c.facturasVencidas} factura${c.facturasVencidas > 1 ? 's' : ''})` : ''}`),
+      ...(conDeudores ? [texto(`Deuda vencida total: ${plataTotales(c.deudaVencida)}${c.facturasVencidas ? ` (${c.facturasVencidas} factura${c.facturasVencidas > 1 ? 's' : ''})` : ''}`)] : []),
     ],
   })
 
@@ -195,9 +195,10 @@ export function asuntoSemanal(semana: { desde: string }): string {
   return `Resumen semanal Movimagen · semana del ${ddmm(semana.desde)}`
 }
 
-export function construirResumenSemanal(d: DatosResumenSemanal, baseUrl = 'https://crm-movimagen.vercel.app'): ResumenSemanal {
+/** `conDeudores: false` para el gerente comercial, que no ve la cobranza (deuda vencida). */
+export function construirResumenSemanal(d: DatosResumenSemanal, baseUrl = 'https://crm-movimagen.vercel.app', opts: { conDeudores?: boolean } = {}): ResumenSemanal {
   const asunto = asuntoSemanal(d.semana)
-  const sec = secciones(d)
+  const sec = secciones(d, opts.conDeudores ?? true)
   const avisos = d.avisos.length
     ? `<p style="background:#fff7ed;border:1px solid #fdba74;border-radius:6px;padding:8px 10px;font-size:13px">No se pudo cargar: ${esc(d.avisos.join(', '))}.</p>`
     : ''
