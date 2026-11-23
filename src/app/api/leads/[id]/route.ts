@@ -5,14 +5,13 @@ import { createServerClient } from '@/lib/supabase-server'
 
 const LEADS_ROLES = ['vendedor', 'gerente_comercial']
 
-// Ownership: el vendedor solo puede tocar leads asignados a él. Gerente y
-// administracion ven/editan todo.
+// Ownership: cada uno edita sólo sus leads. El gerente ve los de todo el
+// equipo pero no los modifica (sí puede tocar las cotizaciones).
 async function checkOwnership(
   supabase: ReturnType<typeof createServerClient>,
   leadId: string,
   session: { user: { id: string; rol: string } },
 ): Promise<NextResponse | null> {
-  if (session.user.rol !== 'vendedor') return null
   const { data: lead } = await supabase.from('leads').select('vendedor_id').eq('id', leadId).maybeSingle()
   if (!lead) return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
   if (lead.vendedor_id !== session.user.id) {

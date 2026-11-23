@@ -98,7 +98,7 @@ export default async function GerenciaResumenPage() {
   const mes = hoy.slice(0, 7)
   const q = cuatrimestreDe(hoy)
 
-  const [pendRes, gestRes, cierreRes, renoRes, deudaRes, canonRes, liqRes] = await Promise.all([
+  const [pendRes, gestRes, cierreRes, renoRes, canonRes, liqRes] = await Promise.all([
     supabase.from('ordenes_venta')
       .select('id, numero, monto_total, moneda, clientes(nombre, empresa), perfiles!vendedor_id(nombre)')
       .eq('estado', 'pendiente_aprobacion').order('created_at', { ascending: true }).limit(200),
@@ -112,8 +112,6 @@ export default async function GerenciaResumenPage() {
       .select('id, descripcion, fecha_limite, perfiles!tasks_asignado_a_fkey(nombre)')
       .eq('tipo', TIPO_TAREA_RENOVACION).eq('asignado_a_rol', AREA_TAREA_VENTAS).neq('estado', 'completada')
       .order('fecha_limite', { ascending: true, nullsFirst: false }).limit(200),
-    supabase.from('facturas')
-      .select('importe_total, moneda, fecha_vencimiento').eq('estado', 'emitida').lt('fecha_vencimiento', hoy).limit(2000),
     cargarCanonDelMes(supabase, mes).catch((e: any) => ({ resumen: [], error: String(e?.message ?? e) })),
     supabase.from('canon_mensual').select('shopping_id, canon_variable, canon_minimo, a_pagar, estado').eq('mes', `${mes}-01`),
   ])
@@ -233,10 +231,6 @@ export default async function GerenciaResumenPage() {
   const renos = (renoRes.data ?? []) as any[]
   const renoVencidas = renos.filter(r => r.fecha_limite && String(r.fecha_limite).slice(0, 10) < hoy).length
 
-  // Deudores vencidos
-  const deudas = (deudaRes.data ?? []) as any[]
-  const deudaTotal = sumarPorMoneda(deudas.map(d => ({ monto_total: d.importe_total, moneda: d.moneda })))
-
   // Canon del mes: lo cerrado o pagado queda fijo; el resto se calcula (igual que Administración).
   let canonTotal: number | null = null
   const canonError = (canonRes as any).error as string | undefined
@@ -282,11 +276,6 @@ export default async function GerenciaResumenPage() {
             izq={`${first<any>(r.perfiles)?.nombre ?? '—'} · ${String(r.descripcion ?? '').replace(/^Ofrecer renovación — /, '')}`}
             der={r.fecha_limite ? ddmm(r.fecha_limite) : undefined} />
         ))}
-      </Tarjeta>
-
-      <Tarjeta titulo="Deudores vencidos" href="/dashboard/admin/deudores" enlace="Ir a Deudores"
-        resumen={deudas.length === 0 ? '0' : formatTotales(deudaTotal)}>
-        {deudas.length === 0 ? <Vacio t="Sin facturas vencidas." /> : <Fila izq="Facturas vencidas sin cobrar" der={deudas.length} />}
       </Tarjeta>
 
       <Tarjeta titulo={`Canon a pagar · ${mes}`}
@@ -393,7 +382,7 @@ export default async function GerenciaResumenPage() {
         <Vacio t="Leads sin ganar ni perder. 'Propuestas enviadas' cuenta todas las versiones mandadas (enviadas, aceptadas o rechazadas); 'Por lead' es el promedio entre los leads cotizados." />
       </Seccion>
 
-      <Seccion titulo={`Facturado vs cobrado · ${nombreMes(mes)}`} href="/dashboard/admin/facturacion" enlace="Ir a Facturación">
+      <Seccion titulo={`Facturado vs cobrado · ${nombreMes(mes)}`}>
         {errFactCob ? <Vacio t="No se pudo calcular lo facturado y cobrado." /> : factCob.length === 0 ? <Vacio t="Sin facturas ni cobros en el mes." /> : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>

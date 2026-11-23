@@ -217,8 +217,10 @@ export async function enviarResumenSemanal(
   if (!dest.length) return { ok: true, enviados: 0, asunto, destinatarios: 0, motivo: 'No hay gerentes comerciales ni administradores activos con mail.' }
 
   const datos = await cargarDatosResumenSemanal(supabase, hoy)
-  const { html } = construirResumenSemanal(datos, BASE)
+  const completo = construirResumenSemanal(datos, BASE).html
+  // El gerente comercial no ve la cobranza: su mail va sin la deuda vencida.
+  const sinDeudores = construirResumenSemanal(datos, BASE, { conDeudores: false }).html
   let enviados = 0
-  for (const d of dest) if (await enviarMail(d.email, asunto, html)) enviados++
+  for (const d of dest) if (await enviarMail(d.email, asunto, d.rol === 'gerente_comercial' ? sinDeudores : completo)) enviados++
   return { ok: enviados > 0, enviados, asunto, destinatarios: dest.length, ...(enviados < dest.length ? { motivo: 'Algunos mails no se pudieron enviar (ver logs).' } : {}) }
 }

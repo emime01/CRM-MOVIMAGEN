@@ -95,8 +95,8 @@ export default function LeadDetalleClient({ lead, propuestas, userRol, userId }:
   // El chequeo era "si no sos vendedor, podés todo", así que a Magaly y a
   // administración les mostraba el recuadro de gestión y después la API los
   // rechazaba. Se usa el mismo criterio que PATCH /api/leads/[id].
-  const puedeGestionar = puede(userRol, ['gerente_comercial'])
-    || (userRol === 'vendedor' && lead.vendedor_id === userId)
+  // El gerente ve los leads del equipo pero sólo gestiona los suyos.
+  const puedeGestionar = (userRol === 'vendedor' || userRol === 'gerente_comercial') && lead.vendedor_id === userId
 
   const [marcando, setMarcando] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
