@@ -80,11 +80,22 @@ function Badge({ estado, map }: { estado: string; map: Record<string, { color: s
   )
 }
 
-export default function ClienteHistorialClient({ cliente, leads, ordenes, objetivo }: {
-  cliente: Cliente; leads: Lead[]; ordenes: Orden[]; objetivo: Objetivo | null
+/** Venta de la planilla de antes del CRM (por trimestre, sin IVA, en pesos). */
+interface Historica {
+  id: string; anio: number; trimestre: number; cliente_texto: string; vendedor_nombre: string
+  monto: number; perfiles: JR<{ nombre: string }>
+}
+
+export default function ClienteHistorialClient({ cliente, leads, ordenes, objetivo, historicas = [] }: {
+  cliente: Cliente; leads: Lead[]; ordenes: Orden[]; objetivo: Objetivo | null; historicas?: Historica[]
 }) {
   const router = useRouter()
-  const [tab, setTab] = useState<'leads' | 'ventas'>('leads')
+  const [tab, setTab] = useState<'leads' | 'ventas' | 'historial'>('leads')
+  const histPorAnio = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const h of historicas) m.set(h.anio, (m.get(h.anio) ?? 0) + Number(h.monto || 0))
+    return Array.from(m.entries()).sort((a, b) => b[0] - a[0])
+  }, [historicas])
   const [cuatrimestre, setCuatrimestre] = useState('')
   const [showNuevaOportunidad, setShowNuevaOportunidad] = useState(false)
   const [nueva, setNueva] = useState({ descripcion: '', monto_potencial: '', cuatrimestre: '' })
@@ -209,10 +220,15 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
           <button style={tabBtn('ventas')} onClick={() => setTab('ventas')}>
             Ventas <span style={{ opacity: 0.7, marginLeft: 4, fontSize: 11 }}>({ordenes.length})</span>
           </button>
+          {historicas.length > 0 && (
+            <button style={tabBtn('historial')} onClick={() => setTab('historial')}>
+              2024–2025 <span style={{ opacity: 0.7, marginLeft: 4, fontSize: 11 }}>({historicas.length})</span>
+            </button>
+          )}
         </div>
-        <select value={cuatrimestre} onChange={e => setCuatrimestre(e.target.value)} style={selectStyle}>
+        {tab !== 'historial' && <select value={cuatrimestre} onChange={e => setCuatrimestre(e.target.value)} style={selectStyle}>
           {QUARTER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        </select>}
       </div>
 
       {/* Leads tab */}
@@ -278,6 +294,37 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Historial de la planilla (antes del CRM) */}
+      {tab === 'historial' && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'baseline', borderBottom: '1px solid var(--border)' }}>
+            {histPorAnio.map(([a, t]) => (
+              <span key={a} style={{ fontSize: 13 }}><span style={{ color: 'var(--text-muted)' }}>{a}:</span> <strong>{fmt(t)}</strong></span>
+            ))}
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Ventas de la planilla anterior al CRM · por trimestre · sin IVA</span>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
+                {['Período', 'Detalle', 'Vendedor', 'Monto s/IVA'].map(h => (
+                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {historicas.map(h => (
+                <tr key={h.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Q{h.trimestre} {h.anio}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{h.cliente_texto}</td>
+                  <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>{jn(h.perfiles)?.nombre ?? h.vendedor_nombre}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(Number(h.monto))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
