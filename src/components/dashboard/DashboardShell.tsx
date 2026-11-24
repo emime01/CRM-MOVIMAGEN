@@ -111,6 +111,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/buses', label: 'Buses', icon: <Truck size={16} />, roles: ['operaciones', 'administracion'] },
   { href: '/dashboard/registros', label: 'Registros', icon: <Camera size={16} />, roles: ['operaciones', 'administracion', 'vendedor', 'asistente_ventas'] },
   { href: '/dashboard/admin/facturacion', label: 'Facturación', icon: <Receipt size={16} />, roles: ['administracion', 'asistente_administracion'] },
+  // Facturación y ventas por cliente o agencia (sólo Administración).
+  { href: '/dashboard/admin/por-cliente', label: 'Por cliente', icon: <BarChart2 size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/deudores', label: 'Deudores', icon: <AlertCircle size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/comisiones', label: 'Comisiones', icon: <Percent size={16} />, roles: ['administracion', 'asistente_administracion'] },
   { href: '/dashboard/admin/canon', label: 'Canon', icon: <Building2 size={16} />, roles: ['administracion', 'asistente_administracion'] },
@@ -173,6 +175,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/buses': 'Buses',
   '/dashboard/registros': 'Registros',
   '/dashboard/admin/facturacion': 'Facturación',
+  '/dashboard/admin/por-cliente': 'Facturación y ventas por cliente',
   '/dashboard/admin/deudores': 'Deudores',
   '/dashboard/admin/comisiones': 'Comisiones',
   '/dashboard/admin/canon': 'Canon',

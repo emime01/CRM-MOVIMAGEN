@@ -68,6 +68,8 @@ export async function GET(req: NextRequest) {
       }
     }
     if (effectiveRol) q = q.eq('asignado_a_rol', effectiveRol)
+    // Las tareas de Administración son seguimientos de cobro: el gerente comercial no las ve.
+    if (userRol === 'gerente_comercial') q = q.neq('asignado_a_rol', 'administracion')
     if (soloVentas) q = q.eq('asignado_a', session.user.id)
     if (estado) q = q.eq('estado', estado)
     return q

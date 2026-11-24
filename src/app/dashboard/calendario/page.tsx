@@ -47,7 +47,8 @@ export default async function CalendarioPage() {
   if (comercial) agregar('gestion', true)
   agregar('campana', !administrativo || gerente || esAdminSistema(rol))
   if (veTodasLasTareas || areas.length > 0) agregar('tarea', !comercial || gerente)
-  if (administrativo || gerente) agregar('cobranza', administrativo && !gerente)
+  // Cobranzas: sólo Administración (el gerente comercial no las ve).
+  if (administrativo) agregar('cobranza', true)
 
   // Ventana: seis meses para atrás y un año para adelante.
   const hoy = hoyUY()
@@ -71,6 +72,8 @@ export default async function CalendarioPage() {
             .in('estado', ['pendiente', 'en_progreso'])
             .gte('fecha_limite', desde).lte('fecha_limite', hasta)
           if (!veTodasLasTareas) q = q.in('asignado_a_rol', areas)
+          // Las tareas de Administración son seguimientos de cobro: el gerente no las ve.
+          else if (rol === 'gerente_comercial') q = q.neq('asignado_a_rol', 'administracion')
           return q
         })()
       : Promise.resolve({ data: [] as any[] }),

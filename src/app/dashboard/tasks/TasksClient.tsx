@@ -182,7 +182,7 @@ export default function TasksClient({ userRol }: { userRol: string; userId: stri
         }}>{verHistorial ? '← Volver al tablero' : 'Historial'}</button>
         {canSwitchRol && (
           <div style={{ display: 'flex', gap: 4, background: '#f4f3f0', borderRadius: 8, padding: 3 }}>
-            {(['todas', 'arte', 'operaciones', 'administracion', 'ventas'] as const).map(r => (
+            {(['todas', 'arte', 'operaciones', 'administracion', 'ventas'] as const).filter(r => !(userRol === 'gerente_comercial' && r === 'administracion')).map(r => (
               <button key={r} onClick={() => setRolFilter(r)} style={{
                 padding: '6px 12px', border: 'none', borderRadius: 6, cursor: 'pointer',
                 fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat, sans-serif',
