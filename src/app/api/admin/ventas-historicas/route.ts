@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase-server'
 import { puede } from '@/lib/auth/roles'
 import { todos } from '@/lib/supabase-todos'
-import { emparejarCliente, emparejarVendedor, nombreBaseCliente, nombrePropio } from '@/lib/ventas/historicas'
+import { emparejarCliente, emparejarVendedor, nombreBaseCliente, nombrePropio, normalizar } from '@/lib/ventas/historicas'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,14 +39,16 @@ export async function GET() {
 
 /**
  * POST /api/admin/ventas-historicas — importa una planilla ya leída:
- *   { fuente: string, filas: [{ anio, trimestre, vendedor, cliente, monto }] }
+ *   { fuente: string, filas: [{ anio, trimestre, vendedor, cliente, monto }],
+ *     alias?: { [cliente de la planilla, sin el detalle]: id del cliente del CRM } }
+ * `alias` resuelve a mano los que el nombre no alcanza ("M LIBRE" → Mercado Libre).
  * Reemplaza todo lo de esa fuente (se puede volver a correr) y asocia cada
  * fila al vendedor y al cliente del CRM cuando el nombre coincide.
  * Con ?dry=1 sólo devuelve cómo quedaría, sin escribir nada.
  */
 export async function POST(req: NextRequest) {
   if (!(await autorizado())) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
-  let body: { fuente?: string; filas?: any[] }
+  let body: { fuente?: string; filas?: any[]; alias?: Record<string, string> }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Payload inválido' }, { status: 400 }) }
   const fuente = String(body.fuente ?? '').trim()
   const filas = Array.isArray(body.filas) ? body.filas : []
@@ -65,12 +67,20 @@ export async function POST(req: NextRequest) {
   if (e1 || e2) return NextResponse.json({ error: (e1 ?? e2 as any).message }, { status: 500 })
   const reales = (clientes as any[]).filter(c => !/^\[PRUEBA\]/i.test(c.nombre ?? '') && !/^\[PRUEBA\]/i.test(c.empresa ?? ''))
 
+  const idsReales = new Set(reales.map(c => c.id))
+  const alias = new Map<string, string>()
+  for (const [k, v] of Object.entries(body.alias ?? {})) {
+    if (!idsReales.has(v)) return NextResponse.json({ error: `El alias "${k}" apunta a un cliente que no existe` }, { status: 400 })
+    alias.set(normalizar(k), v)
+  }
+  const clienteDe = (texto: string) => alias.get(normalizar(nombreBaseCliente(texto))) ?? emparejarCliente(texto, reales)
+
   const nuevas = filas.map(f => ({
     anio: f.anio, trimestre: f.trimestre,
     vendedor_nombre: nombrePropio(String(f.vendedor)),
     vendedor_id: emparejarVendedor(String(f.vendedor), perfiles ?? []),
     cliente_texto: String(f.cliente).replace(/\s+/g, ' ').trim(),
-    cliente_id: emparejarCliente(String(f.cliente), reales),
+    cliente_id: clienteDe(String(f.cliente)),
     monto: Math.round(Number(f.monto) * 100) / 100,
     moneda: 'UYU',
     fuente,
