@@ -89,5 +89,8 @@ export default async function BandejaPage() {
     }
   })
 
-  return <BandejaClient ordenes={ordenesPend} reservas={reservasPend} rol={session.user.rol} />
+  // Los bloqueos sueltos (sin venta) los aprueba la asistente de ventas o
+  // Administración: el gerente sólo aprueba ventas.
+  const apruebaReservas = puede(session.user.rol, ['asistente_ventas', 'administracion'])
+  return <BandejaClient ordenes={ordenesPend} reservas={apruebaReservas ? reservasPend : []} rol={session.user.rol} />
 }

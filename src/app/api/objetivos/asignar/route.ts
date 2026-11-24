@@ -5,7 +5,8 @@ import { createServerClient } from '@/lib/supabase-server'
 import { recalcularObjetivos } from '@/lib/objetivos/recalcular'
 import { puede } from '@/lib/auth/roles'
 
-const ALLOWED_ROLES = ['asistente_ventas', 'gerente_comercial', 'administracion']
+// Los objetivos por cliente los carga la asistente de ventas (o Administración), no el gerente.
+const ALLOWED_ROLES = ['asistente_ventas', 'administracion']
 
 /**
  * POST /api/objetivos/asignar
