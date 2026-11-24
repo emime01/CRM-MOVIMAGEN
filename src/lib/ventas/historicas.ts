@@ -41,22 +41,40 @@ export function nombreBaseCliente(texto: string): string {
 export interface ClienteParaEmparejar { id: string; nombre: string | null; empresa: string | null }
 
 /**
+ * Los nombres con los que se reconoce a un cliente del CRM: su nombre, su
+ * empresa y cada parte de un nombre compuesto ("Coca Cola - Sprite - Fanta",
+ * "Movistar / Tigo", "Sony (peliculas)").
+ */
+function aliasDe(c: ClienteParaEmparejar): string[] {
+  const out = new Set<string>()
+  for (const n of [c.nombre, c.empresa]) {
+    if (!n) continue
+    const completo = normalizar(n)
+    if (completo.length >= 3) out.add(completo)
+    for (const parte of n.split(/\s*\/\s*|\s+[-–]\s+|\s*[()]\s*/)) {
+      const p = normalizar(parte)
+      if (p.length >= 4) out.add(p)
+    }
+  }
+  return Array.from(out)
+}
+
+/**
  * El cliente del CRM que corresponde al texto de la planilla, o null. Coincide
- * si el nombre (o la empresa) del cliente es el texto base completo o el
- * comienzo de él ("Conaprole renovacion anual" → Conaprole). Entre varios,
- * gana el nombre más largo; si dos clientes distintos empatan, no se elige
- * ninguno (mejor sin asociar que asociado mal).
+ * si un nombre del cliente (ver aliasDe) es el texto base completo, el comienzo
+ * de él ("Conaprole renovacion anual" → Conaprole) o lo mismo sin espacios
+ * ("Pedidos Ya" → PedidosYa). Entre varios, gana el nombre más largo; si dos
+ * clientes distintos empatan, no se elige ninguno (mejor sin asociar que
+ * asociado mal).
  */
 export function emparejarCliente(texto: string, clientes: readonly ClienteParaEmparejar[]): string | null {
   const candidatos = [normalizar(nombreBaseCliente(texto)), normalizar(texto)].filter(Boolean)
+  const junto = (s: string) => s.replace(/ /g, '')
   let mejor: { id: string; largo: number } | null = null
   let empate = false
   for (const c of clientes) {
-    for (const n of [c.nombre, c.empresa]) {
-      if (!n) continue
-      const cn = normalizar(n)
-      if (cn.length < 3) continue
-      if (!candidatos.some(t => t === cn || t.startsWith(cn + ' '))) continue
+    for (const cn of aliasDe(c)) {
+      if (!candidatos.some(t => t === cn || t.startsWith(cn + ' ') || junto(t) === junto(cn))) continue
       if (!mejor || cn.length > mejor.largo) { mejor = { id: c.id, largo: cn.length }; empate = false }
       else if (cn.length === mejor.largo && c.id !== mejor.id) empate = true
     }

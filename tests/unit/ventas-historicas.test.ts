@@ -25,6 +25,19 @@ describe('ventas históricas', () => {
     expect(emparejarCliente('SBI ( Renovación + LED )', clientes)).toBe('sb')
     expect(emparejarCliente('Movistar NOVIEMBRE', clientes)).toBe('mov')
   })
+  it('reconoce las partes de un nombre compuesto y sin espacios', () => {
+    const cs = [
+      { id: 'cc', nombre: 'Coca Cola - Sprite - Fanta', empresa: null },
+      { id: 'mt', nombre: 'Movistar / Tigo', empresa: null },
+      { id: 'py', nombre: 'PedidosYa', empresa: null },
+      { id: 'u1', nombre: 'Unilever (programatica)', empresa: null },
+      { id: 'u2', nombre: 'Unilever (tradicional)', empresa: null },
+    ]
+    expect(emparejarCliente('Coca Cola Verano', cs)).toBe('cc')
+    expect(emparejarCliente('Movistar NOVIEMBRE', cs)).toBe('mt')
+    expect(emparejarCliente('Pedidos Ya', cs)).toBe('py')
+    expect(emparejarCliente('UNILEVER', cs)).toBeNull() // dos cuentas de Unilever: ambiguo
+  })
   it('no asocia si no está o si es ambiguo', () => {
     expect(emparejarCliente('Ortopedia Central', clientes)).toBeNull()
     expect(emparejarCliente('Lema', clientes)).toBeNull()
