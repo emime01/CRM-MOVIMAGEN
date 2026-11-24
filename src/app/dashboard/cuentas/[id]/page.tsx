@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import ClienteHistorialClient from './ClienteHistorialClient'
 import { puede } from '@/lib/auth/roles'
+import { emparejarCliente } from '@/lib/ventas/historicas'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
   const supabase = createServerClient()
   const id = params.id
 
-  const [clienteRes, leadsRes, ordenesRes, objetivoRes, historicasRes] = await Promise.all([
+  const [clienteRes, leadsRes, ordenesRes, objetivoRes, historicasRes, sinCuentaRes] = await Promise.all([
     supabase.from('clientes').select('id, nombre, empresa, email, telefono, rut, tipo_cliente, vendedor_id, logo_url, perfiles!clientes_vendedor_id_fkey(nombre)').eq('id', id).single(),
     supabase.from('leads').select('id, estado, descripcion, monto_potencial, cuatrimestre, notas, created_at, perfiles!leads_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
     supabase.from('ordenes_venta').select('id, numero, estado, monto_total, monto_neto, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
@@ -26,6 +27,10 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
     // no existe, la consulta falla y simplemente no se muestra la pestaña).
     supabase.from('ventas_historicas').select('id, anio, trimestre, cliente_texto, vendedor_nombre, monto, perfiles!ventas_historicas_vendedor_id_fkey(nombre)')
       .eq('cliente_id', id).order('anio', { ascending: false }).order('trimestre', { ascending: false }).limit(500),
+    // Las que no quedaron en una sola cuenta porque la empresa tiene varias
+    // (Unilever programática / tradicional): se muestran en todas sus cuentas.
+    supabase.from('ventas_historicas').select('id, anio, trimestre, cliente_texto, vendedor_nombre, monto, perfiles!ventas_historicas_vendedor_id_fkey(nombre)')
+      .is('cliente_id', null).limit(2000),
   ])
 
   if (!clienteRes.data) redirect('/dashboard/cuentas')
@@ -44,7 +49,12 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
           : null,
       })) as any}
       objetivo={objetivoRes.data ?? null}
-      historicas={(historicasRes.data ?? []) as any}
+      historicas={[
+        ...((historicasRes.data ?? []) as any[]),
+        ...((sinCuentaRes.data ?? []) as any[])
+          .filter(h => emparejarCliente(h.cliente_texto, [clienteRes.data as any]) !== null)
+          .map(h => ({ ...h, compartida: true })),
+      ].sort((a, b) => b.anio - a.anio || b.trimestre - a.trimestre) as any}
     />
   )
 }
