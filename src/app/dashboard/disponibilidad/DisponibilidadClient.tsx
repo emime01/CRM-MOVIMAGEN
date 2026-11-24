@@ -909,6 +909,8 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
   const [detalle, setDetalle] = useState<{ id: string; nombre: string } | null>(null)
 
   const isAdmin = puede(userRol, ['administracion', 'operaciones', 'asistente_ventas', 'gerente_comercial'])
+  // Aprobar bloqueos sueltos: asistente de ventas o Administración (igual que la API).
+  const apruebaReservas = puede(userRol, ['asistente_ventas', 'administracion'])
 
   const fetchDay = useCallback(async (d: string) => {
     setLoadingDay(true)
@@ -1028,7 +1030,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
         <button style={tabStyle(tab === 'reservas')} onClick={() => setTab('reservas')}>
           Bloqueos
         </button>
-        {isAdmin && (
+        {apruebaReservas && (
           <button style={tabStyle(tab === 'aprobaciones')} onClick={() => setTab('aprobaciones')}>
             Aprobaciones
           </button>
@@ -1122,7 +1124,7 @@ export default function DisponibilidadClient({ userRol, clientes }: Props) {
 
       {tab === 'estadisticas' && <EstadisticasTab soportes={soportes} />}
       {tab === 'reservas' && <ReservasTab userRol={userRol} />}
-      {tab === 'aprobaciones' && isAdmin && <AprobacionesTab />}
+      {tab === 'aprobaciones' && apruebaReservas && <AprobacionesTab />}
     </div>
   )
 }

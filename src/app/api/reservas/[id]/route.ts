@@ -10,9 +10,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const rol = session.user.rol
-  const canApprove = puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])
+  // Los bloqueos sin venta los aprueba la asistente de ventas (o Administración), no el gerente.
+  const canApprove = puede(rol, ['asistente_ventas', 'administracion'])
   const canConfirm = puede(rol, ['operaciones', 'administracion'])
-  const isManager = puede(rol, ['asistente_ventas', 'gerente_comercial', 'administracion', 'operaciones'])
+  const isManager = puede(rol, ['asistente_ventas', 'administracion', 'operaciones'])
 
   let body: {
     estado?: string

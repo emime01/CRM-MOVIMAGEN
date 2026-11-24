@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
     // hace recalcularObjetivos al final. En la web está detrás de Cuentas y
     // de Objetivos, las dos con guarda de rol; el endpoint no la replicaba.
     // Mismo criterio que /api/objetivos y /api/objetivos/asignar.
-    if (!puede(session.user.rol, ['asistente_ventas', 'gerente_comercial', 'administracion'])) {
+    // La planilla de objetivos por cliente la importa la asistente de ventas (o Administración).
+    if (!puede(session.user.rol, ['asistente_ventas', 'administracion'])) {
       return NextResponse.json({ error: 'Sin permisos para importar clientes y objetivos' }, { status: 403 })
     }
 

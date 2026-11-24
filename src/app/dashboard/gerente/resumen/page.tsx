@@ -93,6 +93,8 @@ export default async function GerenciaResumenPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
   if (!puede(session.user.rol, ['gerente_comercial', 'administracion'])) redirect('/dashboard')
+  // El gerente no ve canon, facturado/cobrado ni precio contra lista: son de Administración.
+  const esGerente = session.user.rol === 'gerente_comercial'
   const supabase = createServerClient()
   const hoy = hoyUY()
   const mes = hoy.slice(0, 7)
@@ -278,13 +280,15 @@ export default async function GerenciaResumenPage() {
         ))}
       </Tarjeta>
 
-      <Tarjeta titulo={`Canon a pagar · ${mes}`}
+{!esGerente && (<>
+            <Tarjeta titulo={`Canon a pagar · ${mes}`}
         resumen={canonTotal == null ? '—' : formatMoney(canonTotal, 'UYU')}>
         {canonTotal == null
           ? <Vacio t="No se pudo calcular el canon del mes." />
           : <Fila izq="Liquidaciones sin pagar" der={sinPagar} />}
         <Vacio t="Sólo lectura: lo liquida y paga Administración." />
       </Tarjeta>
+      </>)}
 
       <Seccion titulo="Ocupación por formato" href="/dashboard/disponibilidad" enlace="Ir a Disponibilidad">
         {errOcup ? <Vacio t="No se pudo calcular la ocupación." /> : (
@@ -382,7 +386,8 @@ export default async function GerenciaResumenPage() {
         <Vacio t="Leads sin ganar ni perder. 'Propuestas enviadas' cuenta todas las versiones mandadas (enviadas, aceptadas o rechazadas); 'Por lead' es el promedio entre los leads cotizados." />
       </Seccion>
 
-      <Seccion titulo={`Facturado vs cobrado · ${nombreMes(mes)}`}>
+{!esGerente && (<>
+            <Seccion titulo={`Facturado vs cobrado · ${nombreMes(mes)}`}>
         {errFactCob ? <Vacio t="No se pudo calcular lo facturado y cobrado." /> : factCob.length === 0 ? <Vacio t="Sin facturas ni cobros en el mes." /> : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -415,8 +420,10 @@ export default async function GerenciaResumenPage() {
         )}
         <Vacio t="Facturado: facturas emitidas en el mes menos notas de crédito, con IVA. Cobrado: pagos con fecha del mes (lo que entró de verdad; el descuento de agencia ya está restado). Pueden ser cobros de facturas de otros meses." />
       </Seccion>
+      </>)}
 
-      <Seccion titulo={`Precio real vs lista · ${q.label}`}>
+{!esGerente && (<>
+            <Seccion titulo={`Precio real vs lista · ${q.label}`}>
         {descuentos.length === 0 ? (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>—</span>
@@ -437,6 +444,7 @@ export default async function GerenciaResumenPage() {
         )}
         <Vacio t="Precio de venta con su descuento contra el precio semanal de lista del soporte, ponderado por importe. Negativo: se vendió sobre lista. Sólo ventas en pesos (la lista está en pesos)." />
       </Seccion>
+      </>)}
     </div>
   )
 }

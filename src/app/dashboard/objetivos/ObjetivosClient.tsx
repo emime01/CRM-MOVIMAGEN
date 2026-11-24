@@ -37,6 +37,9 @@ interface Props {
   /** Clientes activos, para cargarle objetivo a uno que no tiene. */
   clientes: { id: string; nombre: string; empresa: string | null }[]
   year: number
+  /** Cargar/editar objetivos por cliente, asignar dueño e importar la planilla
+   *  (asistente de ventas y Administración). El gerente sólo pone el objetivo de cada vendedor. */
+  editaClientes?: boolean
 }
 
 function clienteNombre(co: ClienteObjetivo): string {
@@ -385,7 +388,7 @@ function AgregarClienteObjetivo({ clientes, conObjetivo, vendedores, year }: {
   )
 }
 
-export default function ObjetivosClient({ vendedores, objMap: initialObjMap, clienteObjetivos, sinVendedor, clientes, year }: Props) {
+export default function ObjetivosClient({ vendedores, objMap: initialObjMap, clienteObjetivos, sinVendedor, clientes, year, editaClientes = true }: Props) {
   const [objMap, setObjMap] = useState<Record<string, number>>(initialObjMap)
   const [editValues, setEditValues] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {}
@@ -499,7 +502,7 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
             {pendientes > 0 && ` · ${pendientes} sin vendedor`}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        {editaClientes && <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={downloadTemplate} style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
             border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-card)',
@@ -515,12 +518,12 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
           }}>
             <Upload size={14} /> Importar Excel
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* Clientes con objetivo cargado pero sin dueño: hasta asignarlos, su
           objetivo no suma para ningún vendedor y los tableros muestran cero. */}
-      {pendientes > 0 && (
+      {editaClientes && pendientes > 0 && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid #f3c39c', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', background: 'rgba(235,105,28,0.07)', borderBottom: '1px solid #f3c39c' }}>
             <div style={{ fontSize: 14, fontWeight: 750, color: 'var(--text-primary)' }}>
@@ -587,7 +590,7 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
         </div>
       )}
 
-      <AgregarClienteObjetivo clientes={clientes} conObjetivo={conObjetivo} vendedores={vendedores} year={year} />
+      {editaClientes && <AgregarClienteObjetivo clientes={clientes} conObjetivo={conObjetivo} vendedores={vendedores} year={year} />}
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -718,10 +721,10 @@ export default function ObjetivosClient({ vendedores, objMap: initialObjMap, cli
                                   <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>{c3 > 0 ? fmt(c3) : '—'}</td>
                                   <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--orange)' }}>{total > 0 ? fmt(total) : '—'}</td>
                                   <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                                    <button onClick={() => setEditandoCliente(co.cliente_id)} title="Editar objetivo del cliente"
+                                    {editaClientes && <button onClick={() => setEditandoCliente(co.cliente_id)} title="Editar objetivo del cliente"
                                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'inline-flex' }}>
                                       <Pencil size={13} />
-                                    </button>
+                                    </button>}
                                   </td>
                                 </tr>
                               )

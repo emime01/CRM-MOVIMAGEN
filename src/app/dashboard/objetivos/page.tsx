@@ -54,6 +54,9 @@ export default async function ObjetivosPage() {
       sinVendedor={todos.filter(co => !co.vendedor_id) as any}
       clientes={(clientes ?? []) as { id: string; nombre: string; empresa: string | null }[]}
       year={y}
+      // Los objetivos por cliente los carga la asistente de ventas (o Administración);
+      // el gerente sólo pone el objetivo de cada vendedor.
+      editaClientes={puede(session.user.rol, ['asistente_ventas', 'administracion'])}
     />
   )
 }
