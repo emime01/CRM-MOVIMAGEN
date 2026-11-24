@@ -8,6 +8,7 @@ import { puede } from '@/lib/auth/roles'
 import { netoSinIva } from '@/lib/money'
 import { todos } from '@/lib/supabase-todos'
 import { cuatrimestreDe, rangoCuatrimestre } from '@/lib/comisiones/bonos'
+import { HISTORICO_HASTA, NOMBRE_TRIMESTRE, nombreBaseCliente, trimestreDe } from '@/lib/ventas/historicas'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,56 +34,116 @@ export default async function ComparativoPage({ searchParams }: { searchParams: 
   const anterior = anio - 1
   const qActual = cuatrimestreDe(hoy).replace(/-\d{4}$/, '')    // Q1 / Q2 / Q3
   const hastaMMDD = anio === hoy.getFullYear() ? hoy.toISOString().slice(5, 10) : '12-31'
+  // Hasta 2025 las ventas salen de la planilla histórica (por trimestre, sin
+  // fecha exacta); desde 2026, de las órdenes del CRM.
+  const conHistorico = anterior <= HISTORICO_HASTA
+  const tActual = trimestreDe(`${anio}-${hastaMMDD}`)
 
-  const { data: ventas } = await todos((d, h) => {
-    let q = supabase.from('ordenes_venta')
-      .select('id, vendedor_id, monto_neto, monto_total, moneda, created_at, clientes(nombre, empresa), perfiles!vendedor_id(nombre), orden_items(soporte_id, cantidad, semanas, precio_unitario, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, soportes(nombre, ubicacion, categoria, cap, tipo_cotizador))')
-      .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
-      .gte('created_at', `${anterior}-01-01`).lte('created_at', `${anio}-12-31T23:59:59`)
-      .order('created_at')
-    if (!todosLosDatos) q = q.eq('vendedor_id', session.user.id)
-    return q.range(d, h)
-  })
-  const pesos = (ventas as any[]).filter(v => (v.moneda ?? 'UYU') === 'UYU')
-  const delAnio = (a: number, hastaFecha = true) => pesos.filter(v => {
-    const f = String(v.created_at).slice(0, 10)
-    return f.startsWith(String(a)) && (!hastaFecha || f.slice(5) <= hastaMMDD)
-  })
-  const sum = (vs: any[]) => vs.reduce((s, v) => s + netoSinIva(v), 0)
+  const [{ data: ventas }, { data: historicas }] = await Promise.all([
+    todos((d, h) => {
+      let q = supabase.from('ordenes_venta')
+        .select('id, vendedor_id, monto_neto, monto_total, moneda, created_at, clientes(nombre, empresa), perfiles!vendedor_id(nombre), orden_items(soporte_id, cantidad, semanas, precio_unitario, fecha_alta_prevista, fecha_alta_real, fecha_baja_prevista, fecha_baja_real, soportes(nombre, ubicacion, categoria, cap, tipo_cotizador))')
+        .in('estado', ESTADOS_VENTA_VIVA as unknown as string[])
+        .gte('created_at', `${Math.max(anterior, HISTORICO_HASTA + 1)}-01-01`).lte('created_at', `${anio}-12-31T23:59:59`)
+        .order('created_at')
+      if (!todosLosDatos) q = q.eq('vendedor_id', session.user.id)
+      return q.range(d, h)
+    }),
+    conHistorico
+      ? todos((d, h) => {
+          let q = supabase.from('ventas_historicas')
+            .select('id, anio, trimestre, vendedor_nombre, cliente_texto, monto, moneda, perfiles!ventas_historicas_vendedor_id_fkey(nombre), clientes(nombre, empresa)')
+            .gte('anio', anterior).lte('anio', Math.min(anio, HISTORICO_HASTA)).order('id')
+          if (!todosLosDatos) q = q.eq('vendedor_id', session.user.id)
+          return q.range(d, h)
+        })
+      : Promise.resolve({ data: [] as any[], error: null }),
+  ])
 
-  // Año a la fecha y cuatrimestre en curso contra el mismo tramo del año anterior.
+  // Un registro por venta, venga del CRM o de la planilla.
+  type Reg = { anio: number; fecha: string | null; trimestre: number; monto: number; vendedor: string; cliente: string; venta: any | null }
+  const regs: Reg[] = [
+    ...(ventas as any[]).filter(v => (v.moneda ?? 'UYU') === 'UYU').map(v => {
+      const f = String(v.created_at).slice(0, 10); const c = first<any>(v.clientes)
+      return { anio: Number(f.slice(0, 4)), fecha: f, trimestre: trimestreDe(f), monto: netoSinIva(v),
+               vendedor: first<any>(v.perfiles)?.nombre ?? '—', cliente: c?.empresa ?? c?.nombre ?? '—', venta: v }
+    }),
+    ...(historicas as any[]).filter(h => (h.moneda ?? 'UYU') === 'UYU').map(h => {
+      const c = first<any>(h.clientes)
+      return { anio: Number(h.anio), fecha: null, trimestre: Number(h.trimestre), monto: Number(h.monto) || 0,
+               vendedor: first<any>(h.perfiles)?.nombre ?? h.vendedor_nombre ?? '—',
+               cliente: c?.empresa ?? c?.nombre ?? nombreBaseCliente(String(h.cliente_texto ?? '—')), venta: null }
+    }),
+  ]
+
+  // Cuánto de cada venta entra "hasta la fecha". Las del CRM, entera o nada
+  // según su fecha. Las de la planilla no tienen fecha: los trimestres ya
+  // cerrados entran enteros y el trimestre en curso, en proporción a los días
+  // transcurridos (estimado).
+  const peso = (r: Reg, mmdd: string) => {
+    if (mmdd >= '12-31') return 1
+    if (r.fecha) return r.fecha.slice(5) <= mmdd ? 1 : 0
+    const t = trimestreDe(`${r.anio}-${mmdd}`)
+    if (r.trimestre !== t) return r.trimestre < t ? 1 : 0
+    const ini = Date.UTC(r.anio, (t - 1) * 3, 1), fin = Date.UTC(r.anio, t * 3, 1)
+    const corte = Date.UTC(r.anio, Number(mmdd.slice(0, 2)) - 1, Number(mmdd.slice(3, 5))) + 86400000
+    return Math.min(1, Math.max(0, (corte - ini) / (fin - ini)))
+  }
+  const estimado = conHistorico && hastaMMDD < '12-31'
+  const delAnio = (a: number, hastaFecha = true) => regs.filter(r => r.anio === a)
+    .map(r => ({ r, p: hastaFecha ? peso(r, hastaMMDD) : 1 })).filter(x => x.p > 0)
+  const sum = (xs: { r: Reg; p: number }[]) => xs.reduce((s, x) => s + x.r.monto * x.p, 0)
+
+  // Año a la fecha y período en curso contra el mismo tramo del año anterior.
+  // Contra la planilla el período es el trimestre (así se medía); si no, el cuatrimestre.
   const ytd = sum(delAnio(anio)), ytdAnt = sum(delAnio(anterior))
-  const rq = rangoCuatrimestre(`${qActual}-${anio}`)!, rqAnt = rangoCuatrimestre(`${qActual}-${anterior}`)!
-  const enRango = (r: { start: string; end: string }, mmdd: string) => pesos.filter(v => {
-    const f = String(v.created_at).slice(0, 10); return f >= r.start && f <= r.end && f.slice(5) <= mmdd
-  })
-  const q = sum(enRango(rq, hastaMMDD)), qAnt = sum(enRango(rqAnt, hastaMMDD))
+  let q: number, qAnt: number, qLabel: string
+  if (conHistorico) {
+    q = sum(delAnio(anio).filter(x => x.r.trimestre === tActual)); qAnt = sum(delAnio(anterior).filter(x => x.r.trimestre === tActual))
+    qLabel = `Trimestre ${NOMBRE_TRIMESTRE[tActual]}`
+  } else {
+    const rq = rangoCuatrimestre(`${qActual}-${anio}`)!, rqAnt = rangoCuatrimestre(`${qActual}-${anterior}`)!
+    const enRango = (a: number, r: { start: string; end: string }) => delAnio(a).filter(x => x.r.fecha! >= r.start && x.r.fecha! <= r.end)
+    q = sum(enRango(anio, rq)); qAnt = sum(enRango(anterior, rqAnt)); qLabel = qActual
+  }
 
-  const agrupar = (clave: (v: any) => string) => {
+  const agrupar = (clave: (r: Reg) => string) => {
     const m = new Map<string, { actual: number; anterior: number }>()
-    for (const v of delAnio(anio)) { const k = clave(v); const e = m.get(k) ?? { actual: 0, anterior: 0 }; e.actual += netoSinIva(v); m.set(k, e) }
-    for (const v of delAnio(anterior)) { const k = clave(v); const e = m.get(k) ?? { actual: 0, anterior: 0 }; e.anterior += netoSinIva(v); m.set(k, e) }
+    for (const { r, p } of delAnio(anio)) { const k = clave(r); const e = m.get(k) ?? { actual: 0, anterior: 0 }; e.actual += r.monto * p; m.set(k, e) }
+    for (const { r, p } of delAnio(anterior)) { const k = clave(r); const e = m.get(k) ?? { actual: 0, anterior: 0 }; e.anterior += r.monto * p; m.set(k, e) }
     return Array.from(m.entries()).map(([k, e]) => ({ k, ...e })).sort((a, b) => b.actual - a.actual || b.anterior - a.anterior)
   }
-  const porVendedor = agrupar(v => first<any>(v.perfiles)?.nombre ?? '—')
-  const porCliente = agrupar(v => { const c = first<any>(v.clientes); return c?.empresa ?? c?.nombre ?? '—' }).slice(0, 20)
+  const porVendedor = agrupar(r => r.vendedor)
+  const porCliente = agrupar(r => r.cliente).slice(0, 20)
+  // Trimestres completos de los dos años (el en curso, hasta hoy).
+  const porTrimestre = [1, 2, 3, 4].map(t => ({
+    k: `Q${t} · ${NOMBRE_TRIMESTRE[t]}${anio === hoy.getFullYear() && t === tActual ? ' (en curso)' : ''}`,
+    actual: sum(delAnio(anio, false).filter(x => x.r.trimestre === t)),
+    anterior: sum(delAnio(anterior, false).filter(x => x.r.trimestre === t)),
+  }))
 
   // Por tipo de soporte: el neto de cada venta se reparte entre sus líneas
   // según lo que vale cada una (precio × cantidad × semanas). Si una venta no
-  // tiene precios por línea, se reparte por cantidad × semanas.
+  // tiene precios por línea, se reparte por cantidad × semanas. Las de la
+  // planilla no tienen soportes: van en su propia fila.
   const porTipo = (() => {
     const m = new Map<string, { actual: number; anterior: number }>()
     const unidades = (i: any) => (Number(i.cantidad) || 1) * (Number(i.semanas) || 1)
     for (const [a, campo] of [[anio, 'actual'], [anterior, 'anterior']] as const) {
-      for (const v of delAnio(a)) {
-        const its = (v.orden_items ?? []) as any[]
+      for (const { r, p } of delAnio(a)) {
+        if (!r.venta) {
+          const k = 'Sin detalle (planilla histórica)'
+          const e = m.get(k) ?? { actual: 0, anterior: 0 }; e[campo] += r.monto * p; m.set(k, e)
+          continue
+        }
+        const its = (r.venta.orden_items ?? []) as any[]
         const conPrecio = its.some(i => Number(i.precio_unitario) > 0)
-        const peso = (i: any) => conPrecio ? unidades(i) * (Number(i.precio_unitario) || 0) : unidades(i)
-        const pesoTot = its.reduce((s, i) => s + peso(i), 0) || 1
+        const pesoLinea = (i: any) => conPrecio ? unidades(i) * (Number(i.precio_unitario) || 0) : unidades(i)
+        const pesoTot = its.reduce((s, i) => s + pesoLinea(i), 0) || 1
         for (const i of its) {
           const cat = first<any>(i.soportes)?.categoria ?? 'Otro'
           const e = m.get(cat) ?? { actual: 0, anterior: 0 }
-          e[campo] += netoSinIva(v) * peso(i) / pesoTot
+          e[campo] += r.monto * p * pesoLinea(i) / pesoTot
           m.set(cat, e)
         }
       }
@@ -94,7 +155,7 @@ export default async function ComparativoPage({ searchParams }: { searchParams: 
   const ocupacion = (() => {
     const m = new Map<string, { nombre: string; ubicacion: string; semanas: number; cap: number }>()
     const inicioAnio = `${anio}-01-01`, finAnio = `${anio}-12-31`
-    for (const v of ventas as any[]) {
+    for (const v of (ventas as any[]).filter(v => String(v.created_at).startsWith(String(anio)))) {
       for (const i of v.orden_items ?? []) {
         const s = first<any>(i.soportes); if (!s || !i.soporte_id) continue
         const desde = (i.fecha_alta_real ?? i.fecha_alta_prevista)?.slice(0, 10), hasta = (i.fecha_baja_real ?? i.fecha_baja_prevista)?.slice(0, 10)
@@ -155,9 +216,9 @@ export default async function ComparativoPage({ searchParams }: { searchParams: 
       <div className="grid-kpi" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 20 }}>
         {[
           { label: `Vendido ${anio} a la fecha`, valor: fmt(ytd), a: ytd, b: ytdAnt },
-          { label: `Mismo tramo de ${anterior}`, valor: fmt(ytdAnt), a: null, b: null },
-          { label: `${qActual}-${anio} a la fecha`, valor: fmt(q), a: q, b: qAnt },
-          { label: `${qActual}-${anterior}, mismo tramo`, valor: fmt(qAnt), a: null, b: null },
+          { label: `Mismo tramo de ${anterior}${estimado ? ' (estimado)' : ''}`, valor: fmt(ytdAnt), a: null, b: null },
+          { label: `${qLabel} ${anio}${hastaMMDD < '12-31' ? ' a la fecha' : ''}`, valor: fmt(q), a: q, b: qAnt },
+          { label: `${qLabel} ${anterior}${hastaMMDD < '12-31' ? `, mismo tramo${estimado ? ' (estimado)' : ''}` : ''}`, valor: fmt(qAnt), a: null, b: null },
         ].map(k => (
           <div key={k.label} style={card}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>{k.label}</div>
@@ -166,7 +227,11 @@ export default async function ComparativoPage({ searchParams }: { searchParams: 
           </div>
         ))}
       </div>
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '-8px 0 16px' }}>Montos sin IVA, en pesos, de las ventas aprobadas, por fecha de la venta y hasta el mismo día del año.</p>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '-8px 0 16px' }}>
+        Montos sin IVA, en pesos, de las ventas aprobadas, por fecha de la venta y hasta el mismo día del año.
+        {conHistorico && <> Hasta {HISTORICO_HASTA} las ventas salen de la planilla histórica, que las tiene por trimestre y sin fecha exacta{estimado ? ': del trimestre en curso se toma la parte proporcional a los días transcurridos, por eso el tramo del año anterior es estimado' : ''}.</>}
+      </p>
+      {conHistorico && <div style={{ marginBottom: 20 }}><Tabla titulo="Por trimestre (completo)" filas={porTrimestre} /></div>}
       <div className="grid-resp" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         {todosLosDatos && <Tabla titulo="Por vendedor" filas={porVendedor} />}
         <Tabla titulo="Por tipo de soporte" filas={porTipo} />

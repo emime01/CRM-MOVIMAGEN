@@ -17,11 +17,15 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
   const supabase = createServerClient()
   const id = params.id
 
-  const [clienteRes, leadsRes, ordenesRes, objetivoRes] = await Promise.all([
+  const [clienteRes, leadsRes, ordenesRes, objetivoRes, historicasRes] = await Promise.all([
     supabase.from('clientes').select('id, nombre, empresa, email, telefono, rut, tipo_cliente, vendedor_id, logo_url, perfiles!clientes_vendedor_id_fkey(nombre)').eq('id', id).single(),
     supabase.from('leads').select('id, estado, descripcion, monto_potencial, cuatrimestre, notas, created_at, perfiles!leads_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
     supabase.from('ordenes_venta').select('id, numero, estado, monto_total, monto_neto, created_at, perfiles!ordenes_venta_vendedor_id_fkey(nombre)').eq('cliente_id', id).order('created_at', { ascending: false }),
     supabase.from('cliente_objetivos').select('objetivo_c1, objetivo_c2, objetivo_c3, ponderacion_pct, year').eq('cliente_id', id).order('year', { ascending: false }).limit(1).maybeSingle(),
+    // Ventas de 2024–2025 de la planilla anterior al CRM (si la tabla todavía
+    // no existe, la consulta falla y simplemente no se muestra la pestaña).
+    supabase.from('ventas_historicas').select('id, anio, trimestre, cliente_texto, vendedor_nombre, monto, perfiles!ventas_historicas_vendedor_id_fkey(nombre)')
+      .eq('cliente_id', id).order('anio', { ascending: false }).order('trimestre', { ascending: false }).limit(500),
   ])
 
   if (!clienteRes.data) redirect('/dashboard/cuentas')
@@ -40,6 +44,7 @@ export default async function ClienteHistorialPage({ params }: { params: { id: s
           : null,
       })) as any}
       objetivo={objetivoRes.data ?? null}
+      historicas={(historicasRes.data ?? []) as any}
     />
   )
 }
