@@ -1,6 +1,6 @@
 'use client'
 
-import { puede } from '@/lib/auth/roles'
+import { puede, haceAdministracion } from '@/lib/auth/roles'
 
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
@@ -155,6 +155,21 @@ const NAV_GERENTE: GrupoNav[] = [
   ] },
 ]
 
+/**
+ * Para Administración: pantallas que en el menú van juntas en una sección,
+ * con pestañas arriba (igual que el menú del gerente). Cada uno ve sólo las
+ * pestañas que su rol permite.
+ */
+const SECCIONES_ADMIN: { label: string; icon: React.ReactNode; tabs: { href: string; label: string }[] }[] = [
+  { label: 'Clientes', icon: <BookUser size={16} />, tabs: [
+    { href: '/dashboard/admin/por-cliente', label: 'Resumen' },
+    { href: '/dashboard/admin/facturacion', label: 'Facturación' },
+    { href: '/dashboard/admin/deudores', label: 'Deudores' },
+    { href: '/dashboard/admin/comisiones', label: 'Comisiones' },
+    { href: '/dashboard/cuentas', label: 'Cuentas' },
+  ] },
+]
+
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/dashboard/ventas': 'Ventas',
@@ -175,7 +190,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/buses': 'Buses',
   '/dashboard/registros': 'Registros',
   '/dashboard/admin/facturacion': 'Facturación',
-  '/dashboard/admin/por-cliente': 'Facturación y ventas por cliente',
+  '/dashboard/admin/por-cliente': 'Clientes',
   '/dashboard/admin/deudores': 'Deudores',
   '/dashboard/admin/comisiones': 'Comisiones',
   '/dashboard/admin/canon': 'Canon',
@@ -277,7 +292,29 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
   const enTab = (href: string) => href === '/dashboard/gerente'
     ? pathname === href
     : pathname === href || pathname.startsWith(href + '/')
-  const grupoActivo = esGerente ? NAV_GERENTE.find(g => g.tabs.some(t => enTab(t.href))) ?? null : null
+  // Administración: las pantallas de clientes van en una sola sección con
+  // pestañas. Se arma con lo que el rol ve, en el lugar del primer ítem.
+  const usaSecciones = !testMode && !esGerente && haceAdministracion(user.rol)
+  const menu: { href: string; label: string; icon: React.ReactNode; grupo: GrupoNav | null }[] = esGerente
+    ? NAV_GERENTE.map(g => ({ href: g.tabs[0].href, label: g.label, icon: g.icon, grupo: g }))
+    : (() => {
+        if (!usaSecciones) return navItems.map(i => ({ ...i, grupo: null }))
+        const visibles = new Set(navItems.map(i => i.href))
+        const grupos = SECCIONES_ADMIN
+          .map(g => ({ ...g, tabs: g.tabs.filter(t => visibles.has(t.href)) }))
+          .filter(g => g.tabs.length > 0)
+        const out: { href: string; label: string; icon: React.ReactNode; grupo: GrupoNav | null }[] = []
+        const puestos = new Set<string>()
+        for (const i of navItems) {
+          const g = grupos.find(gr => gr.tabs.some(t => t.href === i.href))
+          if (!g) { out.push({ ...i, grupo: null }); continue }
+          if (puestos.has(g.label)) continue
+          puestos.add(g.label)
+          out.push({ href: g.tabs[0].href, label: g.label, icon: g.icon, grupo: g })
+        }
+        return out
+      })()
+  const grupoActivo = menu.find(m => m.grupo && m.grupo.tabs.some(t => enTab(t.href)))?.grupo ?? null
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
@@ -344,7 +381,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 0' }}>
-          {(esGerente ? NAV_GERENTE.map(g => ({ href: g.tabs[0].href, label: g.label, icon: g.icon, grupo: g })) : navItems.map(i => ({ ...i, grupo: null as GrupoNav | null }))).map(item => {
+          {menu.map(item => {
             const active = item.grupo ? item.grupo === grupoActivo : isActive(item.href)
             return (
               <Link
