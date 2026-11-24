@@ -84,6 +84,8 @@ function Badge({ estado, map }: { estado: string; map: Record<string, { color: s
 interface Historica {
   id: string; anio: number; trimestre: number; cliente_texto: string; vendedor_nombre: string
   monto: number; perfiles: JR<{ nombre: string }>
+  /** La empresa tiene varias cuentas y la planilla no dice cuál: se ve en todas. */
+  compartida?: boolean
 }
 
 export default function ClienteHistorialClient({ cliente, leads, ordenes, objetivo, historicas = [] }: {
@@ -306,6 +308,11 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
             ))}
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Ventas de la planilla anterior al CRM · por trimestre · sin IVA</span>
           </div>
+          {historicas.some(h => h.compartida) && (
+            <div style={{ padding: '8px 16px', fontSize: 12, color: '#b45309', background: '#fff7ed', borderBottom: '1px solid var(--border)' }}>
+              Las marcadas con * son de la empresa en general: tiene varias cuentas en el CRM y la planilla no dice cuál, así que se muestran en todas.
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--bg-app)', borderBottom: '1px solid var(--border)' }}>
@@ -318,7 +325,7 @@ export default function ClienteHistorialClient({ cliente, leads, ordenes, objeti
               {historicas.map(h => (
                 <tr key={h.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Q{h.trimestre} {h.anio}</td>
-                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{h.cliente_texto}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{h.cliente_texto}{h.compartida ? ' *' : ''}</td>
                   <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>{jn(h.perfiles)?.nombre ?? h.vendedor_nombre}</td>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(Number(h.monto))}</td>
                 </tr>
