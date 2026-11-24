@@ -38,6 +38,17 @@ describe('ventas históricas', () => {
     expect(emparejarCliente('Pedidos Ya', cs)).toBe('py')
     expect(emparejarCliente('UNILEVER', cs)).toBeNull() // dos cuentas de Unilever: ambiguo
   })
+  it('el nombre completo gana a una parte; las partes genéricas no cuentan', () => {
+    const cs = [
+      { id: 'sb', nombre: 'SBI Seguros', empresa: null },
+      { id: 'sb2', nombre: 'SBI Seguros (Marcelo Lena)', empresa: null },
+      { id: 'ms', nombre: 'Montesol - yerba / café - Madre Tierra', empresa: null },
+      { id: 'rbs', nombre: 'RBS - Peliculas', empresa: null },
+    ]
+    expect(emparejarCliente('SBI Seguros', cs)).toBe('sb')
+    expect(emparejarCliente('YERBA SARA', cs)).toBeNull()
+    expect(emparejarCliente('RBS', cs)).toBe('rbs')
+  })
   it('no asocia si no está o si es ambiguo', () => {
     expect(emparejarCliente('Ortopedia Central', clientes)).toBeNull()
     expect(emparejarCliente('Lema', clientes)).toBeNull()
